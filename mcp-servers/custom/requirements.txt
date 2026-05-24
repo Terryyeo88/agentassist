@@ -1,0 +1,11 @@
+# SAP B1 MCP Server for Claude Desktop
+# =====================================
+
+# MCP SDK (stdio transport)
+mcp>=1.0.0
+
+# Async HTTP client (replaces requests — needed for async MCP server)
+httpx>=0.27.0
+
+# Environment variable loading
+python-dotenv>=1.0.0
