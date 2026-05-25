@@ -128,6 +128,112 @@ def _fmt(data: Any) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False, default=str)
 
 
+# --- Shared helpers for accounting tools ---
+
+def _safe_float(val) -> float:
+    try:
+        return float(val or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _is_sgd(doc: dict) -> bool:
+    currency = (doc.get("DocCurrency") or "SGD").strip().upper()
+    return currency in ("SGD", "S$", "")
+
+
+# VatGroup → F5 box routing. lt_box = line total destination, tt_box = tax total destination.
+F5_BOX_MAPPING = {
+    "SO":     {"lt_box": "box_1_standard_rated_sales", "tt_box": "box_6_output_tax",  "side": "sales"},
+    "DS":     {"lt_box": "box_1_standard_rated_sales", "tt_box": "box_6_output_tax",  "side": "sales"},
+    "ZR":     {"lt_box": "box_2_zero_rated_sales",     "tt_box": None,                "side": "sales"},
+    "ES33":   {"lt_box": "box_3_exempt_sales",         "tt_box": None,                "side": "sales"},
+    "ESN33":  {"lt_box": "box_3_exempt_sales",         "tt_box": None,                "side": "sales"},
+    "OS":     {"lt_box": None,                         "tt_box": None,                "side": "sales"},
+    "SI":     {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
+    "ZP":     {"lt_box": "box_5_taxable_purchases",    "tt_box": None,                "side": "purchase"},
+    "IM":     {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
+    "IGDS":   {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
+    "ME":     {"lt_box": "box_5_taxable_purchases",    "tt_box": None,                "side": "purchase"},
+    "NR":     {"lt_box": "box_5_taxable_purchases",    "tt_box": None,                "side": "purchase"},
+    "BL":     {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
+    "EP":     {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
+    "OP":     {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
+    "TX-E33": {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
+    "TX-N33": {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
+    "TX-RE":  {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
+}
+
+_E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL"}
+_STANDARD_RATE_SALES = {"SO", "DS"}
+
+
+def _fetch_invoices_paginated(entity: str, period_start: str, period_end: str) -> list:
+    """Fetch all records with DocumentLines for the period, paginating 20 at a time."""
+    results = []
+    skip = 0
+    date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
+    while True:
+        data = sap.get(f"/{entity}", params={
+            "$filter": date_filter,
+            "$top": 20,
+            "$skip": skip,
+        })
+        page = data.get("value", [])
+        results.extend(page)
+        if len(page) < 20:
+            break
+        skip += 20
+    return results
+
+
+def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_rate: float = 0.07) -> list:
+    """Check one document line for E1–E4 issues. Returns a list of issue dicts."""
+    issues = []
+    vg = (line.get("VatGroup") or "").strip()
+    line_total = _safe_float(line.get("LineTotal"))
+    tax_total = _safe_float(line.get("TaxTotal"))
+    currency = (doc.get("DocCurrency") or "SGD").strip().upper()
+    is_fx = currency not in ("SGD", "S$", "")
+
+    base = {
+        "doc_num": doc.get("DocNum"),
+        "doc_date": str(doc.get("DocDate", ""))[:10],
+        "doc_currency": currency,
+        "card_name": doc.get("CardName", ""),
+        "vat_group": vg,
+        "line_total": line_total,
+        "tax_total": tax_total,
+    }
+
+    # E1: FX sales invoice using standard-rated code — overseas sales should be ZR
+    if entity_type == "sales" and is_fx and vg in _STANDARD_RATE_SALES:
+        issues.append({**base, "error_code": "E1",
+            "description": f"FX invoice ({currency}) with {vg} code — should likely be ZR for overseas sales"})
+
+    # E2: GST charged on a non-taxable supply code
+    if tax_total > 0.01 and vg in _E2_ZERO_RATE_CODES:
+        issues.append({**base, "error_code": "E2",
+            "description": f"Tax {tax_total:.2f} charged on non-taxable supply (VatGroup={vg})"})
+
+    # E3: Standard-rated code with zero tax
+    if entity_type == "sales" and vg in _STANDARD_RATE_SALES and line_total > 0.01 and tax_total < 0.01:
+        issues.append({**base, "error_code": "E3",
+            "description": f"Standard-rated line (VatGroup={vg}) with zero tax on {line_total:.2f}"})
+    if entity_type == "purchase" and vg == "SI" and line_total > 0.01 and tax_total < 0.01:
+        issues.append({**base, "error_code": "E3",
+            "description": f"Standard-rated purchase (VatGroup=SI) with zero tax on {line_total:.2f}"})
+
+    # E4: GST rate deviates from expected (SO and SI only per spec)
+    if vg in {"SO", "SI"} and line_total > 0.01 and tax_total > 0.01:
+        ratio = tax_total / line_total
+        if abs(ratio - expected_rate) > 0.001:
+            issues.append({**base, "error_code": "E4",
+                "description": f"GST rate {ratio * 100:.2f}% deviates from expected {expected_rate * 100:.0f}%"})
+
+    return issues
+
+
 # --- Tools ---
 
 @mcp.tool()
@@ -236,6 +342,246 @@ def sap_delete(entity: str, key: str) -> str:
         endpoint = f"/{entity}('{key}')"
     result = sap.delete(endpoint)
     return _fmt(result)
+
+
+@mcp.tool()
+def calculate_f5_return(period_start: str, period_end: str) -> str:
+    """Calculate GST F5 return boxes 1–8 for a period. Dates must be ISO format YYYY-MM-DD. Only SGD invoices contribute to box totals; FX invoices are listed separately for manual conversion."""
+    invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
+    purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
+
+    sgd_sales = [d for d in invoices if _is_sgd(d)]
+    fx_sales = [d for d in invoices if not _is_sgd(d)]
+    sgd_purchases = [d for d in purchases if _is_sgd(d)]
+    fx_purchases = [d for d in purchases if not _is_sgd(d)]
+
+    boxes = {
+        "box_1_standard_rated_sales": 0.0,
+        "box_2_zero_rated_sales": 0.0,
+        "box_3_exempt_sales": 0.0,
+        "box_4_total_sales": 0.0,
+        "box_5_taxable_purchases": 0.0,
+        "box_6_output_tax": 0.0,
+        "box_7_input_tax": 0.0,
+        "box_8_net_gst": 0.0,
+    }
+    anomalies = []
+    seen_unknown: set = set()
+
+    for doc in sgd_sales:
+        for line in doc.get("DocumentLines", []):
+            vg = (line.get("VatGroup") or "").strip()
+            mapping = F5_BOX_MAPPING.get(vg)
+            if mapping is None:
+                if vg:
+                    key = (doc.get("DocNum"), vg)
+                    if key not in seen_unknown:
+                        seen_unknown.add(key)
+                        anomalies.append({"doc_num": doc.get("DocNum"),
+                            "issue": f"unknown VatGroup '{vg}' — not in mapping"})
+                continue
+            if mapping["side"] != "sales":
+                continue
+            lt = _safe_float(line.get("LineTotal"))
+            tt = _safe_float(line.get("TaxTotal"))
+            if mapping["lt_box"]:
+                boxes[mapping["lt_box"]] += lt
+            if mapping["tt_box"]:
+                boxes[mapping["tt_box"]] += tt
+
+    for doc in sgd_purchases:
+        for line in doc.get("DocumentLines", []):
+            vg = (line.get("VatGroup") or "").strip()
+            mapping = F5_BOX_MAPPING.get(vg)
+            if mapping is None:
+                if vg:
+                    key = (doc.get("DocNum"), vg)
+                    if key not in seen_unknown:
+                        seen_unknown.add(key)
+                        anomalies.append({"doc_num": doc.get("DocNum"),
+                            "issue": f"unknown VatGroup '{vg}' — not in mapping"})
+                continue
+            if mapping["side"] != "purchase":
+                continue
+            lt = _safe_float(line.get("LineTotal"))
+            tt = _safe_float(line.get("TaxTotal"))
+            if mapping["lt_box"]:
+                boxes[mapping["lt_box"]] += lt
+            if mapping["tt_box"]:
+                boxes[mapping["tt_box"]] += tt
+
+    boxes["box_4_total_sales"] = (
+        boxes["box_1_standard_rated_sales"]
+        + boxes["box_2_zero_rated_sales"]
+        + boxes["box_3_exempt_sales"]
+    )
+    boxes["box_8_net_gst"] = boxes["box_6_output_tax"] - boxes["box_7_input_tax"]
+    boxes = {k: round(v, 2) for k, v in boxes.items()}
+
+    fx_list = []
+    for doc in fx_sales:
+        fx_list.append({
+            "doc_num": doc.get("DocNum"),
+            "doc_date": str(doc.get("DocDate", ""))[:10],
+            "currency": doc.get("DocCurrency", ""),
+            "doc_total": _safe_float(doc.get("DocTotal")),
+            "card_name": doc.get("CardName", ""),
+            "type": "sales",
+        })
+    for doc in fx_purchases:
+        fx_list.append({
+            "doc_num": doc.get("DocNum"),
+            "doc_date": str(doc.get("DocDate", ""))[:10],
+            "currency": doc.get("DocCurrency", ""),
+            "doc_total": _safe_float(doc.get("DocTotal")),
+            "card_name": doc.get("CardName", ""),
+            "type": "purchase",
+        })
+
+    return _fmt({
+        "period": {"start": period_start, "end": period_end},
+        "currency": "SGD",
+        "boxes": boxes,
+        "fx_invoices_requiring_conversion": fx_list,
+        "record_counts": {
+            "sales_invoices_sgd": len(sgd_sales),
+            "sales_invoices_fx": len(fx_sales),
+            "purchase_invoices_sgd": len(sgd_purchases),
+            "purchase_invoices_fx": len(fx_purchases),
+        },
+        "anomalies": anomalies,
+    })
+
+
+@mcp.tool()
+def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07) -> str:
+    """Check all invoice lines in a period for E1–E4 tax code errors. expected_rate defaults to 0.07 (7%); pass 0.09 for post-2024 production data."""
+    invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
+    purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
+
+    issues = []
+    for doc in invoices:
+        for line in doc.get("DocumentLines", []):
+            issues.extend(_classify_line(line, doc, entity_type="sales", expected_rate=expected_rate))
+    for doc in purchases:
+        for line in doc.get("DocumentLines", []):
+            issues.extend(_classify_line(line, doc, entity_type="purchase", expected_rate=expected_rate))
+
+    summary = {"E1": 0, "E2": 0, "E3": 0, "E4": 0, "total": 0}
+    for issue in issues:
+        code = issue.get("error_code", "")
+        if code in summary:
+            summary[code] += 1
+    summary["total"] = sum(summary[k] for k in ("E1", "E2", "E3", "E4"))
+
+    return _fmt({
+        "period": {"start": period_start, "end": period_end},
+        "expected_rate": expected_rate,
+        "issues": issues,
+        "summary": summary,
+    })
+
+
+@mcp.tool()
+def detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07) -> str:
+    """Audit GST compliance: E1–E4 line errors, purchase completeness check, and supplier GST registration validation. Issues sorted HIGH → MEDIUM → LOW. expected_rate defaults to 0.07; pass 0.09 for post-2024 production data."""
+    invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
+    purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
+
+    _severity_map = {"E1": "HIGH", "E2": "MEDIUM", "E3": "HIGH", "E4": "MEDIUM"}
+    _rec_map = {
+        "E1": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "E2": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "E3": "Apply GST at the applicable rate, or reclassify if the supply is exempt or zero-rated.",
+        "E4": "Review the GST rate — demo data uses 7%, production uses 9% from 1 Jan 2024.",
+    }
+
+    raw_issues = []
+    for doc in invoices:
+        for line in doc.get("DocumentLines", []):
+            raw_issues.extend(_classify_line(line, doc, entity_type="sales", expected_rate=expected_rate))
+    for doc in purchases:
+        for line in doc.get("DocumentLines", []):
+            raw_issues.extend(_classify_line(line, doc, entity_type="purchase", expected_rate=expected_rate))
+
+    issues = []
+    for issue in raw_issues:
+        code = issue.get("error_code", "")
+        issues.append({
+            "severity": _severity_map.get(code, "LOW"),
+            "error_code": code,
+            "doc_num": issue.get("doc_num"),
+            "doc_date": issue.get("doc_date"),
+            "card_name": issue.get("card_name"),
+            "description": issue.get("description"),
+            "recommendation": _rec_map.get(code, "Review and correct."),
+        })
+
+    # Completeness check: flag if purchase volume is suspiciously low relative to sales
+    sales_count = len(invoices)
+    purchase_count = len(purchases)
+    if sales_count > 0 and purchase_count / sales_count < 0.1:
+        issues.append({
+            "severity": "MEDIUM",
+            "error_code": "COMPLETENESS",
+            "doc_num": None,
+            "doc_date": None,
+            "card_name": None,
+            "description": (
+                f"Suspiciously low purchase volume — {purchase_count} purchase invoice(s) vs "
+                f"{sales_count} sales invoice(s) — input tax may be understated."
+            ),
+            "recommendation": "Verify all supplier invoices for the period have been entered in SAP B1.",
+        })
+
+    # Supplier GST registration check: flag first occurrence per unregistered CardCode
+    bp_cache: dict = {}
+    flagged_suppliers: set = set()
+    for doc in purchases:
+        card_code = doc.get("CardCode", "")
+        if not card_code or card_code in flagged_suppliers:
+            continue
+        has_input_tax = any(_safe_float(ln.get("TaxTotal")) > 0.01 for ln in doc.get("DocumentLines", []))
+        if not has_input_tax:
+            continue
+        if card_code not in bp_cache:
+            try:
+                bp = sap.get(f"/BusinessPartners('{card_code}')")
+                bp_cache[card_code] = (bp.get("FederalTaxID") or "").strip()
+            except Exception:
+                bp_cache[card_code] = ""
+        if not bp_cache.get(card_code):
+            flagged_suppliers.add(card_code)
+            issues.append({
+                "severity": "HIGH",
+                "error_code": "NO_GST_REG",
+                "doc_num": doc.get("DocNum"),
+                "doc_date": str(doc.get("DocDate", ""))[:10],
+                "card_name": doc.get("CardName", ""),
+                "description": (
+                    f"Input tax claimed from supplier {card_code} ({doc.get('CardName', '')}) "
+                    "without a GST registration number — may not be claimable."
+                ),
+                "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+            })
+
+    _severity_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    issues.sort(key=lambda x: (
+        _severity_order.get(x.get("severity", "LOW"), 2),
+        x.get("doc_date") or "",
+    ))
+
+    severity_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    for issue in issues:
+        sev = issue.get("severity", "LOW")
+        if sev in severity_counts:
+            severity_counts[sev] += 1
+
+    return _fmt({
+        "period": {"start": period_start, "end": period_end},
+        "severity_counts": severity_counts,
+        "issues": issues,
+    })
 
 
 def main():
