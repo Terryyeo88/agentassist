@@ -34,10 +34,10 @@ class SAPB1Client:
     """SAP Business One Service Layer client with session management."""
 
     def __init__(self):
-        self.base_url = os.getenv("SAP_BASE_URL", "").rstrip("/")
-        self.company_db = os.getenv("SAP_COMPANY_DB", "")
-        self.username = os.getenv("SAP_USERNAME", "")
-        self.password = os.getenv("SAP_PASSWORD", "")
+        self.base_url = (os.environ.get("SAP_BASE_URL") or "https://35.186.145.230:55000/b1s/v2").rstrip("/")
+        self.company_db = os.environ.get("SAP_COMPANY_DB") or "SBODEMOSG"
+        self.username = os.environ.get("SAP_USERNAME") or "manager"
+        self.password = os.environ.get("SAP_PASSWORD") or "manager"
         self.session_id: Optional[str] = None
         self.session_timeout: Optional[datetime] = None
         self.http = httpx.Client(verify=False, timeout=30.0)
@@ -419,6 +419,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
     boxes = {k: round(v, 2) for k, v in boxes.items()}
 
     fx_list = []
+    e1_candidates = []
     for doc in fx_sales:
         fx_list.append({
             "doc_num": doc.get("DocNum"),
@@ -428,6 +429,16 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
             "card_name": doc.get("CardName", ""),
             "type": "sales",
         })
+        for line in doc.get("DocumentLines", []):
+            vg = (line.get("VatGroup") or "").strip()
+            if vg in _STANDARD_RATE_SALES:
+                e1_candidates.append({
+                    "doc_num": doc.get("DocNum"),
+                    "doc_date": str(doc.get("DocDate", ""))[:10],
+                    "card_name": doc.get("CardName", ""),
+                    "doc_currency": doc.get("DocCurrency", ""),
+                    "vat_group": vg,
+                })
     for doc in fx_purchases:
         fx_list.append({
             "doc_num": doc.get("DocNum"),
@@ -443,6 +454,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
         "currency": "SGD",
         "boxes": boxes,
         "fx_invoices_requiring_conversion": fx_list,
+        "e1_candidates": e1_candidates,
         "record_counts": {
             "sales_invoices_sgd": len(sgd_sales),
             "sales_invoices_fx": len(fx_sales),
@@ -586,9 +598,9 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
 
 def main():
     logger.info("Starting SAP B1 MCP Server (FastMCP stdio)")
-    logger.info(f"  SAP_BASE_URL: {os.getenv('SAP_BASE_URL', 'NOT SET')}")
-    logger.info(f"  SAP_COMPANY_DB: {os.getenv('SAP_COMPANY_DB', 'NOT SET')}")
-    logger.info(f"  SAP_USERNAME: {os.getenv('SAP_USERNAME', 'NOT SET')}")
+    logger.info(f"  SAP_BASE_URL: {sap.base_url}")
+    logger.info(f"  SAP_COMPANY_DB: {sap.company_db}")
+    logger.info(f"  SAP_USERNAME: {sap.username}")
     mcp.run(transport="stdio")
 
 
