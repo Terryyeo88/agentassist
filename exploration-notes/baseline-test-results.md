@@ -11,8 +11,8 @@
 | Version | What was added | Test 1 | Test 2 | Test 3 | Overall |
 |---------|---------------|--------|--------|--------|---------|
 | v0 (baseline) | Read-only MCP connector only | 4/10 | 6/10 | 2/10 | 12/30 |
-| v1 | + Knowledge base (sg-tax-code-mappings.md) | — | — | — | — |
-| v2 | + System prompt (orchestration rules) | — | — | — | — |
+| v1 | + Knowledge base (sg-tax-code-mappings.md) | 5/10 | 5/10 | pending | — |
+| v2 | + System prompt (orchestration rules) | 7/10 | 9/10 | pending |
 | v3 | + 3 new MCP tools (F5 calc, validate, detect errors) | — | — | — | — |
 | v4 | + Skill (full workflow) | — | — | — | — |
 | *Reference* | *Python script `run_baseline_tests.py`* | *10/10* | *10/10* | *10/10* | *30/30* |
@@ -102,6 +102,152 @@ An earlier manual run scored 3/10 with the same prompt but stopped after Box 1 (
 
 ---
 
+## v1 Test 1: GST F5 Calculation
+
+**Prompt:** *"Using SAP Business One, calculate the GST F5 return figures for the most recent quarter available in the system. Give me the values for Boxes 1 through 8."*
+
+**v1 score: 5/10 (rubric) | MAPE: N/A (quarter mismatch)**
+
+Raw chat: [`v1-raw-chats/test1-f5-calculation.md`](v1-raw-chats/test1-f5-calculation.md)
+Model: Claude Sonnet 4.6, Claude Desktop with sap-b1 connector + Project knowledge base.
+
+### Quarter mismatch
+
+Response returned Q2 2024 (Apr–Jun) figures instead of Q3 2024 (Jul–Sep). Direct numerical comparison against reference figures is not valid. MAPE recorded as N/A. Root cause: no system prompt default-period rule — same as v0 gap G11.
+
+### Numbers produced vs known-correct
+
+| Box | Claude (v1) | Correct (Q3) | Status |
+|-----|-------------|--------------|--------|
+| Box 1 | 226,189.78 | 370,589.97 | ❌ Wrong quarter |
+| Box 2 | 0.00 | 5,000.00 | ❌ Wrong quarter |
+| Box 3 | 0.00 | 3,000.00 | ❌ Wrong quarter |
+| Box 4 | 226,189.78 | 378,589.97 | ❌ Wrong quarter |
+| Box 5 | 244,955.28 | 123,277.76 | ❌ Wrong quarter |
+| Box 6 | 20,357.08 | 25,941.32 | ❌ Wrong quarter |
+| Box 7 | 22,045.98 | 8,545.45 | ❌ Wrong quarter |
+| Box 8 | −1,688.90 | 17,395.87 | ❌ Wrong quarter |
+
+*Numbers cannot be evaluated for accuracy — quarter mismatch invalidates comparison.*
+
+### What v1 got right vs v0
+
+| Criterion | v0 | v1 | Change |
+|-----------|----|----|--------|
+| Queried correct quarter (Q3 2024) | ✅ | ❌ | Regressed — v0 correctly identified Q3, v1 chose Q2 |
+| Pulled both sales and purchase invoices | ✅ | ✅ | Maintained |
+| Used LineTotal (net) for Boxes 1/5, TaxTotal for Boxes 6/7 | ❌ | ✅ | **CLOSED** — cites IRAS para 5.7/6.5.1 explicitly |
+| Acknowledged and adjusted 7%→9% rate artefact | ❌ | ✅ | **CLOSED** — correctly identified demo DB artefact, did not escalate as compliance issue |
+| FX invoice handling | ❌ (silently included) | Partial | **PARTIALLY CLOSED** — acknowledged FX risk and exchange rate requirement; did not enumerate the 10 FX DocNums to exclude |
+| Populated all 8 boxes with correct structure | Partial | Partial | Maintained — structure correct, values wrong due to quarter |
+
+### Gaps closed by knowledge base (v1)
+
+| Gap | Status | Notes |
+|-----|--------|-------|
+| G2 — No tax code classification at line level | **CLOSED** | Correctly used VatGroup-level classification |
+| G4 — Uses VatSum=0 as proxy for tax type | **CLOSED** | Did not fall back to this proxy |
+| G18 (from Test 3) — Treats demo artefacts as compliance issues | **CLOSED** | Rate artefact correctly framed as demo data issue, not compliance finding |
+
+### Gaps still open
+
+| Gap | Status | What fixes it |
+|-----|--------|---------------|
+| G11 — No default period rule (wrong quarter) | Open | System prompt (v2) — "default to most recent complete quarter" |
+| G10 — Pagination cap (20-record wall) | Open | Still hit — 20 sales + 16 purchase invoices only; system prompt pagination rule or `calculate_f5_return` tool (v3) |
+| G1 — FX invoices not enumerated/excluded | Partially open | Acknowledged risk but did not exclude from totals; `calculate_f5_return` tool (v3) |
+| G3 — Manual arithmetic | Open | `calculate_f5_return` tool (v3) |
+
+### v0 → v1 delta
+
+**Score: 4/10 → 5/10 (+1).** Knowledge base closed 3 methodology gaps (LineTotal/TaxTotal method, rate artefact handling, tax code classification) but the wrong-quarter failure and pagination cap mean the numbers produced are still not evaluable against reference figures. The +1 point reflects correct methodology in the absence of correct data scope.
+
+---
+## v2 Test 1: GST F5 Calculation
+
+**Prompt:** *"Using SAP Business One, calculate the GST F5 return figures for the most recent quarter available in the system. Give me the values for Boxes 1 through 8."*
+
+**v2 score: 7/10 (rubric) | MAPE: N/A (quarter mismatch)**
+
+Raw chat: [`v2-raw-chats/test1-f5-calculation.md`](v2-raw-chats/test1-f5-calculation.md)
+Model: Claude Sonnet 4.6, Claude Desktop with sap-b1 connector + knowledge base + system prompt (base.md).
+
+### Quarter mismatch
+
+Response returned Q2 2024 (Apr–Jun) figures instead of Q3 2024 (Jul–Sep). Direct numerical
+comparison against reference figures is not valid. MAPE recorded as N/A.
+
+Root cause differs from v1: the system prompt default-period rule fired correctly ("most recent
+complete quarter"), but the agent probed the DB, found data ending in August 2024, and declared
+Q3 2024 incomplete — falling back to Q2. v1 chose Q2 silently without checking; v2 chose Q2
+after explicit reasoning. The rule works; the DB probe logic needs refinement (Q3 Jul–Sep 2024
+is complete in the dataset — the agent should trust the period boundary, not infer completeness
+from the last invoice date seen on page 1).
+
+Fix: add explicit rule to base.md — "Do not infer period completeness from the last invoice 
+date visible in a single query. If data exists in the period window, treat the period as 
+complete. Only fall back to a prior quarter if zero records are returned for the period."
+
+### Numbers produced vs known-correct
+
+| Box | Claude (v2) | Correct (Q3) | Status |
+|-----|-------------|--------------|--------|
+| Box 1 | 379,963.76 | 370,589.97 | ❌ Wrong quarter |
+| Box 2 | 0.00 | 5,000.00 | ❌ Wrong quarter |
+| Box 3 | 0.00 | 3,000.00 | ❌ Wrong quarter |
+| Box 4 | 379,963.76 | 378,589.97 | ❌ Wrong quarter |
+| Box 5 | 216,027.82 | 123,277.76 | ❌ Wrong quarter |
+| Box 6 | 26,597.49 | 25,941.32 | ❌ Wrong quarter |
+| Box 7 | 15,121.97 | 8,545.45 | ❌ Wrong quarter |
+| Box 8 | 11,475.52 | 17,395.87 | ❌ Wrong quarter |
+
+*Numbers cannot be evaluated for accuracy — quarter mismatch invalidates comparison.*
+
+### What v2 got right vs v1
+
+| Criterion | v0 | v1 | v2 | Change |
+|-----------|----|----|-----|--------|
+| Queried correct quarter (Q3 2024) | ✅ | ❌ | ❌ (diff cause) | Still wrong quarter, different failure mode |
+| Paginated past 20-record cap | ❌ | ❌ | ✅ | **CLOSED** — 3 pages fetched, counts stated |
+| FX invoices excluded and enumerated | ❌ | Partial | ✅ | **CLOSED** — all 15 listed with DocNum/date/counterparty |
+| E1 flags on FX+SO invoices | ❌ | ❌ | ✅ | **CLOSED** — all 13 FX sales individually flagged |
+| Used TaxTotal as recorded | ❌ | ✅ | ✅ | Maintained |
+| 7% rate not escalated | ❌ | ✅ | ✅ | Maintained — explicitly called demo artefact |
+| Correct output format (record counts → boxes → FX table → caveats) | ❌ | ❌ | ✅ | **CLOSED** — followed base.md output spec exactly |
+| Credit notes queried | ❌ | ❌ | ❌ | Still open — flagged in caveats but not queried |
+
+### Gaps closed by system prompt (v2)
+
+| Gap | Status | Notes |
+|-----|--------|-------|
+| G10 — Pagination cap | **CLOSED** | Paginated 3 pages for sales, 1 for purchases, stated counts |
+| G1 — FX invoices excluded | **CLOSED** | Full enumeration, DocNums listed, excluded from all boxes |
+| G7 — FX+SO E1 flag (regressed in v1) | **CLOSED** | All 13 flagged individually, ZR recommendation given |
+| G15 — No DocNum enumeration | **CLOSED** | Full table with DocNums, dates, counterparties |
+
+### Gaps still open
+
+| Gap | Status | What fixes it |
+|-----|--------|---------------|
+| G11 — Period completeness inference | **Partially open** | Add explicit rule to base.md: never infer completeness from last invoice date |
+| G3 — Manual arithmetic | Open | `calculate_f5_return` tool (v3) |
+| G19 (new) — Credit notes not queried | Open | Add to base.md and test1-prefix.md |
+
+### v1 → v2 delta
+
+**Score: 5/10 → 7/10 (+2).** System prompt closed pagination, FX enumeration, E1 flagging,
+and output format in one step. Quarter mismatch persists but for a different, fixable reason.
+The +2 reflects correct execution of four previously-failing procedural rules.
+
+### One-line base.md fix required before v3
+
+Add to the "Mandatory Period Filter" section:
+
+> Do not infer period completeness from the last invoice date visible in a single query page.
+> If any records exist within the requested date range, treat the period as complete and
+> report from it. Only fall back to the prior complete quarter if the period query returns
+> zero records.
+
 ## Baseline Test 2: Tax Code Classification
 
 **Prompt:** *"Look at the invoices in SAP B1. Classify each transaction by GST type: standard-rated, zero-rated, exempt, or out-of-scope."*
@@ -175,6 +321,99 @@ Gaps identified:
 
 ---
 
+## v1 Test 2: Tax Code Classification
+
+**Prompt:** *"Look at the invoices in SAP B1. Classify each transaction by GST type: standard-rated, zero-rated, exempt, or out-of-scope."*
+
+**v1 score: 5/10 (rubric) | VatGroup recall: 2/8 (25%)**
+
+Raw chat: [`v1-raw-chats/test2-tax-classification.md`](v1-raw-chats/test2-tax-classification.md)
+Model: Claude Sonnet 4.6, Claude Desktop with sap-b1 connector + Project knowledge base.
+
+### What v1 got right vs v0
+
+| Criterion | v0 | v1 | Change |
+|-----------|----|----|--------|
+| Queried VatGroup at line level | 2/2 | 2/2 | Maintained |
+| Found all/most of 8 VatGroups present | 0/2 | 0/2 | No change — still hit 20-record cap, found SO + SI only |
+| Correctly mapped ≥5 of 8 VatGroups | 1/2 | 1/2 | Partial — named SO/SI correctly; listed wrong codes for others (EP, NR, ME, IGDS instead of ES33, ZR, BL, OS) |
+| Detected FX+SO mismatch | 2/2 | 0/2 | **REGRESSED** — ADA Technologies, SG Electronics, Aquent Systems visible in output table with non-SGD invoices, all classified SO with no flag |
+| Listed individual transactions | 0/1 | 1/1 | **CLOSED** — full transaction-level HTML table rendered with DocNum, date, customer, VAT group, amounts |
+| Flagged ambiguity / suggested review | 1/1 | 1/1 | Rate artefact note correct and clean — no false positive this time |
+| **Total** | **6/10** | **5/10** | **Net −1** |
+
+### Key regression: FX+SO mismatch
+
+v0 explicitly flagged USD/EUR invoices coded SO as potentially needing ZR reclassification — without any knowledge base. v1 has sg-tax-code-mappings.md in the knowledge base but produced a clean transaction table showing ADA Technologies, SG Electronics, and Aquent Systems (all known FX+SO miscoding candidates, DocNums 88–97) as "Standard-rated / Box 1+6" with no flag whatsoever.
+
+The knowledge base improved enumeration quality and eliminated the rate false positive, but appears to have made the model more conservative about raising potential issues — trading a correct flag for silence.
+
+### Additional finding: no period filter applied
+
+The sales table contains invoices dating from 2015 through 2024, confirming the same G11 (no period filter) failure as v0. The model pulled from the full DB history rather than scoping to a relevant quarter.
+
+### Gaps status after v1 Test 2
+
+| Gap | v0 | v1 | Change |
+|-----|----|----|--------|
+| G10 — Pagination cap | Open | Open | No change |
+| G11 — No period filter | Open | Open | No change |
+| G12 — Sales-only query | Open | **CLOSED** | Queried both Invoices and PurchaseInvoices |
+| G13 — Aggregates not enumerates | Open | **CLOSED** | Full transaction-level table rendered |
+| G7 — FX+SO mismatch detection | Working | **REGRESSED** | Was heuristic in v0, dropped entirely in v1 |
+
+### v0 → v1 delta
+
+**Score: 6/10 → 5/10 (−1).** Knowledge base closed G12 and G13 but caused a regression on FX+SO detection. The system prompt (v2) will need an explicit rule: *"always check DocCurrency; flag any non-SGD invoice coded SO as a potential ZR miscoding."*
+
+---
+## v2 Test 2: Tax Code Classification
+
+**Prompt:** *"Look at the invoices in SAP B1. Classify each transaction by GST type: standard-rated, zero-rated, exempt, or out-of-scope."*
+
+**v2 score: 9/10 (rubric) | VatGroup recall: 8/8 (100%)**
+
+Raw chat: [`v2-raw-chats/test2-tax-classification.md`](v2-raw-chats/test2-tax-classification.md)
+Model: Claude Sonnet 4.6, Claude Desktop with sap-b1 connector + knowledge base + system prompt (base.md).
+
+### What v2 got right vs v1
+
+| Criterion | v0 | v1 | v2 | Change |
+|-----------|----|----|-----|--------|
+| Queried VatGroup at line level | 2/2 | 2/2 | 2/2 | Maintained |
+| Found all/most of 8 VatGroups | 0/2 | 0/2 | 2/2 | **CLOSED** — all 8 found |
+| Correctly mapped ≥5 of 8 VatGroups | 1/2 | 1/2 | 2/2 | **CLOSED** — all 8 correct |
+| Detected FX+SO mismatch | 2/2 | 0/2 | 2/2 | **CLOSED** — 11 E1 lines with DocNums |
+| Listed individual transactions | 0/1 | 1/1 | 1/1 | Maintained |
+| Flagged ambiguity / suggested review | 1/1 | 1/1 | 1/1 | Maintained |
+| **Total** | **6/10** | **5/10** | **9/10** | |
+
+### Gaps closed by system prompt (v2)
+
+| Gap | Status | Notes |
+|-----|--------|-------|
+| G10 — Pagination cap | **CLOSED** | 3 pages sales, 1 page purchases, counts stated |
+| G11 — Period filter / wrong quarter | **CLOSED** | G11 fix worked — Q3 2024 correctly selected |
+| G7 — FX+SO mismatch (regressed v1) | **CLOSED** | All 11 reference E1 lines flagged individually |
+
+### Remaining issue
+
+| # | Issue | Severity | Notes |
+|---|-------|----------|-------|
+| P1 | DocNum 982 flagged as E1 but not in reference set | LOW | August invoice outside seeded error set — possible false positive. Response correctly withheld reclassification. |
+
+### Bonus finding
+
+The SO VatGroup summary line total of **370,589.97** matches Box 1 reference exactly — the
+agent produced the correct F5 Box 1 figure as a byproduct of classification without being
+asked. Confirms the FX exclusion and VatGroup routing logic is now working correctly.
+
+### v1 → v2 delta
+
+**Score: 5/10 → 9/10 (+4).** Largest single-version improvement in the experiment so far.
+System prompt closed all four open gaps simultaneously. The +4 reflects pagination, period
+filter, FX enumeration, and VatGroup coverage all working correctly in one run.
+
 ## Baseline Test 3: Error Detection
 
 **Prompt:** *"Using SAP Business One, examine the invoices for Q3 2024 (July to September 2024). Identify any errors, miscodings, or compliance issues in the GST treatment. Report each issue you find with the document number, the problem, and your recommendation."*
@@ -215,7 +454,7 @@ Claude reported 7 issues across 4 severity tiers (3 critical, 3 warnings, 1 info
 
 **False positives (issues Claude reported that aren't real):**
 - *Critical:* "7%-should-be-9%" — INCORRECT. This is a demo data artefact (SBODEMOSG was last updated pre-2024), explicitly documented in the project handoff. Claude framed this as the highest-priority compliance issue requiring voluntary disclosure to IRAS. If acted on by a real user, would cause material harm.
-- *Critical:* INV-1001 ES33 reasoning — Claude's stated rationale (ES33 requires overseas recipient) is wrong. ES33 covers Regulation 33 exempt supplies (specific financial services), not overseas supplies. The invoice may still be misclassified for other reasons, but the reasoning given is incorrect.
+- *Critical:* INV-1001 ES33 reasoning — Claude's stated rationale (ES33 requires overseas recipient) is wrong. ES33 covers Regulation 33 exempt supplies (specific financial services), not overseas supplies. The invoice may still be misclassified for for other reasons, but the reasoning given is incorrect.
 - *Possible false positives:* INV-356 disbursement claim and INV-1002/Aquent/ADA findings are speculative — possibly real, possibly over-reading the data.
 
 ### Score breakdown
