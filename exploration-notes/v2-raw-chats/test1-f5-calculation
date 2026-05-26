@@ -1,0 +1,91 @@
+# v2 Test 1: F5 Calculation — Raw Response
+
+**Date run:** 2026-05-25
+**Model:** Claude Sonnet 4.6
+**Configuration:** Claude Desktop, sap-b1 MCP connector + Project knowledge base + system prompt (base.md)
+**Score:** 7/10 (rubric) | MAPE: N/A (quarter mismatch)
+
+## Prompt
+
+> Using SAP Business One, calculate the GST F5 return figures for the most recent quarter available in the system. Give me the values for Boxes 1 through 8.
+
+## Response (verbatim)
+
+I'll compile the GST F5 return step by step. Let me start by setting the period and then fetching all the data.
+
+**Step 1 — Period**
+
+Today is 25 May 2026. The most recent complete calendar quarter is **Q1 2026: 1 Jan 2026 – 31 Mar 2026**.Connected to SBODEMOSG. Now fetching sales invoices — paginating from page 1.No Q1 2026 sales invoices. Let me check what date range has data.The most recent data is from August 2024. The most recent **complete** quarter in the dataset is **Q2 2024 (1 Apr 2024 – 30 Jun 2024)**. Let me verify — and also check Q3 2024 since the latest invoices are in August.Data runs into August but not through September. Q3 2024 is incomplete in this demo DB. **Q2 2024 (1 Apr 2024 – 30 Jun 2024)** is the most recent complete quarter. Let me now paginate all sales invoices for that period.Page 1: 20 records. Fetching page 2.Page 2: 20 records. Fetching page 3.Page 3 returned 8 records (fewer than 20) — pagination complete for sales invoices. Now doing the same for purchase invoices.Purchase invoices: 16 records on page 1 (fewer than 20) — pagination complete. Now I have all the raw data. Let me compute everything.Here is the complete F5 return for Q2 2024.
+
+---
+
+## GST F5 Return — Q2 2024 (1 Apr 2024 – 30 Jun 2024)
+**Database:** SBODEMOSG | **Environment:** Demo — no regulatory significance
+
+### Record Counts
+- Sales invoices fetched: **49** across 3 pages (skip 0, 20, 40)
+  - SGD invoices used in F5: **36**
+  - FX invoices excluded: **13** (EUR × 5, USD × 8)
+- Purchase invoices fetched: **16** (1 page, pagination complete)
+  - SGD invoices used in F5: **14**
+  - FX invoices excluded: **2** (USD × 1, EUR × 1)
+
+### F5 Box Table
+
+| Box | Description | SGD Amount | VatGroups |
+|-----|-------------|------------|-----------|
+| Box 1 | Standard-rated supplies (net, excl. GST) | **379,963.76** | SO |
+| Box 2 | Zero-rated supplies | 0.00 | ZR (none) |
+| Box 3 | Exempt supplies | 0.00 | ES33, ESN33 (none) |
+| Box 4 | Total supplies (1+2+3) | **379,963.76** | — |
+| Box 5 | Taxable purchases (net, excl. GST) | **216,027.82** | SI |
+| Box 6 | Output tax due | **26,597.49** | SO |
+| Box 7 | Input tax claimed | **15,121.97** | SI |
+| **Box 8** | **Net GST payable to IRAS** | **11,475.52** | — |
+
+Box 8 is SGD 11,475.52 **payable** to IRAS (well above the SGD 5 de minimis threshold).
+
+### FX Invoices Excluded from All Boxes
+
+| DocNum | DocDate | Currency | Customer/Supplier |
+|--------|---------|----------|-------------------|
+| 909 | 2024-04-27 | EUR | ADA Technologies |
+| 915 | 2024-04-03 | USD | Aquent Systems |
+| 916 | 2024-04-13 | USD | Aquent Systems |
+| 917 | 2024-04-03 | USD | Aquent Systems |
+| 931 | 2024-05-11 | USD | Aquent Systems |
+| 937 | 2024-05-28 | EUR | ADA Technologies |
+| 942 | 2024-05-06 | USD | SG Electronics |
+| 944 | 2024-05-23 | USD | Aquent Systems |
+| 945 | 2024-06-04 | EUR | ADA Technologies |
+| 949 | 2024-06-14 | EUR | ADA Technologies |
+| 950 | 2024-06-19 | USD | SG Electronics |
+| 953 | 2024-06-09 | USD | SG Electronics |
+| 956 | 2024-06-16 | USD | SG Electronics |
+| 576 | 2024-04-10 | USD | Lumarx (purchase) |
+| 586 | 2024-06-19 | EUR | Blockies Corporation (purchase) |
+
+**E1 flag — all 13 FX sales invoices:** Each is coded SO but denominated in a foreign currency. Potential E1 candidate — overseas sales are typically zero-rated (ZR). These should be reviewed to confirm whether ZR is more appropriate. No reclassification made.
+
+### VatGroup Observations
+
+All SGD invoices used only **SO** (sales) and **SI** (purchases). No anomalous VatGroups found.
+
+### Caveats
+
+- **7% rate:** All TaxTotal figures reflect the 7% rate in SBODEMOSG. Demo data artefact — not a compliance issue.
+- **FX invoices not converted:** 15 excluded invoices represent material sales activity. Must be converted to SGD using IRAS-approved exchange rate methodology before inclusion.
+- **Credit notes not checked:** No CreditNotes or PurchaseCreditNotes query run. If any exist, deduct from relevant box totals.
+
+## Failure analysis
+
+See `../baseline-test-results.md` § "v2 Test 1" for full score breakdown and gap status.
+
+## Key regression note vs v1
+
+Quarter mismatch persists but root cause differs. v1 chose Q2 silently. v2 reasoned explicitly:
+probed DB, saw data ending August 2024, incorrectly inferred Q3 was incomplete, fell back to Q2.
+The default-period rule fired — but period completeness inference logic needs fixing.
+
+**Fix required in base.md:** Never infer period completeness from last invoice date seen.
+Only fall back to prior quarter if the period query returns zero records.
