@@ -465,6 +465,31 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
     })
 
 
+def _vg_category(vg: str) -> str:
+    """Return a human-readable GST category label for a VatGroup code."""
+    _categories = {
+        "SO":     "Standard-rated output (sales)",
+        "DS":     "Standard-rated output (sales)",
+        "ZR":     "Zero-rated supply (sales)",
+        "ES33":   "Exempt supply — Reg 33 (sales)",
+        "ESN33":  "Exempt supply — non-Reg 33 (sales)",
+        "OS":     "Out-of-scope supply (sales)",
+        "SI":     "Standard-rated input (purchases)",
+        "ZP":     "Zero-rated purchase (purchases)",
+        "IM":     "Import GST (purchases)",
+        "IGDS":   "Import GST — IGDS scheme (purchases)",
+        "ME":     "Minor/miscellaneous exempt (purchases)",
+        "NR":     "Non-recoverable input (purchases)",
+        "BL":     "Blocked input — Reg 26/27 (purchases)",
+        "EP":     "Exempt purchase (purchases)",
+        "OP":     "Out-of-scope purchase (purchases)",
+        "TX-E33": "Tourist refund — Reg 33 (purchases)",
+        "TX-N33": "Tourist refund — non-Reg 33 (purchases)",
+        "TX-RE":  "Tourist refund — retail (purchases)",
+    }
+    return _categories.get(vg, f"Unknown VatGroup '{vg}'")
+
+
 @mcp.tool()
 def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07) -> str:
     """Check all invoice lines in a period for E1–E4 tax code errors. expected_rate defaults to 0.07 (7%); pass 0.09 for post-2024 production data."""
@@ -472,12 +497,41 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
     purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
 
     issues = []
+    vg_inventory: dict[str, dict] = {}
+
     for doc in invoices:
         for line in doc.get("DocumentLines", []):
             issues.extend(_classify_line(line, doc, entity_type="sales", expected_rate=expected_rate))
+            vg = (line.get("VatGroup") or "").strip()
+            if vg:
+                if vg not in vg_inventory:
+                    mapping = F5_BOX_MAPPING.get(vg, {})
+                    vg_inventory[vg] = {
+                        "gst_category": _vg_category(vg),
+                        "side": mapping.get("side", "unknown"),
+                        "lt_box": mapping.get("lt_box"),
+                        "tt_box": mapping.get("tt_box"),
+                        "doc_count": 0,
+                        "known_to_mapping": vg in F5_BOX_MAPPING,
+                    }
+                vg_inventory[vg]["doc_count"] += 1
+
     for doc in purchases:
         for line in doc.get("DocumentLines", []):
             issues.extend(_classify_line(line, doc, entity_type="purchase", expected_rate=expected_rate))
+            vg = (line.get("VatGroup") or "").strip()
+            if vg:
+                if vg not in vg_inventory:
+                    mapping = F5_BOX_MAPPING.get(vg, {})
+                    vg_inventory[vg] = {
+                        "gst_category": _vg_category(vg),
+                        "side": mapping.get("side", "unknown"),
+                        "lt_box": mapping.get("lt_box"),
+                        "tt_box": mapping.get("tt_box"),
+                        "doc_count": 0,
+                        "known_to_mapping": vg in F5_BOX_MAPPING,
+                    }
+                vg_inventory[vg]["doc_count"] += 1
 
     summary = {"E1": 0, "E2": 0, "E3": 0, "E4": 0, "total": 0}
     for issue in issues:
@@ -489,6 +543,7 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
     return _fmt({
         "period": {"start": period_start, "end": period_end},
         "expected_rate": expected_rate,
+        "vatgroup_inventory": vg_inventory,
         "issues": issues,
         "summary": summary,
     })

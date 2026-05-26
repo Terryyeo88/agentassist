@@ -13,7 +13,7 @@
 | v0 (baseline) | Read-only MCP connector only | 4/10 | 6/10 | 2/10 | 12/30 |
 | v1 | + Knowledge base (sg-tax-code-mappings.md) | 5/10 | 5/10 | pending | — |
 | v2 | + System prompt (orchestration rules) | 7/10 | 9/10 | pending |
-| v3 | + 3 new MCP tools (F5 calc, validate, detect errors) | — | — | — | — |
+| v3 | + 3 new MCP tools (F5 calc, validate, detect errors) | **10/10** | **10/10** | — | — |
 | v4 | + Skill (full workflow) | — | — | — | — |
 | *Reference* | *Python script `run_baseline_tests.py`* | *10/10* | *10/10* | *10/10* | *30/30* |
 
@@ -248,6 +248,66 @@ Add to the "Mandatory Period Filter" section:
 > report from it. Only fall back to the prior complete quarter if the period query returns
 > zero records.
 
+## v3 Test 1: GST F5 Calculation
+
+**Prompt:** *"Using SAP Business One, calculate the GST F5 return figures for the most recent quarter available in the system. Give me the values for Boxes 1 through 8."*
+
+**v3 score: 10/10 | MAPE: 0.00%**
+
+Raw chat: [`v3-raw-chats/test1-f5-calculation.md`](v3-raw-chats/test1-f5-calculation.md)
+Model: Claude Sonnet 4.6, Claude Desktop with sap-b1 connector + knowledge base + system prompt (base.md) + 3 custom MCP tools.
+
+### Quarter detection
+
+Correctly identified Q3 2024 (Jul–Sep 2024) as the most recent quarter with data. The patched fallback rule worked as intended: the agent stepped back quarter by quarter (Q1 2026 → Q4 2025 → Q3 2024), stopping when records were found rather than inferring incompleteness from the last invoice date. The v2 false-fallback bug is confirmed closed.
+
+### Numbers produced vs known-correct
+
+| Box | Claude (v3) | Correct | Delta | Status |
+|-----|-------------|---------|-------|--------|
+| Box 1 | 370,589.97 | 370,589.97 | 0.00 | ✅ |
+| Box 2 | 5,000.00 | 5,000.00 | 0.00 | ✅ |
+| Box 3 | 3,000.00 | 3,000.00 | 0.00 | ✅ |
+| Box 4 | 378,589.97 | 378,589.97 | 0.00 | ✅ |
+| Box 5 | 123,277.76 | 123,277.76 | 0.00 | ✅ |
+| Box 6 | 25,941.32 | 25,941.32 | 0.00 | ✅ |
+| Box 7 | 8,545.45 | 8,545.45 | 0.00 | ✅ |
+| Box 8 | 17,395.87 | 17,395.87 | 0.00 | ✅ |
+
+**Net financial impact if filed:** SGD 0.00 variance from correct figures.
+
+### What v3 got right vs v2
+
+| Criterion | v0 | v1 | v2 | v3 | Change |
+|-----------|----|----|----|----|--------|
+| Correct quarter (Q3 2024) | ✅ | ❌ | ❌ | ✅ | **CLOSED** — patched fallback rule confirmed working |
+| All 8 boxes numerically correct | ❌ | ❌ | ❌ | ✅ | **CLOSED** — calculate_f5_return removes Claude from arithmetic path |
+| FX invoices excluded (10 docs) | ❌ | Partial | ✅ | ✅ | Maintained |
+| FX count consistent (8 sales + 2 purchase = 10) | — | — | — | ✅ | Matches reference |
+| E1 candidates flagged with DocNums | ❌ | ❌ | ✅ | ✅ | Maintained |
+| 7% rate not escalated as compliance issue | ❌ | ✅ | ✅ | ✅ | Maintained |
+| Correct output format | ❌ | ❌ | ✅ | ✅ | Maintained |
+
+### Gaps closed by custom MCP tools (v3)
+
+| Gap | Status | Notes |
+|-----|--------|-------|
+| G3 — Manual arithmetic | **CLOSED** | calculate_f5_return handles all arithmetic internally; 0.00% MAPE |
+| G11 — Period completeness inference (patched) | **CLOSED** | Stepped back correctly; zero-record fallback rule confirmed working |
+| G1 — FX invoices excluded | Maintained closed | Tool handles FX exclusion deterministically |
+
+### Gaps still open
+
+| Gap | Status | What fixes it |
+|-----|--------|---------------|
+| G5 — GST-inclusive vs exclusive validation | Open | validate_invoice_tax_codes tool (tested in Test 2) |
+| G6 — Purchase vs sales ratio not validated | Open | detect_gst_errors tool (tested in Test 3) |
+| G19 — Credit notes not queried | Open | v4 skill |
+
+### v2 → v3 delta
+
+**Score: 7/10 → 10/10 (+3). MAPE: N/A → 0.00%.** The calculate_f5_return tool eliminated all arithmetic and FX-exclusion errors in one step. The base.md period-completeness patch eliminated the wrong-quarter failure. Together these two changes moved Test 1 from "correct methodology, wrong quarter, wrong numbers" to a perfect result. This confirms the core hypothesis: removing Claude from the computation path produces deterministic, auditable F5 figures.
+
 ## Baseline Test 2: Tax Code Classification
 
 **Prompt:** *"Look at the invoices in SAP B1. Classify each transaction by GST type: standard-rated, zero-rated, exempt, or out-of-scope."*
@@ -413,6 +473,45 @@ asked. Confirms the FX exclusion and VatGroup routing logic is now working corre
 **Score: 5/10 → 9/10 (+4).** Largest single-version improvement in the experiment so far.
 System prompt closed all four open gaps simultaneously. The +4 reflects pagination, period
 filter, FX enumeration, and VatGroup coverage all working correctly in one run.
+
+---
+
+## v3 Test 2: Tax Code Classification
+
+**Prompt:** *"Log in to SAP Business One, then use the validate_invoice_tax_codes tool for Q3 2024 (2024-07-01 to 2024-09-30). Report every unique VatGroup found, its GST category, and which F5 box it maps to. List any transactions where the tax code appears incorrect or inconsistent, with DocNum and recommendation."*
+
+**v3 score: 10/10 | VatGroup recall: 8/8 (100%)**
+
+Raw chat: [`v3-raw-chats/test2-tax-classification.md`](v3-raw-chats/test2-tax-classification.md)
+Model: Claude Sonnet 4.6, Claude Desktop with sap-b1 connector + knowledge base + system prompt (base.md) + 3 custom MCP tools (patched: validate_invoice_tax_codes now returns vatgroup_inventory).
+
+### Note on tool patch
+
+The first v3 Test 2 run scored 8/10 because validate_invoice_tax_codes originally only returned error-bearing lines — clean VatGroups were invisible. A patch was applied to add a vatgroup_inventory field built as a byproduct of the same loop. After restart the tool returned all 8 VatGroups directly. The patch did not change any error-detection logic.
+
+### Numbers produced vs known-correct
+
+| Criterion | v0 | v1 | v2 | v3 | Change |
+|-----------|----|----|----|----|--------|
+| Queried VatGroup at line level | 2/2 | 2/2 | 2/2 | 2/2 | Maintained |
+| Found all 8 VatGroups | 0/2 | 0/2 | 2/2 | 2/2 | Maintained |
+| Correctly mapped all 8 VatGroups | 1/2 | 1/2 | 2/2 | 2/2 | Maintained |
+| Detected FX+SO mismatch (E1, all 11 docs) | 2/2 | 0/2 | 2/2 | 2/2 | Maintained |
+| Detected E2 DocNum 605 | 0/2 | 0/2 | 0/2 | 2/2 | **Maintained from fixed v3** |
+| Listed individual transactions | 0/1 | 1/1 | 1/1 | 1/1 | Maintained |
+| Flagged ambiguity / suggested review | 1/1 | 1/1 | 1/1 | 1/1 | Maintained |
+| False positives | 0 | 0 | −1 (DocNum 982) | 0 | **IMPROVED** — v2 false positive absent |
+| **Total** | **6/10** | **5/10** | **9/10** | **10/10** | |
+
+### Gaps closed by tool patch
+
+| Gap | Status | Notes |
+|-----|--------|-------|
+| G20 — validate_invoice_tax_codes blind to clean VatGroups | **CLOSED** | vatgroup_inventory field added; all 8 codes returned directly from tool |
+
+### v2 → v3 delta
+
+**Score: 9/10 → 10/10 (+1).** Tool patch closed the VatGroup visibility gap and eliminated the DocNum 982 false positive present in v2. All 8 VatGroups now returned deterministically from the tool with correct category labels and F5 box mappings. E2 detection (DocNum 605) confirmed working for the second consecutive run.
 
 ## Baseline Test 3: Error Detection
 
