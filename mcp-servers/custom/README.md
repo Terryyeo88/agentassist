@@ -33,9 +33,26 @@ The `sap_query` tool is the most powerful — it can query any Service Layer ent
 (SalesTaxCodes, ChartOfAccounts, Invoices, JournalEntries, Currencies, etc.)
 with full OData filtering. This is essential for the exploration phase.
 
+## Configuration
+
+This server requires environment variables for SAP B1 Service Layer
+access. Copy `config/env.example` to `.env` at repo root and fill in
+values. The server will refuse to start if any required variable is
+missing.
+
+Required variables:
+- `SAP_BASE_URL`: full Service Layer URL (e.g. `https://host:50000/b1s/v2`)
+- `SAP_COMPANY_DB`: SAP B1 company database name
+- `SAP_USERNAME`, `SAP_PASSWORD`: SAP B1 credentials
+- `SAP_SSL_VERIFY`: `true` (production) or `false` (demo only — SBODEMOSG uses a self-signed cert)
+
+See `exploration-notes/security-decisions.md` for the current security
+posture and deferred items.
+
 ## Setup
 
 ```bash
+cp config/env.example .env   # then edit .env with real values
 cd mcp-servers/custom
 pip install -r requirements.txt
 ```
