@@ -1,0 +1,37 @@
+{
+  "created_at": "2026-05-25T00:04:47.309863+00:00",
+  "invoices": [
+    {
+      "DocNum": 1000,
+      "DocEntry": 1001,
+      "label": "Invoice 1 \u2014 Zero-rated sales (ZR)"
+    },
+    {
+      "DocNum": 1001,
+      "DocEntry": 1002,
+      "label": "Invoice 2 \u2014 Exempt sales (ES33)"
+    },
+    {
+      "DocNum": 1002,
+      "DocEntry": 1003,
+      "label": "Invoice 3 \u2014 Out of scope (OS)"
+    }
+  ],
+  "purchase_invoices": [
+    {
+      "DocNum": 605,
+      "DocEntry": 606,
+      "label": "Invoice 4 \u2014 Blocked input tax (BL)"
+    },
+    {
+      "DocNum": 606,
+      "DocEntry": 607,
+      "label": "Invoice 5 \u2014 Import GST (IM)"
+    },
+    {
+      "DocNum": 607,
+      "DocEntry": 608,
+      "label": "Invoice 6 \u2014 Zero-rated purchase (ZP)"
+    }
+  ]
+}

@@ -1,0 +1,1251 @@
+# AgentAssist — Technical State and Methodology Documentation
+
+---
+
+## Document purpose and scope
+
+This document is a technical audit of the AgentAssist repository, produced on 2026-05-26 by
+inspection of every source file, configuration file, experimental log, and test artefact in
+the repository at that date. It is intended to serve as a self-contained reference for internal
+decision-making and as grounding material for subsequent strategy conversations. It does not
+presuppose familiarity with any prior conversation about the project.
+
+The audit covers: repository structure and completeness, MCP tool implementation, knowledge base
+content and accuracy, system prompt design, experimental methodology and evidence quality,
+production readiness gaps, and security and data handling. It surfaces findings honestly,
+including inconsistencies and gaps, regardless of how they reflect on the current state of the
+work.
+
+The repository is at `C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent`, current branch
+`phase2-accounting-workflows`.
+
+---
+
+## Executive summary
+
+**What has been built**
+
+A functional three-layer AI compliance assistant for Singapore GST F5 preparation and
+transaction review. The system consists of: (1) a custom Python MCP server providing 14 tools
+for SAP B1 Service Layer access, including three purpose-built GST accounting tools; (2) a
+curated knowledge base documenting Singapore VatGroup-to-F5-box routing rules with IRAS
+citations; and (3) a system prompt enforcing procedural constraints, output format, and
+environment awareness. The system runs locally via Claude Desktop on the developer's Windows
+machine connected to a cloud-hosted SAP B1 SBODEMOSG demo database.
+
+**What has been validated**
+
+A four-version controlled experiment was run against Q3 2024 data from SBODEMOSG. Two of the
+three defined tests have been completed for all four versions. Test 1 (F5 calculation) and
+Test 2 (tax code classification) both achieve 10/10 at v3, demonstrating zero arithmetic error
+and perfect VatGroup recall. The v0 baseline comparison is well-documented: plain Claude
+produced an SGD 3,480 overpayment figure for Box 8 and invented a "critical" compliance
+finding (the 7%/9% rate gap) that would have caused material harm if acted upon. Both failures
+are traceable to specific architectural gaps that the system prompt and custom tools subsequently
+closed.
+
+Test 3 (error detection using the `detect_gst_errors` tool) has NOT been run at any version
+beyond v0. The `detect_gst_errors` tool exists and is implemented, but its conversational
+performance at v3 remains untested. This is the most significant gap in the experimental record.
+
+**What is genuinely production-ready versus prototype**
+
+Production-ready: the VatGroup → F5 box mapping logic, the FX exclusion and E1 detection
+logic, the pagination handling, and the system prompt's orchestration rules. These are
+implemented cleanly, tested against reference figures, and produce correct output.
+
+Prototype only: the overall delivery mechanism (Claude Desktop + stdio), the credential
+handling (hardcoded fallbacks), the per-client configuration model (none exists), the audit
+trail (none exists), and the reporting infrastructure (conversational output only). Also
+prototype: Test 3 capability, which is coded but untested conversationally.
+
+**The three to five most important gaps before commercial deployment**
+
+1. Test 3 has not been run at v3. The highest-value capability for buyers (catching mistakes
+   that humans miss) is unvalidated in the conversational system.
+2. Credit notes are not queried by any of the three custom tools. F5 calculations on data with
+   credit notes will overstate box totals.
+3. No per-client configuration model exists. Switching from SBODEMOSG to a real client's
+   database would require editing code.
+4. No report generation. The system produces conversational output only. A paying customer
+   expects a document they can file or present to a manager.
+5. The `gitignore` file is named incorrectly (missing the dot prefix) and does not protect
+   credentials from accidental git commit. The credentials file is currently untracked but
+   not formally protected.
+
+**The three to five strongest assets**
+
+1. The v0 failure story is compelling and specific: SGD 3,480 Box 8 overpayment and a false
+   "critical" IRAS disclosure recommendation are concrete, quantified, verifiable failures that
+   a non-expert buyer can understand.
+2. The knowledge base is well-constructed with accurate IRAS e-Tax Guide citations (11th
+   Edition, January 2026), making it credible to a tax-literate buyer.
+3. The three-layer architecture is cleanly implemented and the separation of concerns is
+   maintained: tools do arithmetic, Claude reasons, the system prompt orchestrates.
+4. The experimental methodology is internally consistent and the raw evidence trail is complete
+   for the tests that were run.
+5. The system prompt's SBODEMOSG rate-artefact handling demonstrates the kind of
+   context-aware, non-hallucinating behavior that differentiates the system from plain Claude.
+
+---
+
+## Repository structure
+
+The repository has seven substantive directories and three files at root level that warrant
+note.
+
+```
+sap-b1-ai-agent/
+├── README.md                              ← Severely outdated; describes Phase 1 setup state
+├── gitignore                              ← CRITICAL: named without dot prefix; not active
+├── git                                    ← Spurious empty file; likely mistyped command artifact
+├── claude-code-master-prompt-phase2-tools.md ← Historical Claude Code prompting spec; reference only
+├── config/
+│   └── env.example                        ← Template for SAP B1 connection env vars; complete
+├── exploration-notes/
+│   ├── baseline-test-results.md           ← Primary experimental log; production-ready document
+│   ├── baseline-test-report-v0.json       ← Machine-generated reference run; authoritative
+│   ├── v0-raw-chats/                      ← Complete: test1, test2, test3 raw logs; README
+│   ├── v1-raw-chats/                      ← Partial: test1 and test2 only; test3 never run
+│   │   ├── test1-f5-calculation.md        ← v1 Test 1 raw log
+│   │   ├── test2-f5-calculation.md        ← Misnamed: is Test 2 (tax classification), not Test 1
+│   │   └── image.png                      ← Unknown; no reference to it in other files
+│   ├── v2-raw-chats/                      ← Partial: test1 and test2 only; test3 never run
+│   │   ├── test1-f5-calculation           ← Missing .md extension; is v2 Test 1 raw log
+│   │   └── test2-tax-classification.md    ← v2 Test 2 raw log; complete and well-formatted
+│   └── v3-raw-chats/                      ← Partial: test1 and test2 only; test3 never run
+│       ├── test1-f5-calculation.md        ← v3 Test 1 raw log; confirms 10/10 result
+│       └── test2-tax-classification.md    ← v3 Test 2 raw log; confirms 10/10 result
+├── keys/
+│   ├── sap_credentials.json               ← CRITICAL: plaintext credentials; untracked but unprotected
+│   └── sap-b1-poc-sg.pem                  ← SSH PEM key for SAP CAL instance; untracked
+├── knowledge-base/
+│   └── sg-tax-code-mappings.md            ← Only knowledge base file; appears production-ready
+├── mcp-servers/
+│   ├── custom/
+│   │   ├── sap_b1_server.py               ← Primary MCP server; 664 lines; working
+│   │   ├── requirements.txt               ← Three dependencies (mcp, httpx, python-dotenv)
+│   │   ├── README.md                      ← Setup and tool inventory; accurate
+│   │   └── __pycache__/                   ← Python bytecode cache
+│   └── MCP-SAP/                           ← Third-party HTTP MCP server (Spanish, FastAPI)
+│                                          ← Not used; retained as reference; separate git repo
+├── scripts/
+│   ├── run_baseline_tests.py              ← Reference implementation; authoritative test runner
+│   ├── seed_test_data.py                  ← Creates 6 synthetic test invoices in SBODEMOSG
+│   ├── cleanup_test_data.py               ← Cancels seeded test invoices
+│   ├── test_data_registry.json            ← DocEntry registry for seeded invoices; current
+│   └── test-service-layer.sh              ← Basic connectivity test; shell script
+├── skills/                                ← Directory exists; entirely empty
+└── system-prompts/
+    ├── base.md                            ← Primary orchestration prompt; production-ready
+    ├── test1-prefix.md                    ← Task prefix for F5 calculation; working
+    └── test2-prefix.md                    ← Task prefix for tax classification; working
+```
+
+### Notes on specific files
+
+**`gitignore` (root level)**: This file lists `keys/`, `.env`, `*.pem`, and other sensitive
+paths. However, it is named `gitignore` rather than `.gitignore`. Git does not recognise this
+file as an ignore specification. Verification: `git check-ignore -v keys/sap_credentials.json`
+returns exit code 1 (not ignored). The credentials file and PEM key are currently untracked
+(they appear in `git status` as `??`), which provides informal protection but not the formal
+protection that `.gitignore` would give. Any `git add .` operation would stage them.
+
+**`git` (root level, 0 bytes)**: An empty file named `git`. Almost certainly created by
+accidentally running `git > git` or a similar shell mishap. No functional impact; should be
+deleted.
+
+**`README.md`**: Describes the project as being in "Phase 1 — Environment Setup" and uses
+parenthetical placeholders for content that now exists (e.g., `(sg-gst-tax-codes.md)`,
+`(f5-return.md)`). The folder structure described does not match the current repository state.
+This file has not been updated since the initial commit and should not be treated as current
+documentation.
+
+**`skills/` directory**: Empty. The README references planned skill files
+(`gst-validation.md`, `invoice-creation.md`, `f5-return.md`) that have never been created. A
+planned v4 skill (full workflow) is referenced in the improvement tracking table but does not
+exist.
+
+**`mcp-servers/MCP-SAP/`**: A third-party Spanish-language HTTP-based MCP server cloned from
+GitHub (NXr10/MCP-SAP). It exposes only three tools (connect, status, create sales order) and
+was built for Microsoft Copilot Studio. It is not used in the project. The custom server's
+README explains why it was replaced. The MCP-SAP directory has its own `.git` repo and
+functions as an embedded submodule without being formally declared as one.
+
+**`v1-raw-chats/test2-f5-calculation.md`**: The filename says "f5-calculation" but the file
+contains the v1 Test 2 (tax code classification) raw response. This is a naming error with no
+functional consequence, but it complicates navigation of the evidence trail.
+
+**`v2-raw-chats/test1-f5-calculation`**: Missing the `.md` extension. The file contains the
+v2 Test 1 raw response and was processed correctly by the audit.
+
+**`v1-raw-chats/image.png`**: An image file with no reference in any other file. Its content
+and purpose are unknown. No other file links to it or describes it.
+
+---
+
+## Architecture as built
+
+### Three-layer separation
+
+The three-layer architecture is cleanly implemented in practice, with one minor anomaly.
+
+**Layer 1 — Deterministic (MCP tools)**: All arithmetic, all data fetching, and all
+rule-based classification live in `sap_b1_server.py`. The F5 box calculation, VatGroup routing,
+FX filtering, E1-E4 per-line checks, COMPLETENESS threshold check, and NO_GST_REG supplier
+lookup are all Python code. Claude is explicitly removed from the arithmetic path by the system
+prompt's tool-preference order.
+
+**Layer 2 — Reasoning (Claude + knowledge base)**: Interpretation of tool output, judgment on
+edge cases (e.g., "is this E1 candidate actually an export?"), and narrative construction live
+in Claude's response generation, guided by `sg-tax-code-mappings.md`.
+
+**Layer 3 — Orchestration (system prompt)**: `base.md` specifies tool selection order,
+mandatory pagination rules, period defaulting logic, FX exclusion enforcement, output format,
+and environment-awareness constraints (the 7%/9% demo artefact rule).
+
+**The minor anomaly**: The system prompt's `base.md` includes a full VatGroup routing table
+and F5 box definition table that duplicates content in `sg-tax-code-mappings.md`. This is
+intentional as a fallback (the system prompt is always active, the knowledge base is
+project-level context that may not always load), but it creates a maintenance surface where the
+two documents could drift. One discrepancy already exists: see the NR VatGroup section below.
+
+### Data flow
+
+```mermaid
+graph LR
+    A[User prompt] --> B[Claude Desktop]
+    B -->|MCP stdio| C[sap_b1_server.py]
+    C -->|HTTPS + OData| D[SAP B1 Service Layer]
+    D -->|Invoices / PurchaseInvoices / BusinessPartners| C
+    C -->|Structured JSON string| B
+    B -->|Claude reasoning| E[Formatted response to user]
+    F[sg-tax-code-mappings.md] -.->|Knowledge base context| B
+    G[base.md system prompt] -.->|Orchestration rules| B
+```
+
+The custom MCP tools (Tools 12-14) handle the accounting-specific data path. The generic tools
+(Tools 1-11) provide raw OData access for ad-hoc queries, write operations, and exploration.
+
+### Where the deterministic layer ends and the reasoning layer begins
+
+The three custom tools return structured JSON with findings described in plain English strings
+(e.g., `"description": "FX invoice (USD) with SO code — should likely be ZR for overseas
+sales"`). The tools do not make reclassification decisions; they flag candidates and provide
+recommendations. Claude synthesizes these into a formatted response and applies the compliance
+assertion rules from the system prompt: no definitive compliance claims without tool-confirmed
+evidence.
+
+The E1 detection illustrates this correctly: the tool flags FX+SO combinations as "candidates
+for review." The system prompt reinforces: "Acceptable: 'DocNum 958 appears to be an E1
+candidate.' Not acceptable: 'DocNum 958 is miscoded and must be reclassified.'" The system
+maintains the appropriate epistemic posture at each layer.
+
+### Architectural debt
+
+Two unresolved design questions in the current implementation:
+
+1. **Credit notes**: The `calculate_f5_return` tool does not query `CreditNotes` or
+   `PurchaseCreditNotes`. The knowledge base explicitly states "DEDUCT credit notes with same
+   VatGroups" under Box 1. This gap is acknowledged in the test results (Gap G19) but not yet
+   resolved.
+
+2. **Per-client configuration**: Credentials, server URL, and company DB are hardcoded as
+   fallback values in `SAPB1Client.__init__`. Environment variables override them, but there is
+   no config file mechanism for switching between clients or environments. Any production
+   deployment would need a config layer that does not currently exist.
+
+---
+
+## MCP tools inventory
+
+### Custom GST accounting tools
+
+#### Tool 12: `calculate_f5_return(period_start: str, period_end: str) -> str`
+
+**Purpose**: Compute all eight F5 boxes for a given date range.
+
+**Inputs**: ISO date strings `YYYY-MM-DD`. No GST rate parameter (uses recorded `TaxTotal`
+values, not recomputed rates).
+
+**Outputs**: JSON string with keys: `period`, `currency` (always "SGD"), `boxes` (dict of 8
+box values, rounded to 2 dp), `fx_invoices_requiring_conversion` (list with doc_num,
+doc_date, currency, doc_total, card_name, type), `e1_candidates` (FX+SO lines), `record_counts`
+(sgd/fx split for sales and purchases), `anomalies` (unknown VatGroups).
+
+**Internal logic**:
+
+- Fetches `Invoices` and `PurchaseInvoices` in pages of 20 records, using `$skip` pagination.
+- Splits documents by `DocCurrency`: "SGD", "S$", and blank are treated as SGD; all others
+  are FX.
+- Routes SGD lines through `F5_BOX_MAPPING`, a module-level dict keyed by VatGroup. The
+  mapping is derived from `sg-tax-code-mappings.md`.
+- Box 8 = Box 6 − Box 7. Box 4 = Box 1 + Box 2 + Box 3. All computed in Python.
+- FX invoices are listed for user reference but never included in box totals.
+- Unknown VatGroups are collected in `anomalies` and excluded from all boxes.
+
+**Hardcoded assumptions**:
+
+- Page size of 20 (matches SAP B1 server cap; appropriate).
+- `DocCurrency` in `("SGD", "S$", "")` treated as SGD. No handling for "SG$" or other
+  alternate SGD representations.
+- Fallback credentials in `SAPB1Client.__init__`: base URL
+  `https://35.186.145.230:55000/b1s/v2`, company DB `SBODEMOSG`, username `manager`,
+  password `manager`. These are applied when environment variables are absent. A production
+  deployment that fails to set environment variables will silently attempt to connect to the
+  demo instance.
+
+**What is handled well**: Pagination, SGD/FX split, VatGroup routing for all 18 codes in the
+mapping, E1 candidate detection, unknown VatGroup flagging, round-last arithmetic.
+
+**What is not yet handled**:
+
+| Gap | Impact | Priority |
+|-----|--------|---------|
+| Credit notes (`CreditNotes`, `PurchaseCreditNotes` entities not queried) | Overstates all boxes on data with credit notes | Must-have |
+| Manual journal entries | Misses GST-relevant journals | Should-have |
+| No `expected_rate` parameter | Tool always trusts `TaxTotal`; correct behaviour, but no rate-validation capability | Low |
+| FX conversion | Identifies FX invoices but provides no SGD-converted figures | Should-have |
+| IGDS Box 9 treatment | IGDS lines correctly go to Box 5+7 but Box 9 is not computed | Defer |
+| ME Box 9 treatment | Same as IGDS | Defer |
+| Partial exemption apportionment | TX-RE is mapped as Excluded; no apportionment logic | Should-have |
+| Mid-period GST rate transitions | No handling for periods spanning a rate change date | Low |
+| Custom UDFs on VatGroup | Some SAP B1 configurations override VatGroup via custom fields | Low |
+
+---
+
+#### Tool 13: `validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07) -> str`
+
+**Purpose**: Per-line E1–E4 tax code validation across all invoices in a period, plus a
+VatGroup inventory of every code found.
+
+**Inputs**: ISO date strings. `expected_rate` defaults to 0.07 (7%, matching SBODEMOSG); pass
+0.09 for post-2024 production data.
+
+**Outputs**: JSON with `period`, `expected_rate`, `vatgroup_inventory` (dict keyed by VatGroup
+with category, side, box mapping, doc count, and known-to-mapping flag), `issues` (list of
+per-line findings with full context fields), `summary` (count by error code).
+
+**Internal logic**:
+
+Calls `_classify_line` for every line of every invoice and purchase invoice. `_classify_line`
+implements four checks:
+
+| Code | Condition | Notes |
+|------|-----------|-------|
+| E1 | `entity_type == "sales"` AND `DocCurrency` not SGD AND `VatGroup` in {SO, DS} | FX sales coded as local standard-rated |
+| E2 | `TaxTotal > 0.01` AND `VatGroup` in {ZR, OS, ES33, ESN33, BL} | GST charged on non-taxable supply |
+| E3 | `entity_type == "sales"` AND `VatGroup` in {SO, DS} AND `LineTotal > 0.01` AND `TaxTotal < 0.01` | Standard-rated line with zero tax |
+| E3 | `entity_type == "purchase"` AND `VatGroup == "SI"` AND `LineTotal > 0.01` AND `TaxTotal < 0.01` | Same on purchase side |
+| E4 | `VatGroup` in {SO, SI} AND `LineTotal > 0.01` AND `TaxTotal > 0.01` AND `abs(TaxTotal/LineTotal - expected_rate) > 0.001` | Rate deviation |
+
+The `vatgroup_inventory` field was added in a mid-experiment patch (between v3 Test 2 run 1
+and run 2). The first v3 Test 2 run scored 8/10 because clean VatGroups were invisible to
+Claude. The patch added a side-effect inventory pass over all lines. The patch did not change
+any error-detection logic.
+
+**Hardcoded assumptions**:
+
+- E2 checks `_E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL"}`. Note the inclusion
+  of BL: a purchase invoice with BL + TaxTotal > 0 is flagged as E2. This is more
+  comprehensive than the Python reference script (`run_baseline_tests.py`), which applies E2
+  only to sales invoices against `ZERO_RATE_SALES = {"ZR", "OS", "ES33", "ESN33"}` (BL
+  excluded). This difference means the tool detects DocNum 605 (BL purchase with TaxTotal=56)
+  as E2, while the reference script does not. This is the correct behaviour; the reference
+  script is the less complete implementation.
+
+**What is not yet handled**: Same credit note and manual journal gaps as Tool 12.
+
+---
+
+#### Tool 14: `detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07) -> str`
+
+**Purpose**: Full compliance audit combining E1–E4 line checks, a COMPLETENESS heuristic, and
+a NO_GST_REG supplier check. Returns findings sorted by severity HIGH → MEDIUM → LOW.
+
+**Inputs**: Same as Tool 13.
+
+**Outputs**: JSON with `period`, `severity_counts`, `issues` (list with severity, error_code,
+doc_num, doc_date, card_name, description, recommendation).
+
+**Internal logic**:
+
+Calls `_classify_line` for all lines (same as Tool 13). Additionally:
+
+*COMPLETENESS*: If `purchase_count / sales_count < 0.1` (fewer than one purchase invoice per
+ten sales invoices), appends a MEDIUM severity COMPLETENESS finding. This is a heuristic
+only. The 0.1 threshold is hardcoded.
+
+*NO_GST_REG*: For each purchase invoice with any line having `TaxTotal > 0.01`, fetches the
+supplier via `sap.get(f"/BusinessPartners('{card_code}')")` and checks `FederalTaxID`. If
+blank, appends a HIGH severity NO_GST_REG finding. One finding per supplier CardCode per run
+(deduplicates within the period). This is an additional SAP API call per unique supplier with
+input tax — important for performance at scale.
+
+**Severity assignments in the tool**:
+
+| Code | Severity in tool |
+|------|-----------------|
+| E1 | HIGH |
+| E3 | HIGH |
+| E2 | MEDIUM |
+| E4 | MEDIUM |
+| COMPLETENESS | MEDIUM |
+| NO_GST_REG | HIGH |
+
+**Inconsistency with system prompt**: `system-prompts/base.md` line 118 lists NO_GST_REG as
+MEDIUM severity. The tool assigns it HIGH. These are inconsistent and will produce conflicting
+signals: the tool report will label it HIGH while the system prompt's reference table shows
+MEDIUM. This inconsistency has not been flagged in the testing notes and should be resolved
+before any customer demonstration.
+
+**Test 3 status**: This tool was implemented and committed in the `phase2-accounting-workflows`
+branch but has NOT been tested in the conversational Claude Desktop context at any version
+(v1, v2, or v3). The v0 baseline test (score 2/10) was run without this tool. The only
+evidence of the tool's correctness is that it mirrors the logic of `run_baseline_tests.py` and
+was reviewed at commit time. Its performance in the actual agent context — where the system
+prompt, knowledge base, and tool output interact — has not been measured.
+
+**What is not yet handled**: Same credit note and manual journal gaps as Tools 12 and 13. The
+NO_GST_REG check issues one API call per unique supplier per run; at production scale with
+many unique suppliers, this could be slow.
+
+---
+
+### Generic SAP B1 tools
+
+The following eleven tools expose raw SAP B1 Service Layer access. They are used for
+exploration, ad-hoc queries, and write operations. They do not implement any GST-specific
+logic.
+
+| # | Tool | Read/Write | Entity/Purpose | Notes |
+|---|------|-----------|----------------|-------|
+| 1 | `sap_login` | Write (session) | Authentication | Must be called first in every session |
+| 2 | `sap_logout` | Write (session) | Session termination | |
+| 3 | `sap_query` | Read | Any OData entity | Full `$select`, `$filter`, `$top`, `$skip`, `$orderby` support; most powerful tool |
+| 4 | `sap_get_business_partners` | Read | BusinessPartners | Filtered by CardType and CardName search |
+| 5 | `sap_get_business_partner` | Read | BusinessPartners | Single record by CardCode |
+| 6 | `sap_create_business_partner` | Write | BusinessPartners | Creates customer/vendor/lead |
+| 7 | `sap_get_items` | Read | Items | ItemCode/Name/VatGroup; search by name |
+| 8 | `sap_create_document` | Write | Any document entity | JSON string input; high flexibility, low safety |
+| 9 | `sap_get_document` | Read | Any document entity | Single record by DocEntry |
+| 10 | `sap_create_journal_entry` | Write | JournalEntries | Manual journal creation |
+| 11 | `sap_delete` | Write | Any entity | Deletes by key; destructive |
+
+**Notable implementation choices**:
+
+- `sap_query` has no pagination — it passes `$top=20` by default. A caller wanting more than
+  20 records must call it repeatedly with `$skip`. The custom accounting tools handle pagination
+  internally via `_fetch_invoices_paginated`; the generic `sap_query` does not.
+- `sap_create_document` and `sap_delete` are write operations with no confirmation step. The
+  system prompt does not restrict Claude from calling these. In a production environment, write
+  tools should require explicit user confirmation before execution. For a compliance-review
+  consulting use case, these tools may not need to be exposed at all.
+- `sap_delete` key routing: if key is numeric, formats as `/(entity)(key)` (integer key); if
+  non-numeric, formats as `/(entity)('key')` (string key). Simple heuristic; may fail on
+  composite keys.
+
+---
+
+## Knowledge base inventory
+
+### `knowledge-base/sg-tax-code-mappings.md`
+
+**What it covers**: VatGroup-to-F5-box routing for all 18 VatGroup codes configured in
+SBODEMOSG. Per-box calculation rules for Boxes 1–8 with IRAS paragraph citations. Foreign
+currency rule (IRAS para 4.1). Error materiality threshold for F7 vs F5 correction (IRAS para
+4.2.9). Critical validation rules (10 rules with IRAS citations). Out-of-scope boxes (9–21)
+with explanations.
+
+**Currency of IRAS references**: The source reference is the IRAS e-Tax Guide "How do I
+prepare my GST return?" Eleventh Edition, published 30 January 2026, verified on 2026-05-25.
+This is the current edition at audit date. Specific paragraph references are cited for each
+rule (para 5.7, 5.8, 5.9, 5.11, 5.13, 6.5.1, 6.8.3, 4.2.9 etc.). The 9% rate note is
+current and accurate (effective 1 January 2024).
+
+**What is covered well**:
+
+- The 18 VatGroups present in SBODEMOSG with correct descriptions and box routing
+- Box-level calculation rules with authoritative IRAS citations
+- Critical validation rules that are common IRAS audit triggers
+- Clear scope statements for what is out of scope (Boxes 9–21, partial exemption, etc.)
+- The BL/NR/EP/OP exclusion rules correctly stated with their IRAS basis
+
+**Identified inconsistency — NR VatGroup treatment**:
+
+The knowledge base states at line 31: *"Per IRAS para 5.11(o): purchases from non-GST
+registered traders are EXCLUDED from Box 5"* and at line 63: *"EXCLUDE: BL, NR, EP, OP,
+TX-E33, TX-N33 — these are not 'taxable purchases' per IRAS."*
+
+However, the MCP tool's `F5_BOX_MAPPING` maps NR to `"lt_box": "box_5_taxable_purchases"`,
+and the Python reference script `run_baseline_tests.py` line 38 includes NR in
+`PURCHASE_BOX5`. The system prompt `base.md` line 39 also includes NR in Box 5. The system
+prompt's VatGroup routing table was generated from the code, not from the knowledge base.
+
+Three of four artefacts (code, reference script, system prompt) include NR in Box 5, while
+the knowledge base (the cited IRAS authority) says it should be excluded. If the knowledge
+base citation is correct — and IRAS para 5.11(o) specifically excludes NR — then the code,
+reference script, and system prompt contain a compliance error. This error does not affect
+any test results because SBODEMOSG Q3 2024 contains no NR-coded invoices, but it would
+produce an incorrect result on production data with NR-coded purchases.
+
+This discrepancy should be resolved by checking the current IRAS e-Tax Guide text directly.
+
+**Identified gaps relative to Singapore production data requirements**:
+
+| Topic | Coverage | Status |
+|-------|----------|--------|
+| Partial exemption (TX-RE, mixed businesses) | Flagged as out of scope; no apportionment rules | Defer for SME focus |
+| Reverse charge on imported services (from 1 Jan 2020) | Not mentioned | Gap for businesses buying overseas services |
+| OVR regime (Overseas Vendor Registration, digital services) | Not mentioned | Gap for some SME buyers |
+| GST F5 Boxes 9–21 | Documented as out of scope with reasons | Acceptable for typical SME |
+| Bad debt relief | Not covered | Should-have for completeness |
+| Tourist refund scheme (TX-E33, TX-N33, TX-RE) | Codes listed; no application rules | Low relevance for B2B |
+| GST grouping (related companies as a single GST entity) | Not mentioned | Edge case; low priority |
+| Voluntary disclosure (F7) threshold | Correctly documented | Complete |
+
+---
+
+## System prompt inventory
+
+### `system-prompts/base.md`
+
+**What it covers**: Role definition, F5 box definitions and VatGroup routing table, foreign
+currency exclusion rule, demo environment rate-artefact rule, error code definitions (E1–E4,
+NO_GST_REG, COMPLETENESS), tool usage rules (pagination, period defaulting, DocumentLines
+requirement, tool preference order), compliance assertion rules, output format specification
+(F5 return format, error detection format, general format rules).
+
+**What the orchestration layer does well**:
+
+- **Default period rule**: "most recent complete calendar quarter" with explicit fallback logic
+  (checked against Q1-Q4 boundaries). This was the fix for the v1/v2 wrong-quarter failures.
+- **Pagination enforcement**: Explicit step-by-step pagination procedure and the prohibition
+  "never compute totals from a single page" — the fix for the v0/v1 pagination cap.
+- **FX exclusion**: Mandatory exclusion of non-SGD invoices from all box totals, with
+  requirement to list them separately with DocNums. This was closed in v2.
+- **Rate artefact handling**: The SBODEMOSG 7% rate prohibition — "do not flag it as an error
+  in any error-detection output" — is one of the most important rules and was the fix for the
+  v0 Test 3 false positive.
+- **Compliance assertion rule**: "Never assert a compliance issue without tool-confirmed
+  evidence." This is the architectural constraint that prevents the Test 3 v0 false positive
+  failure mode from recurring.
+- **Tool preference order**: Explicit ranking — `calculate_f5_return` first, then
+  `validate_invoice_tax_codes`, then `detect_gst_errors`, fall back to manual only if tools
+  unavailable.
+
+**Where the prompt is doing work that could be moved to tools**:
+
+- The VatGroup routing table in the prompt is redundant with (and potentially inconsistent
+  with) the `F5_BOX_MAPPING` in the tool code. Maintaining both creates drift risk. The
+  system prompt version is needed as a fallback for when Claude reasons about tax codes
+  without calling a tool, but the duplication is worth acknowledging.
+- The NO_GST_REG severity (MEDIUM in the prompt vs. HIGH in the tool) is a direct consequence
+  of this split: the prompt's error code table and the tool's severity assignments diverged
+  without either being updated.
+
+**Where the prompt constrains behavior that belongs in environment configuration**:
+
+- The `**Current environment:** SBODEMOSG (SAP B1 demo database, FP2502)` statement is hardcoded
+  in the prompt. In a production multi-client scenario, this would need to be dynamic — the
+  system prompt would need to be generated or parameterized per client, or the environment
+  statement would need to be injected at runtime. Currently there is no mechanism for this.
+
+### `system-prompts/test1-prefix.md` and `test2-prefix.md`
+
+These are task-specific prefixes designed to be prepended to the user prompt before F5
+calculation (test1) or tax code classification (test2). They provide explicit step-by-step
+instructions that reinforce the `base.md` rules. They were generated in response to specific
+v1 failure modes (wrong quarter, pagination cap, FX exclusion, FX+SO flagging). Both are
+working and correctly target the gaps they were designed to close.
+
+---
+
+## Experimental methodology
+
+### Test design
+
+Three tests were defined to measure performance across the core use cases.
+
+**Test 1 — F5 Calculation**
+
+Prompt: *"Using SAP Business One, calculate the GST F5 return figures for the most recent
+quarter available in the system. Give me the values for Boxes 1 through 8."*
+
+Evaluation: Each of the 8 boxes is compared against reference figures from
+`scripts/run_baseline_tests.py`. Score 1 point per correct box, capped at 8, plus 1 for FX
+detection and 1 for BL/OS exclusion. Maximum 10. An additional cap of 5/10 applies if any
+headline figure is materially wrong (Box 8 off by more than SGD 100).
+
+**Test 2 — Tax Code Classification**
+
+Prompt: *"Look at the invoices in SAP B1. Classify each transaction by GST type:
+standard-rated, zero-rated, exempt, or out-of-scope."*
+
+Evaluation: 2 points for querying VatGroup at line level, 2 points for finding all 8 VatGroups
+present, 2 points for correctly mapping 5+ of 8, 2 points for detecting FX+SO mismatch, 1
+point for listing individual transactions, 1 point for flagging ambiguity. Maximum 10.
+
+**Test 3 — Error Detection**
+
+Prompt: *"Using SAP Business One, examine the invoices for Q3 2024 (July to September 2024).
+Identify any errors, miscodings, or compliance issues in the GST treatment. Report each issue
+you find with the document number, the problem, and your recommendation."*
+
+Evaluation: 3 points for detecting FX+SO pattern and enumerating 6+ of 11 DocNums; 1 point
+for detecting FX+SO pattern as general observation; 2 points for finding E2 on DocNum 605;
+2 points for finding NO_GST_REG on 2+ of 7 suppliers; 1 point for querying at line level;
+1 point for structured output format; 1 point for flagging ambiguity; minus 1 for
+confidently-wrong critical finding. Maximum 10.
+
+### Data fixture
+
+**Database**: SBODEMOSG, SAP B1 version 1000250 (FP2502), Singapore localisation.
+
+**Period**: Q3 2024 (2024-07-01 to 2024-09-30).
+
+**Native transactions in period**: 47 sales invoices (39 SGD + 8 FX) and 17 purchase invoices
+(15 SGD + 2 FX), as retrieved by `run_baseline_tests.py` on 2026-05-25 00:13:33 UTC.
+
+**Seeded test invoices** (created by `seed_test_data.py`, 2026-05-25 00:04:47 UTC):
+
+| DocNum | Entity | VatGroup | Purpose |
+|--------|--------|----------|---------|
+| 1000 | Invoices | ZR | Test zero-rated sales box |
+| 1001 | Invoices | ES33 | Test exempt sales box |
+| 1002 | Invoices | OS | Test out-of-scope exclusion |
+| 605 | PurchaseInvoices | BL | Test blocked purchase exclusion AND E2 detection |
+| 606 | PurchaseInvoices | IM | Test import GST box |
+| 607 | PurchaseInvoices | ZP | Test zero-rated purchase box |
+
+The 6 seeded invoices are tagged `FreeText=BASELINE_TEST_DATA` for identification. The
+`cleanup_test_data.py` script can cancel them. Current status: the registry file
+(`test_data_registry.json`) shows they were created on 2026-05-25 00:04:47. Based on git
+status, the seeded invoices have not been cleaned up — they remain in SBODEMOSG.
+
+**Important note**: The seeded purchase invoice "Invoice 4 — Blocked input tax (BL)" was
+assigned DocNum 605 in the demo database. This same DocNum is referenced as the E2 error
+(BL+TaxTotal=56) in the known-correct findings. This means the E2 test depends on the seed
+script having run AND the BL invoice having had its TaxTotal set to 56 by SAP B1's tax
+engine when applied to the `BL` VatGroup. This is not documented as an assumption but it is
+one: if SAP B1 does not apply tax to BL-coded lines (which it shouldn't, by definition), the
+TaxTotal might be 0, and DocNum 605 would not actually be an E2 error.
+
+Looking at the reference JSON (`baseline-test-report-v0.json`): the test_3 output does not
+list DocNum 605 as an error — the reference script's Test 3 only detected 11 E1 errors.
+The E2 finding on DocNum 605 (TaxTotal=56) was apparently identified manually or outside the
+automated reference script, then incorporated into the `baseline-test-results.md` scoring
+rubric. This means the "known-correct" benchmark for Test 3 includes a finding (E2 DocNum 605)
+that is NOT produced by the Python reference script. The baseline-test-report-v0.json is
+therefore an incomplete reference for Test 3.
+
+### Versions tested
+
+| Version | Components active | Hypothesis being tested |
+|---------|-------------------|------------------------|
+| v0 | Read-only MCP connector only | Establishes baseline; measures raw Claude capability |
+| v1 | + Knowledge base (sg-tax-code-mappings.md) | Does tax domain knowledge improve classification? |
+| v2 | + System prompt (base.md) | Does orchestration enforcement fix procedural failures? |
+| v3 | + 3 custom MCP tools | Does removing Claude from the arithmetic path eliminate numeric errors? |
+| v4 | Planned: + full workflow skill | Not yet implemented |
+
+### Results
+
+The following table maps each (test, version) pair to its score and evidence status.
+
+| Test | v0 | v1 | v2 | v3 | Evidence quality |
+|------|----|----|----|----|------------------|
+| Test 1: F5 Calculation | 4/10 | 5/10 | 7/10 | **10/10** | Strong: raw logs for all 4 versions |
+| Test 2: Tax Classification | 6/10 | 5/10 | 9/10 | **10/10** | Strong: raw logs for all 4 versions |
+| Test 3: Error Detection | 2/10 | — | — | — | **Weak: only v0 has evidence; v3 untested** |
+
+**Test 1 detailed trajectory**:
+
+- v0 (4/10): All 8 box values wrong. Box 8 SGD 3,480 above correct figure. Root causes: FX
+  invoices silently included, ES33 misclassified as ZR, manual arithmetic errors.
+- v1 (5/10): Correct methodology (LineTotal/TaxTotal distinction, rate artefact handling)
+  but wrong quarter (Q2 instead of Q3). Scores +1 for methodology gains, not for accuracy.
+- v2 (7/10): Correct methodology + pagination + FX enumeration + correct output format, but
+  still wrong quarter. Root cause traced: agent correctly applied default-period rule but
+  inferred Q3 2024 was "incomplete" from the last invoice date visible on page 1.
+- v3 (10/10): Correct quarter, correct numbers, MAPE 0.00%. The period-completeness fix (added
+  to base.md between v2 and v3 testing) combined with the `calculate_f5_return` tool eliminated
+  all remaining failures.
+
+**Test 2 detailed trajectory**:
+
+- v0 (6/10): Correct methodology, but only 20 of 64 invoices seen (pagination cap). Found 1
+  of 8 VatGroups. Did not examine purchase invoices. No period filter. Partial credit for
+  noticing the FX+SO pattern conceptually.
+- v1 (5/10): Knowledge base improved enumeration to transaction-level format, but the FX+SO
+  mismatch flag regressed — visible FX+SO invoices were listed without any flag. Net −1 vs v0.
+- v2 (9/10): Largest single-version gain (+4). Pagination, period filter, FX+SO detection, and
+  all 8 VatGroups all correct. One false positive (DocNum 982, an August FX+SO invoice outside
+  the seeded error set). Loses 1 point for the false positive.
+- v3 (10/10): `vatgroup_inventory` patch enabled all 8 VatGroups to be returned directly from
+  the tool. DocNum 982 false positive absent. E2 DocNum 605 detected.
+
+**Test 3 evidence**:
+
+v0 (2/10): Found 7 issues, of which only 2 (ADA and Aquent at customer level) overlap with
+the reference 19 real issues. Missed all 11 E1 DocNums by enumeration, missed E2 DocNum 605,
+missed all 7 NO_GST_REG findings. Critically, invented a "highest-priority critical" finding
+recommending voluntary disclosure to IRAS based on the 7%/9% rate gap — a demo data artefact.
+This false positive would have caused material harm if acted on.
+
+v1, v2, v3 Test 3: Not run. There is no chat log, no score, and no evidence for any of these.
+
+### Reproducibility assessment
+
+**Can an outside party reproduce these results today?**
+
+Partially, with significant barriers:
+
+1. The SAP B1 SBODEMOSG instance runs at IP 35.186.145.230 on a Google Cloud Compute Engine
+   instance deployed via SAP Cloud Appliance Library. This IP is hardcoded in the scripts and
+   MCP server. A different deployment would have a different IP. The SAP CAL trial license
+   lasts approximately 30 days. If the license has expired, the instance would need to be
+   redeployed, at a different IP, requiring code changes.
+
+2. The seed data (`seed_test_data.py`) inserts invoices into the live database. If the seeded
+   invoices have been cleaned up (cancelled), running the tests would require re-seeding. If
+   not cleaned up, re-seeding would create duplicate entries with different DocNums, invalidating
+   the reference DocNum lists.
+
+3. The v0 baseline test can be reproduced by running `scripts/run_baseline_tests.py` against
+   a SBODEMOSG instance with the same data state. The Python script is deterministic and
+   well-documented.
+
+4. The v1–v3 conversational tests required a specific Claude Desktop configuration (model:
+   Claude Sonnet 4.6, specific project knowledge and system prompt). Reproducing them would
+   require setting up the same Claude Desktop environment and running the same prompts. The
+   model is not version-pinned; future Sonnet versions might produce different results.
+
+5. The v3 raw chat logs are saved verbatim and are the primary evidence of the v3 results.
+   There is no mechanism to independently verify the claim "Claude produced exactly this
+   output" from the chat logs. An external party must trust the logs.
+
+**What's needed to make the experiment fully reproducible**:
+
+- A snapshot or restore mechanism for the SBODEMOSG data state at test time
+- Pinned model version in the Claude Desktop configuration documentation
+- Automated test harness that runs the agent against stored prompts and compares outputs to
+  stored reference results
+- The `run_baseline_tests.py` script should be extended to cover E2, NO_GST_REG, and
+  COMPLETENESS checks so the full Test 3 reference can be auto-generated
+- IP address and credentials should be parameterized, not hardcoded
+
+**Risk to credibility if questioned by a sophisticated buyer or auditor**:
+
+For Test 1 and Test 2, the risk is moderate. The reference figures are independently computable
+from the Python script, and the methodology is documented. A buyer who runs the Python script
+against a fresh SBODEMOSG instance with the same seed data should get matching numbers.
+
+For Test 3, the risk is HIGH. The "known-correct" benchmark for Test 3 includes two categories
+of findings (E2 on DocNum 605, and 7 × NO_GST_REG) that are not produced by the automated
+Python reference script. These were apparently identified manually. A sophisticated auditor
+asking to see the automated reference for Test 3 findings would find that the Python script
+only produces E1 errors.
+
+Additionally, v3 Test 3 has never been run. Claiming that "the system detects the 19 known
+issues" is not supported by evidence — only v0 performance (2/10) is demonstrated.
+
+### Honest assessment of what the experiment proves and does not prove
+
+**What it proves**: The architectural pattern — deterministic tools for computation, LLM for
+reasoning and narrative, system prompt for orchestration — eliminates arithmetic errors and
+significantly reduces false positives on the specific tasks and data it was tested against.
+On Q3 2024 SBODEMOSG data, v3 achieves 10/10 on F5 calculation and tax code classification.
+The v0 failure modes (arithmetic errors, classification errors, fabricated compliance findings)
+are real and verifiable from the raw chat logs.
+
+**What it does not prove**: The system handles production data quality. SBODEMOSG is a
+clean, well-structured demo database maintained by SAP. Real client data will have: custom
+VatGroup codes not in the mapping, credit notes, manual journals, suppliers without GST
+registrations for legitimate reasons (small suppliers below the GST threshold), transactions
+spanning GST rate changes, partial exemption scenarios, and edge cases that SAP B1 permits but
+GST rules complicate. None of these have been tested.
+
+Additionally: Test 3 conversational performance at v3 is completely unmeasured. The tool
+exists and the logic mirrors the reference script, but tool-in-context performance (where the
+system prompt, knowledge base, and tool output interact) has only been demonstrated for Tests
+1 and 2.
+
+"Validated on SBODEMOSG" establishes that the architectural approach is sound and that the
+specific implementation is correct for the tested scenarios. It does not establish commercial
+readiness. The next validation phase must run against real client data, under controlled
+conditions, covering a broader set of scenarios.
+
+---
+
+## Production readiness gap analysis
+
+### Deployment surface
+
+**Exists now**: Claude Desktop on a developer's Windows machine, with the MCP server launched
+via stdio transport. The SAP B1 Service Layer is accessed over the internet via HTTPS. All
+output is conversational text in the Claude Desktop window.
+
+**What's needed for a paying engagement**:
+
+A repeatable, client-deliverable run environment. At minimum:
+- An extract-based delivery model: the client exports invoice data to a structured format,
+  the system runs against the extract, output is a signed-off document the client can file or
+  present to auditors. This removes the need for live Service Layer access at the client's
+  site during the review.
+- A PDF or structured report output that includes methodology disclosure, finding provenance
+  (DocNums, dates, amounts), and a clear statement of what was and was not examined. A
+  conversational Claude Desktop window is not a deliverable for a GST review engagement.
+- A consistent Python environment with pinned dependencies and a launch script that a
+  non-developer can run.
+
+**Estimated work**: 4–6 weeks for a sole developer to build a minimal extract-based run
+environment with PDF output. Must-have before first paid engagement.
+
+### Per-client configuration
+
+**Exists now**: Credentials, server URL, and company DB are set via environment variables
+(overriding hardcoded fallbacks). No per-client config file. The system prompt hardcodes
+`SBODEMOSG` as the current environment.
+
+**What's needed**:
+- A per-client config file format (YAML or JSON) specifying: SAP Service Layer URL,
+  company DB name, authentication credentials, GST registration number, applicable period
+  defaults, custom VatGroup overrides (if the client uses non-standard codes), and
+  completeness thresholds.
+- The system prompt's environment statement must be dynamically generated from the config
+  rather than hardcoded.
+- A mechanism to validate the config before running (check SAP connectivity, verify VatGroups
+  are in the mapping, etc.).
+
+**Estimated work**: 1–2 weeks. Should-have before first paid engagement.
+
+### Reporting and audit trail
+
+**Exists now**: None. Claude Desktop produces conversational text with no record of tool calls,
+no immutable log of what data was accessed, and no structured output that can be delivered to
+a client.
+
+**What's needed**:
+- Structured output: a PDF or HTML report with methodology statement, period and data
+  scope, F5 box table with VatGroup attribution, issues found with DocNums and
+  recommendations, list of items not examined (credit notes, manual journals, FX invoices
+  pending conversion), and a disclaimer.
+- Immutable audit trail: a timestamped log of every tool call, every API response, and every
+  finding, stored in a format that can be produced to support the client's own GST filing
+  records. This matters for Singapore PDPA compliance (data minimization, purpose limitation)
+  and for the defensibility of the firm's work product.
+- Input immutability: the invoice data used in the analysis should be snapshotted and stored,
+  so the findings can be re-derived from the same inputs months later if questioned.
+
+**Estimated work**: 3–5 weeks. Must-have before first paid engagement.
+
+### Test fixtures beyond SBODEMOSG
+
+**Exists now**: One fixed dataset (SBODEMOSG Q3 2024) with 6 seeded edge-case invoices.
+The dataset is ephemeral (dependent on a live cloud instance).
+
+**What's needed**: Synthetic datasets covering edge cases not present in SBODEMOSG:
+- Period spanning GST rate change (Dec 2023 / Jan 2024 boundary, 7% → 9%)
+- Partial exemption scenario (TX-RE lines with apportionment required)
+- Reverse charge scenario (imported services)
+- NULL / blank FederalTaxID on legitimate small suppliers vs. unregistered taxable suppliers
+- Related-party transactions (inter-company invoices)
+- Large FX invoices requiring multi-rate conversion
+- Credit notes and purchase credit notes
+- Manual journals with GST implications
+- Custom VatGroup codes not in the standard mapping
+- COMPLETENESS edge cases (legitimate low-purchase periods vs. missing data)
+
+These fixtures should be static (not dependent on a live SAP instance) to be reproducible.
+
+**Estimated work**: 2–3 weeks to design and implement a static fixture framework. Should-have
+before customer-facing demonstrations of error detection capability.
+
+### Reproducibility
+
+**Exists now**: The Python reference script is deterministic. The raw chat logs are saved.
+The knowledge base and system prompt are version-controlled (with caveats — see credentials
+section). The model version (Claude Sonnet 4.6) is documented in chat headers but not pinned
+in any config.
+
+**What's needed**:
+- Model version pinning in a configuration file.
+- Versioned system prompts and knowledge base (current git history provides basic versioning
+  but no semantic version labels).
+- Automated evaluation harness that runs the agent against stored prompts and compares outputs
+  to stored reference results — eliminating the current dependence on human-logged chat
+  transcripts as evidence.
+- The `run_baseline_tests.py` reference script should be extended to cover E2, NO_GST_REG, and
+  COMPLETENESS, making the full Test 3 reference auto-generated.
+
+**Estimated work**: 2–3 weeks for a basic automated evaluation harness. Should-have before
+presenting results to sophisticated buyers.
+
+### Security and PDPA compliance
+
+**Exists now**:
+- `keys/sap_credentials.json` stores plaintext SAP B1 credentials. The file is untracked by
+  git but is not protected by `.gitignore` (the file named `gitignore` is non-functional).
+- Hardcoded fallback credentials in `sap_b1_server.py` (`manager`/`manager`,
+  IP `35.186.145.230`). These credentials are committed to git history.
+- SSL certificate verification is disabled (`verify=False`) in all HTTP clients.
+- No data retention or destruction controls.
+- No PDPA-compliant data handling (purpose limitation, data minimization, consent records).
+
+**What's needed**:
+- Rename `gitignore` to `.gitignore` immediately. Verify `git check-ignore -v keys/` confirms
+  the directory is protected.
+- Remove the hardcoded fallback credentials from `sap_b1_server.py`. If the environment
+  variables are absent, the server should fail immediately with a clear error rather than
+  silently connecting to the demo instance.
+- For production deployments: SSL certificate verification must be enabled or the specific
+  certificate fingerprint must be pinned.
+- A data handling policy document specifying: what data is accessed, how it is stored, how
+  long it is retained, and under what conditions it is destroyed. Required for Singapore PDPA
+  compliance when accessing client financial data.
+- Evaluate whether Claude API usage sends any client financial data to Anthropic's servers.
+  (It does: all tool output and user messages in a conversation are sent to the Claude API.
+  This should be disclosed to clients and may require a data processing agreement with
+  Anthropic.)
+
+**Estimated work**: Security fixes (gitignore, credential hardcoding, SSL): 1 day. PDPA
+compliance framework: 2–3 weeks with legal input. Must-have before accessing any real client
+data.
+
+### Reliability and error handling
+
+**Exists now**: The `SAPB1Client` class handles 401 re-authentication (one retry) and basic
+HTTP error propagation. Session expiry is tracked and auto-refreshed. `_safe_float` handles
+None/non-numeric values. Unknown VatGroups are collected in `anomalies` rather than raising
+exceptions.
+
+**What's needed**:
+- Retry logic for transient SAP Service Layer errors (503, timeout). The current code raises
+  immediately on any non-200/201/204 response after one 401 retry.
+- Timeout handling: if the SAP Service Layer is slow or the cloud instance is shutting down,
+  the 30-second httpx timeout will raise without a user-friendly message.
+- Claude API rate limiting: no handling for Anthropic API rate limit errors in the Claude
+  Desktop context. Extended engagements with many tool calls could hit rate limits.
+- Partial data detection: if a paginated fetch returns fewer records than expected (e.g., the
+  SAP instance is under load and drops connections mid-pagination), the current code would
+  silently use incomplete data. A record count check against SAP's `$inlinecount` would detect
+  this.
+
+**Estimated work**: 1–2 weeks for hardened error handling. Should-have before first paid
+engagement.
+
+---
+
+## Risks and unknowns
+
+**Things that might break under production data conditions**:
+
+1. **Credit notes**: No tool queries `CreditNotes` or `PurchaseCreditNotes`. Any client with
+   credit notes in the period will receive incorrect F5 figures, with no warning except the
+   system prompt's caveat ("credit notes not checked").
+
+2. **Custom VatGroup codes**: Production SAP B1 instances commonly have local-language or
+   company-specific VatGroup codes not in the standard mapping. These would fall into the
+   `anomalies` bucket and be excluded from all calculations. A client with 20% of their
+   transactions coded to a custom VatGroup would silently receive an undercount, with only a
+   generic "unknown VatGroup" anomaly warning.
+
+3. **NR VatGroup compliance error**: If a client has NR-coded purchases, the tool will include
+   them in Box 5, which may be incorrect per IRAS para 5.11(o). The error would be invisible
+   to the client because it looks like correct behavior.
+
+4. **SAP B1 DocumentLines structure variations**: Some SAP B1 configurations compute
+   `TaxTotal` at header level rather than line level, or use `VatSum` instead of `TaxTotal` in
+   DocumentLines. The tools exclusively use `TaxTotal` at line level. If a client's SAP B1
+   configuration stores tax differently (e.g., allocated only to certain lines, or at header
+   level), all three custom tools would produce incorrect results.
+
+5. **NO_GST_REG false positives/negatives**: The check relies on `FederalTaxID` being empty
+   as a signal that the supplier is not GST-registered. In practice: (a) small suppliers below
+   the SGD 1 million turnover threshold are legitimately not GST-registered, and input tax
+   cannot be claimed from them regardless — this is correct behavior; but (b) some SAP B1
+   configurations store GST registration numbers in a UDF (User Defined Field) rather than
+   the standard `FederalTaxID` field. For those clients, all suppliers would appear
+   unregistered.
+
+6. **COMPLETENESS threshold of 10%**: A business that legitimately has a high sales volume
+   relative to its direct purchases (e.g., a services firm that buys little and bills a lot)
+   would trigger a false COMPLETENESS flag. This heuristic may generate noise for
+   service-heavy businesses.
+
+7. **Session management under load**: The MCP server uses a single synchronous `httpx.Client`
+   with session cookies. If Claude makes many rapid tool calls (which it does on complex
+   tasks), the session could expire between calls and the re-authentication logic could fail
+   under specific timing conditions.
+
+**Things the project has not tested but is assuming work**:
+
+1. `detect_gst_errors` in the conversational context (v3 Test 3 not run).
+2. The 7 NO_GST_REG findings referenced as "known-correct" in Test 3 have not been auto-
+   validated by the Python reference script. Their correctness depends on the SBODEMOSG
+   supplier master data having blank `FederalTaxID` for the relevant vendors.
+3. The system's behavior when a user specifies a period with no data (currently falls back to
+   prior quarters — tested at v3 for Q1/Q4 2025 — but not tested for edge dates like a period
+   before SAP go-live).
+4. How Claude behaves when the `calculate_f5_return` tool returns anomalies (unknown
+   VatGroups). The system prompt says "exclude it from all box totals" but the reasoning
+   behavior when anomalies are present has not been tested.
+
+**External dependencies that could shift**:
+
+1. **SAP B1 Service Layer API**: SAP regularly releases Feature Packs for SAP B1. API behavior,
+   field names, and entity structures can change between versions. The tools are built against
+   FP2502. A client on a different Feature Pack version might have different field names or
+   pagination behavior.
+
+2. **Anthropic API model behavior**: Claude Sonnet 4.6 is the tested model. Newer model
+   versions are released regularly. The orchestration rules in the system prompt were tuned
+   for Sonnet 4.6 behavior. Model upgrades could change compliance assertion behavior, output
+   format adherence, or tool-call patterns.
+
+3. **IRAS guidance changes**: Singapore GST regulations and IRAS e-Tax Guides are updated
+   periodically. A VatGroup mapping or box calculation rule that is correct today may become
+   incorrect after a guidance revision without the knowledge base being updated.
+
+4. **SAP CAL instance lifecycle**: The development and testing instance at 35.186.145.230 is
+   a SAP Cloud Appliance Library trial deployment. Trial instances expire after approximately
+   30 days and cannot be extended without additional cost. After expiry, a new deployment at a
+   new IP would require updating all hardcoded IP references.
+
+---
+
+## Strategic implications
+
+### What technical artefacts can credibly be shown to prospective customers in their current state
+
+The v0 vs. v3 comparison is the strongest demonstration material available. Specifically:
+the v0 Test 1 Box 8 figure (SGD 20,876 payable vs. correct SGD 17,396, a SGD 3,480
+overpayment that would be real money if filed) and the v0 Test 3 false "critical" finding
+(recommending voluntary disclosure to IRAS for a rate difference that is a demo data artefact)
+are compelling, concrete, and verifiable. These can be shown as side-by-side comparisons.
+
+The v3 Test 1 and Test 2 outputs (`v3-raw-chats/`) are clean, well-formatted, and demonstrate
+the system working correctly. They can be shown directly as sample deliverables, with the
+caveat that they are demo data output.
+
+The knowledge base (`sg-tax-code-mappings.md`) can be shown to tax-literate buyers as evidence
+of the depth of Singapore-specific domain encoding. The IRAS citations are accurate and current.
+
+### What technical artefacts cannot yet be shown without further work
+
+Test 3 (error detection) cannot be shown. The `detect_gst_errors` capability is the core
+value proposition for the detection layer, and it has not been demonstrated in the
+conversational context. Showing the tool code and Python reference script output is a partial
+substitute, but it is not the same as a live demonstration.
+
+The system cannot be demonstrated on a prospective customer's own SAP B1 data without
+significant configuration work (new credentials, potentially new IP, system prompt update).
+Demonstrating on a customer's live system also carries the risk of encountering edge cases
+the system does not handle (credit notes, custom VatGroups, etc.) in front of the customer.
+
+### The honest answer to "what does the first paying customer need to see before they say yes"
+
+At minimum: a demonstration on their own data (or a close analog) producing F5 figures they
+can verify, plus a sample error detection report with at least some findings their own team
+had not caught. The v3 results on demo data establish the methodology; they do not prove the
+system works on the customer's specific SAP B1 configuration.
+
+The customer also needs a deliverable — not a Claude Desktop screenshot, but a document they
+can keep. And they need confidence that their financial data is handled appropriately (PDPA,
+data residency, Anthropic API data usage disclosure).
+
+### The honest answer to "what could break the first paying engagement"
+
+1. The client has credit notes in the period. The F5 calculation will be wrong and the system
+   will not warn that credit notes were not examined (the system prompt mentions it as a
+   caveat, but many users would miss a caveat buried in the output).
+
+2. The client's SAP B1 uses custom VatGroup codes. All transactions with custom codes will
+   be silently excluded from calculations, producing a materially wrong F5 with no obvious
+   error signal beyond the anomalies list.
+
+3. The demonstrate-on-client-data attempt surfaces an edge case (partial exemption, reverse
+   charge, non-standard TaxTotal structure) that crashes the tool or produces an incorrect
+   output. In front of the client.
+
+4. The NO_GST_REG check triggers false positives for legitimate small suppliers, causing
+   the client to question the system's accuracy.
+
+5. The report is a conversational Claude Desktop transcript that the client doesn't know how
+   to interpret, store, or present to their auditors.
+
+### Recommendations on the most leverage-positive next pieces of work
+
+**1. Run v3 Test 3 (1–2 hours).** The most immediate gap. Running the detect_gst_errors
+conversational test costs almost nothing and produces the missing evidence for the most
+commercially important capability. Do this before any customer conversations.
+
+**2. Fix the gitignore file (15 minutes).** Rename `gitignore` to `.gitignore`. Remove the
+hardcoded fallback credentials from `sap_b1_server.py`. These are security issues with
+essentially no cost to fix.
+
+**3. Add credit note fetching to the three custom tools (1–2 days).** This closes the most
+significant functional gap before a real-client demonstration. `CreditNotes` and
+`PurchaseCreditNotes` are standard SAP B1 entities with the same structure as invoices and
+the same OData access pattern. The fix is additive.
+
+**4. Resolve the NR VatGroup inconsistency (2 hours).** Check IRAS para 5.11(o) against the
+current e-Tax Guide. If the knowledge base is correct (NR excluded from Box 5), update the
+tool code, reference script, and system prompt. If the code is correct (NR included), update
+the knowledge base. This discrepancy could produce incorrect output on production data.
+
+**5. Resolve the NO_GST_REG severity inconsistency (30 minutes).** The tool says HIGH, the
+system prompt says MEDIUM. Pick one and update the other.
+
+**6. Run v3 Test 3, then build minimal report output (2–3 weeks).** Once Test 3 is validated,
+build a structured output layer — even a simple markdown-to-PDF conversion of the tool output
+would be sufficient for early engagement. Without a deliverable format, the engagement cannot
+be completed professionally.
+
+The path to first revenue is: validate Test 3 → fix credit notes → fix security issues →
+build minimal report output → demonstrate on a friendly pilot customer's real (or real-
+adjacent) data → iterate from findings. The core architecture is sound enough to carry this
+path; the gaps are operational and delivery-layer, not architectural.
+
+---
+
+## Appendices
+
+### Appendix A — Inventory of all experimental run logs
+
+| Evidence | Location | Contents | Status |
+|----------|----------|----------|--------|
+| Python reference run (v0 baseline) | `exploration-notes/baseline-test-report-v0.json` | All 3 tests, machine-generated, Q3 2024 figures | Complete and authoritative |
+| v0 Test 1 raw chat | `exploration-notes/v0-raw-chats/test1-f5-calculation.md` | Verbatim Claude response, 4/10 | Complete |
+| v0 Test 2 raw chat | `exploration-notes/v0-raw-chats/test2-tax-classification.md` | Verbatim Claude response, 6/10 | Complete |
+| v0 Test 3 raw chat | `exploration-notes/v0-raw-chats/test3-error-detection.md` | Verbatim Claude response, 2/10 | Complete |
+| v1 Test 1 raw chat | `exploration-notes/v1-raw-chats/test1-f5-calculation.md` | Verbatim Claude response, 5/10 | Complete |
+| v1 Test 2 raw chat | `exploration-notes/v1-raw-chats/test2-f5-calculation.md` | Verbatim Claude response, 5/10 (misnamed file) | Complete (naming error) |
+| v1 Test 3 raw chat | Not found | — | Not run |
+| v2 Test 1 raw chat | `exploration-notes/v2-raw-chats/test1-f5-calculation` | Verbatim Claude response, 7/10 (no .md extension) | Complete (extension missing) |
+| v2 Test 2 raw chat | `exploration-notes/v2-raw-chats/test2-tax-classification.md` | Verbatim Claude response, 9/10 | Complete |
+| v2 Test 3 raw chat | Not found | — | Not run |
+| v3 Test 1 raw chat | `exploration-notes/v3-raw-chats/test1-f5-calculation.md` | Verbatim Claude response, 10/10 | Complete |
+| v3 Test 2 raw chat | `exploration-notes/v3-raw-chats/test2-tax-classification.md` | Verbatim Claude response, 10/10 | Complete |
+| v3 Test 3 raw chat | Not found | — | Not run |
+| Improvement tracking table | `exploration-notes/baseline-test-results.md` | Synthesized per-version analysis | Complete for Tests 1 and 2 only |
+
+---
+
+### Appendix B — Reference figures
+
+Reference figures for Q3 2024 (2024-07-01 to 2024-09-30), SBODEMOSG FP2502. Source:
+`scripts/run_baseline_tests.py` automated run, 2026-05-25 00:13:33 UTC. These are the
+known-correct comparison figures for all numeric test scoring.
+
+**F5 Boxes (Test 1 reference)**
+
+| Box | Description | SGD Value |
+|-----|-------------|----------:|
+| Box 1 | Standard-rated supplies (LineTotal, VatGroups SO+DS) | 370,589.97 |
+| Box 2 | Zero-rated supplies (LineTotal, VatGroup ZR) | 5,000.00 |
+| Box 3 | Exempt supplies (LineTotal, VatGroups ES33+ESN33) | 3,000.00 |
+| Box 4 | Total supplies (Box 1+2+3) | 378,589.97 |
+| Box 5 | Taxable purchases (LineTotal, VatGroups SI+ZP+IM+IGDS+ME+NR) | 123,277.76 |
+| Box 6 | Output tax due (TaxTotal, VatGroups SO+DS) | 25,941.32 |
+| Box 7 | Input tax claimed (TaxTotal, VatGroups SI+IM+IGDS) | 8,545.45 |
+| Box 8 | Net GST payable (Box 6 − Box 7) | 17,395.87 |
+
+Source invoice counts: 39 SGD sales, 8 FX sales, 15 SGD purchases, 2 FX purchases.
+
+**VatGroups in period (Test 2 reference)**
+
+| Code | Description | F5 Box |
+|------|-------------|--------|
+| SO | Standard-rated output | Box 1 (LineTotal) + Box 6 (TaxTotal) |
+| ZR | Zero-rated supply | Box 2 (LineTotal) |
+| ES33 | Exempt — Regulation 33 | Box 3 (LineTotal) |
+| OS | Out-of-scope supply | Excluded |
+| SI | Standard-rated input | Box 5 (LineTotal) + Box 7 (TaxTotal) |
+| IM | Import GST | Box 5 (LineTotal) + Box 7 (TaxTotal) |
+| ZP | Zero-rated purchase | Box 5 (LineTotal) only |
+| BL | Blocked input (Reg 26/27) | Excluded |
+
+**Known-correct issues in Q3 2024 (Test 3 reference)**
+
+| Type | Count | Notes |
+|------|-------|-------|
+| E1 (FX+SO miscoding) | 11 | DocNums: 958, 964, 965, 967 (×2 lines), 971, 974 (×3 lines), 977, 982. Source: Python script |
+| E2 (BL with TaxTotal=56) | 1 | DocNum 605. Source: manual identification (not in Python script output) |
+| NO_GST_REG | 7 | Supplier purchase invoices with input tax claimed but blank FederalTaxID. Source: documented in baseline-test-results.md; not produced by Python script |
+| COMPLETENESS | 0 | Purchase/sales ratio 15/47 = 0.32; above 0.10 threshold; no flag expected |
+| E3 | 0 | No standard-rated lines with zero tax in period |
+| E4 | 0 | No rate deviations (all rates are 7% consistently in SBODEMOSG demo data) |
+
+Note: The Python reference script (`run_baseline_tests.py`) auto-detects only E1 errors from
+test_3. E2 and NO_GST_REG findings are documented in the test results commentary but were not
+produced by automated script output. Any future automated scoring of Test 3 must extend the
+reference script to include these check types.
+
+**FX invoices excluded from F5 (10 documents)**
+
+| DocNum | DocDate | Counterparty | Currency | Amount | Type |
+|--------|---------|-------------|----------|-------:|------|
+| 958 | 2024-07-02 | SG Electronics | USD | 1,131.53 | Sales |
+| 964 | 2024-07-09 | Aquent Systems | USD | 5,617.50 | Sales |
+| 965 | 2024-07-09 | Aquent Systems | USD | 393.23 | Sales |
+| 967 | 2024-07-28 | ADA Technologies | EUR | 4,119.50 | Sales |
+| 971 | 2024-07-24 | ADA Technologies | EUR | 71.10 | Sales |
+| 974 | 2024-07-11 | SG Electronics | USD | 38,612.29 | Sales |
+| 977 | 2024-07-29 | Aquent Systems | USD | 829.68 | Sales |
+| 982 | 2024-08-03 | ADA Technologies | EUR | 26,589.50 | Sales |
+| 601 | 2024-08-27 | Blockies Corporation | EUR | 12,824.65 | Purchase |
+| 604 | 2024-08-17 | Lumarx | USD | 9,201.85 | Purchase |
+
+---
+
+### Appendix C — Open questions
+
+Items that arose during the audit and require a decision or investigation before the next
+strategic or engineering conversation.
+
+1. **NR VatGroup**: Is NR correctly included in Box 5 (as the code, reference script, and
+   system prompt assume) or correctly excluded (as the knowledge base states per IRAS para
+   5.11(o))? Check the current IRAS e-Tax Guide text and resolve the inconsistency across all
+   four artefacts.
+
+2. **NO_GST_REG severity**: Should the severity be HIGH (as the `detect_gst_errors` tool
+   assigns) or MEDIUM (as the system prompt's error code table lists)? Decide and update the
+   non-authoritative source.
+
+3. **E2 on DocNum 605**: Was the BL purchase invoice seeded with a non-zero TaxTotal of 56.00
+   deliberately, or did SAP B1 apply tax when VatGroup=BL was set? If SAP B1 correctly
+   blocks tax on BL-coded lines, DocNum 605 should have TaxTotal=0 and would NOT be an E2
+   error. The reference JSON shows the Python script found no E2 errors, which supports the
+   possibility that TaxTotal is 0. This should be verified before claiming E2 detection is
+   validated.
+
+4. **Test 3 v3**: When will v3 Test 3 be run? This is the highest-priority gap in the
+   experimental record and requires only the time to run the test and save the log.
+
+5. **SAP CAL instance**: Has the trial license for the 35.186.145.230 instance expired or is
+   it still active? If expired, reproduction of any test requires a new deployment at a new IP.
+
+6. **Credit note prevalence in target customers**: For the pilot customer segment (mid-market
+   Singapore SAP B1 users), how common are credit notes in a typical quarter? This determines
+   urgency of the credit note gap.
+
+7. **Anthropic API data residency**: Anthropic's API terms and data processing agreement — is
+   there a Singapore data residency option, or does all data route through US/EU servers?
+   This affects the compliance disclosure required when accessing client financial data.
+
+8. **Seeded test data cleanup**: Have the 6 seeded invoices (DocNums 1000-1002 and 605-607)
+   been cancelled in SBODEMOSG? If not, running `seed_test_data.py` again would create
+   duplicate invoices with different DocNums, invalidating the reference DocNum lists.
+
+9. **`git` file at root**: Should be deleted. It is an empty file that appears to have been
+   created by a mistyped shell command. It adds noise to `git status`.
+
+10. **`v1-raw-chats/image.png`**: What is this file? No other file references it. Should it be
+    removed or documented?
+
+---
+
+*End of document. Generated 2026-05-26 by repository audit. All findings based on files
+present in the repository at that date on the `phase2-accounting-workflows` branch.*
