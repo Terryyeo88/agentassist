@@ -40,9 +40,26 @@ PURCHASE_BOX7 = {"SI", "IM", "IGDS"}
 PURCHASE_EXCLUDED = {"BL", "EP", "OP", "TX-E33", "TX-N33", "TX-RE"}
 
 # Codes where non-zero VatSum would be an error (E2 check)
-ZERO_RATE_SALES = {"ZR", "OS", "ES33", "ESN33"}
+ZERO_RATE_SALES = {"ZR", "OS", "ES33", "ESN33"}  # legacy — kept for reference only
 # Codes where VatSum=0 would be an error (E3 check)
 STANDARD_RATE_CODES = {"SO", "SI"}
+
+# Matches _E2_ZERO_RATE_CODES in sap_b1_server.py.
+# Adds BL vs old ZERO_RATE_SALES and applies to BOTH sales and purchases.
+E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL"}
+
+_SEVERITY = {
+    "E1": "HIGH", "E2": "MEDIUM", "E3": "HIGH", "E4": "MEDIUM",
+    "NO_GST_REG": "HIGH", "COMPLETENESS": "MEDIUM",
+}
+_RECOMMENDATION = {
+    "E1": "Reclassify as ZR (zero-rated) if this is an export sale.",
+    "E2": "Remove the GST charge or correct the tax code to a standard-rated code.",
+    "E3": "Apply GST at the applicable rate, or reclassify if the supply is exempt or zero-rated.",
+    "E4": "Review the GST rate — demo data uses 7%, production uses 9% from 1 Jan 2024.",
+    "NO_GST_REG": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+    "COMPLETENESS": "Verify all supplier invoices for the period have been entered in SAP B1.",
+}
 
 KNOWN_VATGROUPS = {
     "SO": ("Box 1 + Box 6", "Standard-rated output"),
@@ -306,95 +323,242 @@ def run_test_2(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
 
 # ─── Test 3: Error Detection ──────────────────────────────────────────────────
 
-def run_test_3(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
-    print("\n[Test 3] Error Detection...")
+def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Session) -> dict:
+    """
+    Independent implementation of detect_gst_errors logic.
+    Does NOT import from sap_b1_server.py — kept separate to detect divergence.
 
-    errors = []
+    Known divergences from the MCP tool (documented, not fixed per design principle):
+    - E4 threshold: script uses 0.005, MCP tool uses 0.001
+    - E4 purchase scope: script checks SI+IM+IGDS, MCP tool checks SI only
+    - E4 sales scope: script checks SO+DS (SALES_BOX1), MCP tool checks SO only
+    """
+    print("\n[Test 3] Error Detection (E1, E2, E3, E4, NO_GST_REG, COMPLETENESS)...")
 
+    findings = []
+
+    # ── Sales invoice checks: E1, E2, E3, E4 ─────────────────────────────────
     for doc in invoices:
         doc_num = doc.get("DocNum")
         doc_date = str(doc.get("DocDate", ""))[:10]
+        card_code = doc.get("CardCode", "")
         card_name = doc.get("CardName", "")
         currency = doc.get("DocCurrency", "SGD")
         is_fx = not is_sgd(doc)
 
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
+            line_num = line.get("LineNum")
             line_total = safe_float(line.get("LineTotal"))
-            vat_sum = safe_float(line.get("TaxTotal"))  # TaxTotal is line-level tax in SAP B1
+            tax_total = safe_float(line.get("TaxTotal"))  # TaxTotal is line-level tax in SAP B1
 
-            base = {"DocNum": doc_num, "DocDate": doc_date, "CardName": card_name, "VatGroup": vg}
+            base = dict(
+                doc_num=doc_num, doc_date=doc_date,
+                card_code=card_code, card_name=card_name,
+                line_num=line_num, vat_group=vg,
+                line_total=line_total, tax_total=tax_total,
+            )
 
-            # E1: Foreign currency + SO/DS (overseas sale miscoded as local standard-rated)
+            # E1: FX sales invoice using standard-rated code
             if is_fx and vg in SALES_BOX1:
-                errors.append({**base, "error_code": "E1", "DocCurrency": currency,
-                    "issue": f"E1: Foreign currency ({currency}) invoice uses VatGroup={vg} — overseas sale should be ZR"})
+                findings.append({**base,
+                    "check_type": "E1", "severity": _SEVERITY["E1"],
+                    "doc_currency": currency,
+                    "description": f"FX invoice ({currency}) with VatGroup={vg} — overseas sale should use ZR",
+                    "recommendation": _RECOMMENDATION["E1"],
+                })
 
-            # E2: GST charged (VatSum > 0) on non-taxable supply
-            if vat_sum > 0.01 and vg in ZERO_RATE_SALES:
-                errors.append({**base, "VatSum": vat_sum,
-                    "issue": f"E2: VatSum={vat_sum:.2f} > 0 but VatGroup={vg} is non-taxable — GST should not be charged"})
+            # E2: GST charged on non-taxable supply (sales side)
+            # Uses E2_ZERO_RATE_CODES (includes BL), not old ZERO_RATE_SALES
+            if tax_total > 0.01 and vg in E2_ZERO_RATE_CODES:
+                findings.append({**base,
+                    "check_type": "E2", "severity": _SEVERITY["E2"],
+                    "description": f"Tax {tax_total:.2f} charged on non-taxable sales supply (VatGroup={vg})",
+                    "recommendation": _RECOMMENDATION["E2"],
+                })
 
             # E3: Standard-rated sales code with zero GST
-            if vg in {"SO", "DS"} and line_total > 0.01 and vat_sum < 0.01:
-                errors.append({**base, "LineTotal": line_total,
-                    "issue": f"E3: VatGroup={vg} (standard-rated) but VatSum=0 on SGD {line_total:.2f} line"})
+            if vg in {"SO", "DS"} and line_total > 0.01 and tax_total < 0.01:
+                findings.append({**base,
+                    "check_type": "E3", "severity": _SEVERITY["E3"],
+                    "description": f"VatGroup={vg} (standard-rated) but tax=0 on SGD {line_total:.2f} line",
+                    "recommendation": _RECOMMENDATION["E3"],
+                })
 
-            # E4: GST rate deviation from expected (7% for demo data)
-            if vg in SALES_BOX1 and line_total > 0.01 and vat_sum > 0.01:
-                ratio = vat_sum / line_total
+            # E4: GST rate deviation — script checks SO+DS; MCP tool checks SO only (known divergence)
+            if vg in SALES_BOX1 and line_total > 0.01 and tax_total > 0.01:
+                ratio = tax_total / line_total
                 if abs(ratio - DEMO_GST_RATE) > 0.005:
-                    errors.append({**base, "LineTotal": line_total, "VatSum": vat_sum,
+                    findings.append({**base,
+                        "check_type": "E4", "severity": _SEVERITY["E4"],
                         "effective_rate_pct": round(ratio * 100, 2),
-                        "issue": f"E4: Effective GST rate {ratio*100:.2f}% deviates from expected {DEMO_GST_RATE*100:.0f}%"})
+                        "description": f"Effective GST rate {ratio*100:.2f}% deviates from expected {DEMO_GST_RATE*100:.0f}%",
+                        "recommendation": _RECOMMENDATION["E4"],
+                    })
 
+    # ── Purchase invoice checks: E2, E3, E4 ──────────────────────────────────
     for doc in purchase_invoices:
         doc_num = doc.get("DocNum")
         doc_date = str(doc.get("DocDate", ""))[:10]
+        card_code = doc.get("CardCode", "")
         card_name = doc.get("CardName", "")
 
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
+            line_num = line.get("LineNum")
             line_total = safe_float(line.get("LineTotal"))
-            vat_sum = safe_float(line.get("TaxTotal"))  # TaxTotal is line-level tax in SAP B1
+            tax_total = safe_float(line.get("TaxTotal"))  # TaxTotal is line-level tax in SAP B1
 
-            base = {"DocNum": doc_num, "DocDate": doc_date, "CardName": card_name, "VatGroup": vg}
+            base = dict(
+                doc_num=doc_num, doc_date=doc_date,
+                card_code=card_code, card_name=card_name,
+                line_num=line_num, vat_group=vg,
+                line_total=line_total, tax_total=tax_total,
+            )
+
+            # E2: GST charged on non-taxable supply (purchase side)
+            if tax_total > 0.01 and vg in E2_ZERO_RATE_CODES:
+                findings.append({**base,
+                    "check_type": "E2", "severity": _SEVERITY["E2"],
+                    "description": f"Tax {tax_total:.2f} charged on non-taxable purchase supply (VatGroup={vg})",
+                    "recommendation": _RECOMMENDATION["E2"],
+                })
 
             # E3: Standard-rated purchase code with zero GST
-            if vg == "SI" and line_total > 0.01 and vat_sum < 0.01:
-                errors.append({**base, "LineTotal": line_total,
-                    "issue": f"E3: VatGroup=SI (standard-rated input) but VatSum=0 on SGD {line_total:.2f} line"})
+            if vg == "SI" and line_total > 0.01 and tax_total < 0.01:
+                findings.append({**base,
+                    "check_type": "E3", "severity": _SEVERITY["E3"],
+                    "description": f"VatGroup=SI (standard-rated input) but tax=0 on SGD {line_total:.2f} line",
+                    "recommendation": _RECOMMENDATION["E3"],
+                })
 
-            # E4: GST rate deviation on standard-rated purchases
-            if vg in {"SI", "IM", "IGDS"} and line_total > 0.01 and vat_sum > 0.01:
-                ratio = vat_sum / line_total
+            # E4: GST rate deviation — script checks SI+IM+IGDS; MCP tool checks SI only (known divergence)
+            if vg in {"SI", "IM", "IGDS"} and line_total > 0.01 and tax_total > 0.01:
+                ratio = tax_total / line_total
                 if abs(ratio - DEMO_GST_RATE) > 0.005:
-                    errors.append({**base, "LineTotal": line_total, "VatSum": vat_sum,
+                    findings.append({**base,
+                        "check_type": "E4", "severity": _SEVERITY["E4"],
                         "effective_rate_pct": round(ratio * 100, 2),
-                        "issue": f"E4: Effective GST rate {ratio*100:.2f}% deviates from expected {DEMO_GST_RATE*100:.0f}%"})
+                        "description": f"Effective GST rate {ratio*100:.2f}% deviates from expected {DEMO_GST_RATE*100:.0f}%",
+                        "recommendation": _RECOMMENDATION["E4"],
+                    })
 
-    # Scoring: 1 pt per check type run (4 checks = 4 pts), + 1 per error found (up to 6)
-    checks_run = 4  # E1, E2, E3, E4 all executed
-    errors_found_pts = min(len(errors), 6)
-    score = min(checks_run + errors_found_pts, 10)
+    # ── NO_GST_REG: one finding per unregistered supplier with input tax ──────
+    # Two-pass: aggregate all invoices per CardCode, then fetch BP once per CardCode.
+    # Matches MCP tool's dedup-by-CardCode approach; extends it with aggregate invoice
+    # count and total input tax (additional context, not a divergence).
+    print("    Checking supplier GST registrations...", end="\r")
+    supplier_tax: dict = {}  # card_code → {card_name, doc_nums, total_input_tax}
+    for doc in purchase_invoices:
+        card_code = doc.get("CardCode", "")
+        if not card_code:
+            continue
+        has_input_tax = any(safe_float(ln.get("TaxTotal")) > 0.01 for ln in doc.get("DocumentLines", []))
+        if not has_input_tax:
+            continue
+        doc_input_tax = sum(safe_float(ln.get("TaxTotal")) for ln in doc.get("DocumentLines", []))
+        if card_code not in supplier_tax:
+            supplier_tax[card_code] = {
+                "card_name": doc.get("CardName", ""),
+                "doc_nums": [],
+                "total_input_tax": 0.0,
+            }
+        supplier_tax[card_code]["doc_nums"].append(doc.get("DocNum"))
+        supplier_tax[card_code]["total_input_tax"] += doc_input_tax
 
-    error_codes_found = sorted(set(e.get("error_code", "E?") for e in errors if "error_code" in e))
-    notes = (
-        f"All 4 error checks (E1-E4) executed. "
-        f"Found {len(errors)} error(s). "
-        f"Error types: {error_codes_found if error_codes_found else 'none'}. "
-        f"{'Invoice #958 USD+SO mismatch expected from baseline.' if any('E1' in e.get('issue','') for e in errors) else 'No E1 errors found.'}"
-    )
+    bp_cache: dict = {}
+    for card_code, info in supplier_tax.items():
+        if card_code not in bp_cache:
+            try:
+                bp_data = b1.get(f"BusinessPartners('{card_code}')")
+                bp_cache[card_code] = (bp_data.get("FederalTaxID") or "").strip()
+            except Exception:
+                bp_cache[card_code] = ""
+        if not bp_cache[card_code]:
+            total_tax = round(info["total_input_tax"], 2)
+            findings.append({
+                "check_type": "NO_GST_REG", "severity": _SEVERITY["NO_GST_REG"],
+                "doc_num": info["doc_nums"][0],
+                "doc_date": None,
+                "card_code": card_code, "card_name": info["card_name"],
+                "line_num": None, "vat_group": None,
+                "line_total": None, "tax_total": total_tax,
+                "affected_invoice_count": len(info["doc_nums"]),
+                "affected_doc_nums": info["doc_nums"],
+                "description": (
+                    f"Input tax claimed from supplier {card_code} ({info['card_name']}) "
+                    f"without a GST registration number — "
+                    f"{len(info['doc_nums'])} invoice(s), SGD {total_tax:.2f} total input tax."
+                ),
+                "recommendation": _RECOMMENDATION["NO_GST_REG"],
+            })
+    print(f"    Checked {len(supplier_tax)} supplier(s) with input tax claims.     ")
 
-    print(f"    Errors found: {len(errors)}")
-    for e in errors[:5]:
-        print(f"      DocNum {e.get('DocNum')}: {e.get('issue','')[:80]}")
-    if len(errors) > 5:
-        print(f"      ... and {len(errors) - 5} more")
+    # ── COMPLETENESS ──────────────────────────────────────────────────────────
+    # Threshold 0.10 matches MCP tool detect_gst_errors exactly.
+    sales_count = len(invoices)
+    purchase_count = len(purchase_invoices)
+    if sales_count > 0:
+        ratio = purchase_count / sales_count
+        if ratio < 0.10:
+            findings.append({
+                "check_type": "COMPLETENESS", "severity": _SEVERITY["COMPLETENESS"],
+                "doc_num": None, "doc_date": None,
+                "card_code": None, "card_name": None,
+                "line_num": None, "vat_group": None,
+                "line_total": None, "tax_total": None,
+                "sales_count": sales_count,
+                "purchase_count": purchase_count,
+                "ratio": round(ratio, 4),
+                "description": (
+                    f"Purchase volume suspiciously low — {purchase_count} purchase invoice(s) vs "
+                    f"{sales_count} sales invoice(s) (ratio {ratio:.2%}) — input tax may be understated."
+                ),
+                "recommendation": _RECOMMENDATION["COMPLETENESS"],
+            })
+
+    # ── Sort: HIGH → MEDIUM → LOW, then doc_date, then doc_num ───────────────
+    _sev_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    findings.sort(key=lambda x: (
+        _sev_order.get(x.get("severity", "LOW"), 2),
+        x.get("doc_date") or "",
+        x.get("doc_num") or 0,
+    ))
+
+    by_check_type: dict = {}
+    by_severity: dict = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    for f in findings:
+        ct = f["check_type"]
+        by_check_type[ct] = by_check_type.get(ct, 0) + 1
+        sev = f.get("severity", "LOW")
+        if sev in by_severity:
+            by_severity[sev] += 1
+
+    summary = {
+        "total_findings": len(findings),
+        "by_check_type": by_check_type,
+        "by_severity": by_severity,
+    }
+
+    # 6 pts for running all checks, up to 4 more for finding real issues
+    score = min(6 + min(len(findings), 4), 10)
+
+    print(f"    Total findings: {summary['total_findings']}  "
+          f"(HIGH: {by_severity['HIGH']}, MEDIUM: {by_severity['MEDIUM']})")
+    for ct, cnt in sorted(by_check_type.items()):
+        print(f"      {ct}: {cnt}")
     print(f"    Score: {score}/10")
 
+    notes = (
+        f"Checks: E1, E2(sales+purchases,incl.BL), E3, E4, NO_GST_REG, COMPLETENESS. "
+        f"Findings: {len(findings)} "
+        f"(HIGH: {by_severity['HIGH']}, MEDIUM: {by_severity['MEDIUM']})."
+    )
+
     return {
-        "errors_found": errors,
+        "period": f"{PERIOD_START} to {PERIOD_END}",
+        "summary": summary,
+        "findings": findings,
         "score": score,
         "max_score": 10,
         "notes": notes,
@@ -425,7 +589,7 @@ def main():
 
     t1 = run_test_1(invoices, purchase_invoices)
     t2 = run_test_2(invoices, purchase_invoices)
-    t3 = run_test_3(invoices, purchase_invoices)
+    t3 = run_test_3(invoices, purchase_invoices, b1)
 
     overall = t1["score"] + t2["score"] + t3["score"]
     run_ts = datetime.now(timezone.utc).isoformat()
@@ -491,10 +655,10 @@ FX invoices flagged (excluded from boxes): {len(t1["fx_invoices_flagged"])}
 
 FX+SO mismatches detected: {len(t2["mismatches_found"])}
 
-### Test 3: Errors Found
+### Test 3: Findings
 
-{f"Total errors detected: {len(t3['errors_found'])}" if t3["errors_found"] else "No errors found."}
-{chr(10).join(f"- DocNum {e.get('DocNum')}: {e.get('issue','')}" for e in t3["errors_found"][:10])}
+{f"Total findings: {len(t3['findings'])} (HIGH: {t3['summary']['by_severity']['HIGH']}, MEDIUM: {t3['summary']['by_severity']['MEDIUM']})" if t3["findings"] else "No findings."}
+{chr(10).join(f"- [{f.get('severity','?')}] {f.get('check_type','?')} DocNum {f.get('doc_num')}: {(f.get('description') or '')[:80]}" for f in t3["findings"][:10])}
 
 ---
 """
