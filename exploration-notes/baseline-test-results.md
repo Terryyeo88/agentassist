@@ -606,3 +606,11 @@ Plain Claude does manual arithmetic on 20-record JSON pages, summing dozens of f
 **Why this is a strong baseline result:**
 
 A v0 score of 4/10 on Test 1 with all numbers wrong is *the value proposition* for the project. If plain Claude had scored 10/10, there would be no reason to build the system. The gap between 4/10 (v0) and the eventual v4 score is the measurable contribution of the AgentAssist architecture.
+
+---
+
+## Decisions
+
+| Date | Decision | Rationale | Files changed |
+|------|----------|-----------|---------------|
+| 2026-05-26 | NO_GST_REG severity standardized to HIGH | Tool already assigns HIGH; substantive risk (invalid input tax claim, IRAS audit exposure) is high-severity by nature; system prompt table updated to match | system-prompts/base.md |

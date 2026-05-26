@@ -114,7 +114,7 @@ When the rate difference is relevant to the user's question, acknowledge it as a
 | E2 | TaxTotal > 0 on a line with VatGroup ∈ {ZR, OS, ES33, ESN33, BL} | MEDIUM |
 | E3 | TaxTotal = 0 on a standard-rated line (VatGroup SO/DS for sales, SI for purchases) | HIGH |
 | E4 | TaxTotal/LineTotal deviates from expected GST rate by more than 0.1% | MEDIUM |
-| NO_GST_REG | Purchase invoice claims input tax but supplier FederalTaxID is missing or blank | MEDIUM |
+| NO_GST_REG | Purchase invoice claims input tax but supplier FederalTaxID is missing or blank | HIGH |
 | COMPLETENESS | Purchase invoice count is less than 20% of sales invoice count — possible missing data | LOW |
 
 > These codes are produced only by the detect_gst_errors tool.

@@ -34,13 +34,21 @@ class SAPB1Client:
     """SAP Business One Service Layer client with session management."""
 
     def __init__(self):
-        self.base_url = (os.environ.get("SAP_BASE_URL") or "https://35.186.145.230:55000/b1s/v2").rstrip("/")
-        self.company_db = os.environ.get("SAP_COMPANY_DB") or "SBODEMOSG"
-        self.username = os.environ.get("SAP_USERNAME") or "manager"
-        self.password = os.environ.get("SAP_PASSWORD") or "manager"
+        required = ["SAP_BASE_URL", "SAP_COMPANY_DB", "SAP_USERNAME", "SAP_PASSWORD"]
+        missing = [v for v in required if not os.environ.get(v)]
+        if missing:
+            raise RuntimeError(
+                f"Required environment variables not set: {', '.join(missing)}. "
+                f"Copy config/env.example to .env at repo root and fill in values."
+            )
+        self.base_url = os.environ["SAP_BASE_URL"].rstrip("/")
+        self.company_db = os.environ["SAP_COMPANY_DB"]
+        self.username = os.environ["SAP_USERNAME"]
+        self.password = os.environ["SAP_PASSWORD"]
+        self.ssl_verify = os.environ.get("SAP_SSL_VERIFY", "true").lower() == "true"
         self.session_id: Optional[str] = None
         self.session_timeout: Optional[datetime] = None
-        self.http = httpx.Client(verify=False, timeout=30.0)
+        self.http = httpx.Client(verify=self.ssl_verify, timeout=30.0)
         logger.info(f"SAP B1 Client initialized for {self.base_url}")
 
     def login(self) -> dict:
