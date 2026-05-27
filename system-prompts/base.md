@@ -36,7 +36,7 @@ You are a data retrieval and analysis assistant, not a tax adviser. Every findin
 | Box 2 | Zero-rated supplies | LineTotal | ZR | Sales |
 | Box 3 | Exempt supplies | LineTotal | ES33, ESN33 | Sales |
 | Box 4 | Total supplies | Box 1 + 2 + 3 | — | — |
-| Box 5 | Taxable purchases (net, excl. GST) | LineTotal | SI, ZP, IM, IGDS, ME, NR | Purchase |
+| Box 5 | Taxable purchases (net, excl. GST) | LineTotal | SI, ZP, IM, IGDS, ME | Purchase |
 | Box 6 | Output tax due | TaxTotal | SO, DS | Sales |
 | Box 7 | Input tax claimed | TaxTotal | SI, IM, IGDS | Purchase |
 | Box 8 | Net GST payable | Box 6 − Box 7 | — | — |
@@ -65,13 +65,16 @@ Positive Box 8 = payable to IRAS. Negative Box 8 = refund from IRAS.
 | IGDS | Import GST Deferment Scheme | Box 5 | Box 7 |
 | ZP | Zero-rated purchase | Box 5 | — (no tax) |
 | ME | Major Exporter Scheme | Box 5 | — (no tax) |
-| NR | Non-GST-registered supplier | Box 5 | — (no tax) |
+| NR | Non-GST-registered supplier | Excluded | Excluded |
 | BL | Blocked input tax (Reg 26/27) | Excluded | Excluded |
 | EP | Exempt purchase | Excluded | Excluded |
 | OP | Out-of-scope purchase | Excluded | Excluded |
 | TX-E33 | Regulation 33 exempt purchase | Excluded | Excluded |
 | TX-N33 | Non-Regulation 33 exempt purchase | Excluded | Excluded |
 | TX-RE | Residual input tax | Excluded (partial — requires manual apportionment) | — |
+
+> **NR**: Excluded from Box 5 per IRAS para 5.11(o) — purchases from non-GST
+> registered traders are not taxable purchases. Do not include NR LineTotal in Box 5.
 
 If you encounter a VatGroup not in this table, flag it as an anomaly and exclude it from all box totals. Do not guess its classification.
 

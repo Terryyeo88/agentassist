@@ -111,6 +111,28 @@ INVOICE_SPECS = [
             "VatGroup": "ZP",
         }],
     },
+    # Invoice 7 — Non-GST registered purchase (NR), non-zero TaxTotal
+    # Purpose: tests that NR LineTotal is excluded from Box 5 after the T1.2 fix
+    # Also an E2 candidate if SAP B1 preserves TaxTotal on NR lines (non-taxable
+    # purchase carrying GST). If SAP zeroes TaxTotal on save, the E2 angle is moot
+    # and this invoice tests Box 5 exclusion only.
+    {
+        "_entity": "PurchaseInvoices",
+        "_label": "Invoice 7 — Non-GST registered purchase (NR)",
+        "CardCode": "V10000",
+        "DocDate": "2024-09-15",
+        "DocDueDate": "2024-10-15",
+        "FreeText": "BASELINE_TEST_DATA",
+        "DocumentLines": [
+            {
+                "ItemCode": "Z00002",
+                "Quantity": 1,
+                "UnitPrice": 500.00,
+                "VatGroup": "NR",
+                "TaxTotal": 45.00,
+            }
+        ],
+    },
 ]
 
 

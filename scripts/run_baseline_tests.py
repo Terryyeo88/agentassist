@@ -35,7 +35,8 @@ SALES_BOX2 = {"ZR"}
 SALES_BOX3 = {"ES33", "ESN33"}
 SALES_EXCLUDED = {"OS"}
 
-PURCHASE_BOX5 = {"SI", "ZP", "IM", "IGDS", "ME", "NR"}
+PURCHASE_BOX5 = {"SI", "ZP", "IM", "IGDS", "ME"}
+# NR excluded per IRAS para 5.11(o): purchases from non-GST registered traders
 PURCHASE_BOX7 = {"SI", "IM", "IGDS"}
 PURCHASE_EXCLUDED = {"BL", "EP", "OP", "TX-E33", "TX-N33", "TX-RE"}
 
