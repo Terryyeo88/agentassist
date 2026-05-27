@@ -11,8 +11,8 @@
 | Version | What was added | Test 1 | Test 2 | Test 3 | Overall |
 |---------|---------------|--------|--------|--------|---------|
 | v0 (baseline) | Read-only MCP connector only | 4/10 | 6/10 | 2/10 | 12/30 |
-| v1 | + Knowledge base (sg-tax-code-mappings.md) | 5/10 | 5/10 | pending | — |
-| v2 | + System prompt (orchestration rules) | 7/10 | 9/10 | pending |
+| v1 | + Knowledge base (sg-tax-code-mappings.md) | 5/10 | 5/10 | 3/10 | 13/30 |
+| v2 | + System prompt (orchestration rules) | 7/10 | 9/10 | 9/10 | 25/30 |
 | v3 | + 3 new MCP tools (F5 calc, validate, detect errors) | **10/10** | **10/10** | — | — |
 | v4 | + Skill (full workflow) | — | — | — | — |
 | *Reference* | *Python script `run_baseline_tests.py`* | *10/10* | *10/10* | *10/10* | *30/30* |
@@ -609,8 +609,116 @@ A v0 score of 4/10 on Test 1 with all numbers wrong is *the value proposition* f
 
 ---
 
+## V1/V2 Test 3 Reclassification Note
+
+An initial run on 2026-05-26, originally labelled V1 Test 3, was conducted
+with both sg-tax-code-mappings.md and base.md attached to the Claude Desktop
+project. This was discovered after the fact through the tool-usage
+confirmation pattern.
+
+The original run has been reclassified as V2 (knowledge base + system
+prompt). A clean V1 run (knowledge base only, base.md detached) was
+conducted on the same day. Both files are preserved at their corrected
+paths:
+- v1-raw-chats/test3-error-detection.md — clean V1 run
+- v2-raw-chats/test3-error-detection.md — original "V1" run, reclassified
+
+The reclassification is informative: comparing the two runs isolates the
+incremental contribution of the system prompt over the knowledge base
+alone. The V1 result reproduces the V0 IRAS-related fabrication (this time
+as an F7 filing recommendation), confirming that the knowledge base's
+"not a compliance issue" instruction is insufficient on its own. The V2
+result eliminates this fabrication, confirming the compliance-assertion
+rule in the system prompt does the work the knowledge base alone cannot.
+
+### Methodological finding: system prompt changes analytical approach
+
+A tool-usage comparison between V1 and V2 revealed a structural difference
+in how Claude approached the task:
+
+| Approach | V1 (no system prompt) | V2 (system prompt) |
+|----------|----------------------|--------------------|
+| Data retrieval | sap_query × 4 (paginated) | sap_query × 6 (paginated) |
+| Detail inspection | sap_get_document × 7 (spot-check specific DocNums) | (none) |
+| Analysis | Narrative reasoning over inspected documents | bash_tool × 6 (population-level Python analysis) |
+| Coverage | 7 of 64 invoices inspected in detail | All 64 invoices analyzed |
+
+The mandatory pagination rules and "never compute totals from a single
+page" instructions in base.md effectively pushed Claude toward writing
+in-conversation Python to handle the full population. Without those rules
+(V1), Claude defaulted to inspecting a handful of suspicious-looking
+DocNums by hand and reasoning narratively about them.
+
+This is why V1 missed E2 DocNum 605 (it was not in Claude's spot-check
+list) and missed NO_GST_REG entirely (no supplier FederalTaxID was queried).
+The system prompt's contribution at V2 is not just about preventing
+fabrication; it's also about driving a structural shift in analytical
+methodology that makes comprehensive detection tractable.
+
+This is a stronger experimental result than originally anticipated: it
+demonstrates that each architectural layer addresses specific failure
+modes, with no single layer sufficient on its own.
+
+---
+
 ## Decisions
 
 | Date | Decision | Rationale | Files changed |
 |------|----------|-----------|---------------|
 | 2026-05-26 | NO_GST_REG severity standardized to HIGH | Tool already assigns HIGH; substantive risk (invalid input tax claim, IRAS audit exposure) is high-severity by nature; system prompt table updated to match | system-prompts/base.md |
+## Automated Baseline Run v0
+
+*Run date: 2026-05-26 14:21:35 UTC | Script: run_baseline_tests.py*
+
+### Results Summary
+
+| Test | Score | Notes |
+|------|-------|-------|
+| Test 1: F5 Calculation | 10/10 | Boxes 1-8 calculated from 39 SGD sales and 15 SGD purchase invoices. FX invoices |
+| Test 2: Tax Classification | 10/10 | Found 8 unique VatGroup codes: 8 known, 0 unknown/unmapped. 11 FX+SO mismatch(es |
+| Test 3: Error Detection | 10/10 | Checks: E1, E2(sales+purchases,incl.BL), E3, E4, NO_GST_REG, COMPLETENESS. Findi |
+| **Overall** | **30/30** | |
+
+### Test 1: F5 Box Values (SGD)
+
+| Box | Value |
+|-----|-------|
+| Box 1 (Standard-rated supplies) | SGD 370,589.97 |
+| Box 2 (Zero-rated supplies) | SGD 5,000.00 |
+| Box 3 (Exempt supplies) | SGD 3,000.00 |
+| Box 4 (Total supplies) | SGD 378,589.97 |
+| Box 5 (Taxable purchases) | SGD 123,277.76 |
+| Box 6 (Output tax) | SGD 25,941.32 |
+| Box 7 (Input tax claimed) | SGD 8,545.45 |
+| Box 8 (Net GST payable) | SGD 17,395.87 |
+
+FX invoices flagged (excluded from boxes): 10
+
+### Test 2: VatGroups Found
+
+- `BL`: Blocked input tax (Reg 26/27) → Excluded
+- `ES33`: Exempt supply (Reg 33) → Box 3
+- `IM`: Import GST → Box 5 + Box 7
+- `OS`: Out of scope → Excluded
+- `SI`: Standard-rated input → Box 5 + Box 7
+- `SO`: Standard-rated output → Box 1 + Box 6
+- `ZP`: Zero-rated purchase → Box 5 only
+- `ZR`: Zero-rated supply → Box 2
+
+FX+SO mismatches detected: 11
+
+### Test 3: Findings
+
+Total findings: 19 (HIGH: 18, MEDIUM: 1)
+- [HIGH] NO_GST_REG DocNum 592: Input tax claimed from supplier V1010 (Far East Imports) without a GST registrat
+- [HIGH] NO_GST_REG DocNum 594: Input tax claimed from supplier V70000 (SMD Technologies) without a GST registra
+- [HIGH] NO_GST_REG DocNum 595: Input tax claimed from supplier V20000 (Lasercom) without a GST registration num
+- [HIGH] NO_GST_REG DocNum 600: Input tax claimed from supplier V60000 (CTI Computers) without a GST registratio
+- [HIGH] NO_GST_REG DocNum 601: Input tax claimed from supplier V30000 (Blockies Corporation) without a GST regi
+- [HIGH] NO_GST_REG DocNum 604: Input tax claimed from supplier V50000 (Lumarx) without a GST registration numbe
+- [HIGH] NO_GST_REG DocNum 605: Input tax claimed from supplier V10000 (Acme Associates) without a GST registrat
+- [HIGH] E1 DocNum 958: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+- [HIGH] E1 DocNum 964: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+- [HIGH] E1 DocNum 965: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+
+---
