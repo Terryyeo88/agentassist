@@ -163,7 +163,9 @@ F5_BOX_MAPPING = {
     "IM":     {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
     "IGDS":   {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
     "ME":     {"lt_box": "box_5_taxable_purchases",    "tt_box": None,                "side": "purchase"},
-    "NR":     {"lt_box": "box_5_taxable_purchases",    "tt_box": None,                "side": "purchase"},
+    "NR":     {"description": "Non-GST registered purchase", "lt_box": None,           "tt_box": None,                "side": "purchase"},
+    # NR excluded from Box 5 per IRAS para 5.11(o): purchases from non-GST registered
+    # traders are not taxable purchases; no input tax is claimable on these.
     "BL":     {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
     "EP":     {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
     "OP":     {"lt_box": None,                         "tt_box": None,                "side": "purchase"},
