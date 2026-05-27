@@ -103,6 +103,191 @@ Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
 
 ---
 
+## Business framing and value proposition
+
+This section captures the product positioning that the experimental work
+has validated. It should be read alongside the technical sections below;
+the technical architecture is what it is *because* the business framing
+demands it.
+
+### Product
+
+AgentAssist provides line-level GST compliance review for mid-market
+Singapore SAP B1 clients. The system combines deterministic
+rule-checking (every transaction examined for E1/E2/E3/E4/NO_GST_REG
+errors) with applied judgment on edge cases (semantic VatGroup
+appropriateness, cross-finding correlation, novel error patterns) and
+produces a signed-off PDF report ready for IRAS pre-filing review.
+
+### Conceptual model
+
+AgentAssist functions as a **junior accountant** that a senior financial
+officer can orchestrate to accelerate their own workflows. The system
+performs the line-level review work that would otherwise require 20-40
+hours of senior reviewer time per quarter per client. The senior
+reviewer applies judgment on the edge cases the system surfaces,
+accepts/rejects/escalates each finding, and signs off on the final
+report before submission to IRAS.
+
+The human-in-the-loop boundary is explicit and non-negotiable:
+- The system performs detection and surfaces findings with applied
+  judgment on edge cases. It never asserts compliance positions
+  unilaterally.
+- The senior reviewer (typically the client's lead financial officer
+  or an external accountant) reviews every finding before sign-off.
+- The signed report carries the reviewer's professional name and
+  responsibility, not the system's.
+
+This boundary is encoded architecturally: the system prompt's
+compliance assertion rule ("never assert a compliance issue without
+tool-confirmed evidence") prevents the system from producing the kind
+of unaccompanied, confident compliance recommendations that the V0/V1
+experiments demonstrated to be dangerous.
+
+### The judgment layer (what distinguishes this from an automated script)
+
+The architecture has three layers, but the commercial differentiation
+lives in how they work together rather than in any single layer:
+
+1. **Deterministic rule-checking** (custom MCP tools) catches mechanical
+   errors: foreign currency miscoding, blocked input tax with non-zero
+   GST, suppliers with blank registration numbers. A Python script could
+   do this alone.
+
+2. **Applied judgment on edge cases** (Claude reasoning, guided by
+   knowledge base and system prompt) catches issues that require
+   semantic interpretation: whether "Financial Advisory Service" is
+   genuinely a Reg 33 exempt service, whether a ZR line with a
+   Singapore ship-to address is a real export, whether two findings on
+   the same DocNum should be cross-correlated for prioritization. A
+   pure script cannot do this; an unaccompanied LLM does it
+   unreliably (V0/V1 failure mode).
+
+3. **Procedural enforcement** (system prompt) ensures Claude reasons
+   conservatively: only surfaces edge cases for reviewer judgment, never
+   asserts conclusions, always cites the data underlying each finding.
+   This is what prevents the V1 F7 fabrication and makes the surfaced
+   edge cases actionable rather than dangerous.
+
+The V0 → V3 experimental progression demonstrates this empirically: V0
+(unaccompanied Claude) invents dangerous compliance recommendations; V1
+(knowledge base alone) reproduces the fabrications; V2 (system prompt
+added) eliminates the fabrications and enables population-level
+analysis; V3 (custom tools added) achieves deterministic precision
+without sacrificing the judgment layer. See
+`exploration-notes/baseline-test-results.md` for full per-version
+scoring.
+
+### Pricing model
+
+Per-engagement, per-quarter, per-client. Not per-seat subscription.
+
+This reflects what is actually being sold: a defined deliverable (the
+signed PDF review report) produced at a defined cadence (quarterly,
+aligned with F5 filing) for a defined client (one SAP B1 instance, one
+GST registration). It also aligns with how mid-market Singapore finance
+teams already buy tax services from accounting firms — the engagement
+model is familiar; the difference is the cost-per-engagement at
+AgentAssist scale.
+
+### Operational economics
+
+Without AgentAssist: a senior accountant performing line-level GST
+review samples 10-20% of transactions (because comprehensive review is
+intractable at hourly cost), spending 20-40 hours per quarter per
+client.
+
+With AgentAssist: the system reviews 100% of transactions
+deterministically and surfaces edge cases for senior review. Senior
+reviewer time drops to approximately 2-4 hours per quarter per client
+(reviewing surfaced findings, applying judgment, signing off).
+
+This is approximately a 5-10x reduction in senior reviewer hours per
+client, while expanding coverage from sampling to population. The
+economic value can be captured either as "same revenue per client, much
+lower cost per engagement" (margin expansion for the reviewer/firm) or
+"same total reviewer hours, 5-10x more clients served" (capacity
+expansion).
+
+### Delivery format
+
+The end deliverable is a structured PDF report containing:
+- Methodology disclosure (what was examined, what was not)
+- Period and data scope (date range, record counts, FX exclusions)
+- F5 box table with VatGroup attribution
+- Error findings sorted by severity (E1, E2, NO_GST_REG, etc.) with
+  DocNums, line-level detail, and recommendations
+- Edge cases surfaced for human judgment (semantic appropriateness,
+  ambiguous classifications)
+- Cross-finding synthesis (e.g., "DocNum X carries both NO_GST_REG and
+  E2 flags — highest priority document")
+- Explicit list of items not examined (credit notes if still unhandled,
+  manual journals, custom VatGroups)
+- Reviewer's signature block
+- Disclaimer
+
+This is the IRAS-compliant document that the senior financial officer
+signs and either files directly or hands to their accountant for final
+submission. The conversational Claude Desktop interface is not the
+deliverable; it is the workspace where the system is operated.
+
+### Target customer segment
+
+**Primary**: In-house finance teams at mid-market Singapore SAP B1
+clients. These teams currently perform F5 preparation in-house but
+have insufficient capacity for line-level pre-filing review. They feel
+exposure to IRAS audit risk but cannot justify additional headcount.
+AgentAssist gives them the review they wish they had time for.
+
+**Secondary**: Tax/GST advisory practices serving multiple SAP B1
+mid-market clients. These firms can deliver line-level review to their
+clients as a productized service offering, with AgentAssist providing
+the operational machinery and the firm providing the reviewer-of-record.
+Distribution model: partner with Singapore SAP B1 resellers as channel,
+similar to US Vertex/Kintsugi/CPA.com playbook.
+
+### Forward expansion (post-GST)
+
+The current implementation focuses on Singapore GST F5 because it is
+tractable, well-bounded, and tied to a known regulatory deadline. The
+architectural pattern (deterministic tools + judgment layer +
+orchestration + human sign-off) generalizes to other compliance
+workflows: F7 disclosure of errors, more complex partial exemption
+calculations, IGDS reporting for approved participants, and eventually
+adjacent regimes (Malaysia SST, Vietnam VAT). Each expansion is a new
+knowledge base + new tools + same architectural pattern.
+
+Future capability expansion will move toward fully agentic workflows
+with orchestration handling multiple parallel tasks within a single
+engagement (e.g., F5 preparation + supplier registration verification +
+prior-period reconciliation in a single integrated workflow). The
+current single-workflow architecture is a starting point, not the end
+state.
+
+### What this means for the technical roadmap
+
+The business framing above implies specific technical priorities:
+
+- **Report generation** is critical-path: without the PDF deliverable,
+  the engagement cannot be completed professionally. See Production
+  Readiness Gap Analysis § Reporting and audit trail.
+- **Per-client configuration** is critical-path: without it, the system
+  cannot be deployed beyond SBODEMOSG. See § Per-client configuration.
+- **Credit note support** is critical-path: most real clients have
+  credit notes; F5 figures without credit note handling are wrong.
+- **Audit trail / immutable logging** is required for the reviewer
+  sign-off model: the reviewer must be able to demonstrate to IRAS
+  (if audited) which data was examined and how findings were derived.
+
+Less critical to the current business model:
+- Agent skills (Anthropic skill packaging): the current product is a
+  single workflow; skills become relevant when the product expands to
+  multiple distinct deliverable types or adjacent jurisdictions.
+- Automated evaluation harness: needed for ongoing regression testing
+  as the product matures, but not gating first revenue.
+
+---
+
 ## Repository structure
 
 The repository has seven substantive directories and three files at root level that warrant
