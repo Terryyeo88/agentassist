@@ -13,7 +13,7 @@
 | v0 (baseline) | Read-only MCP connector only | 4/10 | 6/10 | 2/10 | 12/30 |
 | v1 | + Knowledge base (sg-tax-code-mappings.md) | 5/10 | 5/10 | 3/10 | 13/30 |
 | v2 | + System prompt (orchestration rules) | 7/10 | 9/10 | 9/10 | 25/30 |
-| v3 | + 3 new MCP tools (F5 calc, validate, detect errors) | **10/10** | **10/10** | — | — |
+| v3 | + 3 new MCP tools (F5 calc, validate, detect errors) | **10/10** | **10/10** | **10/10** | **30/30** |
 | v4 | + Skill (full workflow) | — | — | — | — |
 | *Reference* | *Python script `run_baseline_tests.py`* | *10/10* | *10/10* | *10/10* | *30/30* |
 
