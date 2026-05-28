@@ -36,7 +36,9 @@
     {
       "DocNum": 611,
       "DocEntry": 613,
-      "label": "Invoice 7 \u2014 Non-GST registered purchase (NR)"
+      "label": "Invoice 7 \u2014 Non-GST registered purchase (NR)",
+      "tax_total": 45.00,
+      "tax_rate_note": "9% rate \u2014 anomaly vs SBODEMOSG demo norm of 7%; SAP applied current statutory rate to NR-coded line at seed time"
     }
   ],
   "credit_notes": [

@@ -11,15 +11,12 @@ T1.1 update: credit notes (CreditNotes, PurchaseCreditNotes) are fetched and inc
 T1.1 Part B: NR added to E2_ZERO_RATE_CODES — DocNum 611 (VatGroup NR, TaxTotal 45.00)
   now appears in Test 3 E2 output.
 
-Post-seed reference figures for Q3 2024 (after Credit Note A + B seeds, 2026-05-28):
-  Box 1 (standard-rated sales):   369,589.97  (pre-seed 370,589.97 - CN 1,000.00)
-  Box 2 (zero-rated sales):        10,000.00
-  Box 3 (exempt sales):             6,000.00
-  Box 4 (total sales):            385,589.97  (Box 1+2+3)
-  Box 5 (taxable purchases):      128,477.76  (pre-seed 128,977.76 - CN 500.00)
-  Box 6 (output tax):              25,871.32  (pre-seed 25,941.32 - CN 70.00)
-  Box 7 (input tax):                8,825.45  (pre-seed 8,860.45 - CN 35.00)
-  Box 8 (net GST payable):         17,045.87  (Box 6 - Box 7)
+Post-seed reference figures: regenerate by running this script against
+the live SBODEMOSG instance after the 608–611 fixture decision is
+finalised with Collin. Current known seeds active: original 605–607,
+second generation 608–611 (NR seed 611 confirmed live with TaxTotal=45.00
+at 9% rate, documented as known E2 fixture — see test_data_registry.json),
+CN A DocNum 10 SO 1000.00/70.00, CN B DocNum 11 SI 500.00/35.00.
 """
 
 import getpass
@@ -65,7 +62,8 @@ STANDARD_RATE_CODES = {"SO", "SI"}
 
 # Matches _E2_ZERO_RATE_CODES in sap_b1_server.py (NR added in T1.1 Part B).
 # NR with TaxTotal > 0 is a genuine E2: non-taxable purchase carrying GST.
-# DocNum 611 (VatGroup NR, TaxTotal 45.00) should appear in Test 3 E2 output.
+# DocNum 611 (VatGroup NR, LineTotal 500.00, TaxTotal 45.00 at 9% rate) is a
+# confirmed E2 fixture. Detection is expected and correct — see test_data_registry.json.
 E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR"}
 
 _SEVERITY = {
@@ -407,7 +405,14 @@ def run_test_3(
     T1.1 additions:
     - Credit note lines checked for E1–E4 (descriptions prefixed "Credit note —")
     - NO_GST_REG extended to purchase credit notes
-    - NR added to E2_ZERO_RATE_CODES (Part B)
+    - NR added to E2_ZERO_RATE_CODES (Part B). DocNum 611: VatGroup NR,
+      LineTotal 500.00, TaxTotal 45.00 (9% rate — anomaly vs SBODEMOSG 7%
+      demo norm; SAP applied statutory rate at seed time). Retained as a known
+      E2 fixture: NR with TaxTotal > 0.01 is a genuine compliance error
+      regardless of rate. E2 detection on this line is expected and correct.
+      The 9% rate means this line would also trigger E4 if E4 checks SO/SI
+      only — confirm _E4_STANDARD_RATE_CODES does not include NR to ensure
+      no double-flagging.
     """
     print("\n[Test 3] Error Detection (E1, E2, E3, E4, NO_GST_REG, COMPLETENESS)...")
 
@@ -711,7 +716,13 @@ def run_test_3(
         print(f"      {ct}: {cnt}")
     print(f"    Score: {score}/10")
 
-    # Verify NR E2 finding (DocNum 611) is present
+    # DocNum 611: VatGroup NR, LineTotal 500.00, TaxTotal 45.00 (9% rate —
+    # anomaly vs SBODEMOSG 7% demo norm; SAP applied statutory rate at seed time).
+    # Retained as a known E2 fixture: NR with TaxTotal > 0.01 is a genuine
+    # compliance error regardless of rate. E2 detection on this line is expected
+    # and correct. The 9% rate means this line would also trigger E4 if E4 checks
+    # SO/SI only — confirm _E4_STANDARD_RATE_CODES does not include NR to ensure
+    # no double-flagging.
     nr_e2 = [f for f in findings if f.get("check_type") == "E2" and f.get("vat_group") == "NR"]
     if nr_e2:
         print(f"    NR E2 check: DocNum(s) {[f['doc_num'] for f in nr_e2]} flagged ✓")
