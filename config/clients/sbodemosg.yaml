@@ -1,0 +1,25 @@
+# SAP B1 public demo instance — safe to commit (not a production environment).
+# Credentials are still sourced from environment variables, not from this file.
+
+client_id: sbodemosg
+client_name: "SAP B1 Demo (SBODEMOSG)"
+gst_registration_number: ""              # Public demo instance — no real GST reg number.
+applicable_gst_rate: 0.07               # SBODEMOSG demo data uses 7% (pre-2024 rate).
+
+sap_b1:
+  service_layer_url: "https://35.186.145.230:55000/b1s/v2"
+  company_db: "SBODEMOSG"
+  username_env_var: "SAP_USERNAME"
+  password_env_var: "SAP_PASSWORD"
+  ssl_verify: false                      # SBODEMOSG uses a self-signed certificate.
+
+period_defaults:
+  fiscal_year_start_month: 1
+
+custom_vat_groups: {}
+
+completeness_threshold: 0.10
+
+report:
+  reviewer_name: ""
+  firm_name: ""

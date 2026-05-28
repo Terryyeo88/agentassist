@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import logging
+from pathlib import Path
 from typing import Any, Optional
 from datetime import datetime, timedelta
 
@@ -15,8 +16,16 @@ import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-# Load environment variables
-load_dotenv()
+# Ensure repo root is on sys.path so config.loader is importable.
+# This file lives at <repo>/mcp-servers/custom/ — three parent hops reach the root.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.loader import load_client_config, ClientConfig  # noqa: E402
+
+# Load environment variables before config loader reads them.
+load_dotenv(_REPO_ROOT / ".env")
 
 # Configure logging to stderr (stdout is reserved for MCP protocol)
 logging.basicConfig(
@@ -33,23 +42,19 @@ mcp = FastMCP("sap-b1")
 class SAPB1Client:
     """SAP Business One Service Layer client with session management."""
 
-    def __init__(self):
-        required = ["SAP_BASE_URL", "SAP_COMPANY_DB", "SAP_USERNAME", "SAP_PASSWORD"]
-        missing = [v for v in required if not os.environ.get(v)]
-        if missing:
-            raise RuntimeError(
-                f"Required environment variables not set: {', '.join(missing)}. "
-                f"Copy config/env.example to .env at repo root and fill in values."
-            )
-        self.base_url = os.environ["SAP_BASE_URL"].rstrip("/")
-        self.company_db = os.environ["SAP_COMPANY_DB"]
-        self.username = os.environ["SAP_USERNAME"]
-        self.password = os.environ["SAP_PASSWORD"]
-        self.ssl_verify = os.environ.get("SAP_SSL_VERIFY", "true").lower() == "true"
+    def __init__(self, config: ClientConfig):
+        self.base_url = config.service_layer_url
+        self.company_db = config.company_db
+        self.username = config.username
+        self.password = config.password
+        self.ssl_verify = config.ssl_verify
         self.session_id: Optional[str] = None
         self.session_timeout: Optional[datetime] = None
         self.http = httpx.Client(verify=self.ssl_verify, timeout=30.0)
-        logger.info(f"SAP B1 Client initialized for {self.base_url}")
+        logger.info(
+            f"SAP B1 Client initialised for {self.base_url} "
+            f"(company_db={self.company_db}, client={config.client_id})"
+        )
 
     def login(self) -> dict:
         url = f"{self.base_url}/Login"
@@ -126,8 +131,7 @@ class SAPB1Client:
         return {"status": "logged out"}
 
 
-# Global SAP client
-sap = SAPB1Client()
+# Global SAP client — initialised after F5_BOX_MAPPING is defined (see below).
 
 
 def _fmt(data: Any) -> str:
@@ -174,6 +178,40 @@ F5_BOX_MAPPING = {
 
 _E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL"}
 _STANDARD_RATE_SALES = {"SO", "DS"}
+
+
+# ── Module-level initialisation ───────────────────────────────────────────────
+
+def _load_sap_config() -> ClientConfig:
+    """
+    Load client config from YAML. CLIENT_ID must be set — no silent fallback.
+
+    Correction 2: if CLIENT_ID is absent we refuse to guess the target instance.
+    A misconfigured MCP server silently pointed at the wrong SAP company database
+    is a hard-to-detect, hard-to-undo data integrity risk.
+    """
+    client_id = os.environ.get("CLIENT_ID", "").strip()
+    if not client_id:
+        raise RuntimeError(
+            "CLIENT_ID environment variable is not set.\n"
+            "  AgentAssist refuses to start without an explicit client identifier.\n"
+            "  Add CLIENT_ID=<client_id> to your .env file "
+            "(e.g. CLIENT_ID=sbodemosg).\n"
+            "  Available configs are in config/clients/ — "
+            "see example.yaml for the schema."
+        )
+    return load_client_config(client_id, check_connectivity=False)
+
+
+_client_config = _load_sap_config()
+
+# Merge client-specific VatGroup codes into the standard mapping (additive only).
+# Collision with standard codes is already rejected by load_client_config, so
+# this loop can only add new codes — never overwrite existing ones.
+for _code, _mapping in _client_config.custom_vat_groups.items():
+    F5_BOX_MAPPING[_code] = _mapping
+
+sap = SAPB1Client(_client_config)
 
 
 def _fetch_invoices_paginated(entity: str, period_start: str, period_end: str) -> list:

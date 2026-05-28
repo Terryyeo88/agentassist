@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-Creates 6 synthetic test invoices in SAP B1 SBODEMOSG for GST F5 baseline testing.
+Creates synthetic test invoices in SAP B1 SBODEMOSG for GST F5 baseline testing.
 All dated 2024-07-15 (Q3 2024), tagged FreeText=BASELINE_TEST_DATA for cleanup.
+
+Connection details come from config/clients/<CLIENT_ID>.yaml (default: sbodemosg)
+so that seed writes and baseline tests always target the same SAP instance.
 """
 
 import copy
-import getpass
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,15 +17,34 @@ from pathlib import Path
 import requests
 import urllib3
 
+# Add repo root to sys.path so config.loader is importable.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(_REPO_ROOT / ".env")
+except ImportError:
+    pass  # rely on environment being pre-set if dotenv is unavailable
+
+from config.loader import load_client_config  # noqa: E402
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-BASE_URL = "https://35.186.145.230:55000/b1s/v2"
-COMPANY_DB = "SBODEMOSG"
-USERNAME = "manager"
+# Load client config — defaults to sbodemosg; override with CLIENT_ID env var.
+# IMPORTANT: seed writes must always target the same instance as run_baseline_tests.py.
+# Both scripts read the same CLIENT_ID env var and the same YAML, so they cannot diverge.
+_cfg = load_client_config(
+    os.environ.get("CLIENT_ID", "sbodemosg"),
+    check_connectivity=False,
+)
+
+BASE_URL = _cfg.service_layer_url
+COMPANY_DB = _cfg.company_db
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-CREDS_FILE = PROJECT_ROOT / "keys" / "sap_credentials.json"
 REGISTRY_FILE = SCRIPT_DIR / "test_data_registry.json"
 
 # Invoice definitions: entity + label are metadata stripped before POST
@@ -114,21 +136,14 @@ INVOICE_SPECS = [
 ]
 
 
-def load_password() -> str:
-    if CREDS_FILE.exists():
-        creds = json.loads(CREDS_FILE.read_text(encoding="utf-8"))
-        return creds["password"]
-    return getpass.getpass("Enter SAP B1 manager password: ")
-
-
 class B1Session:
-    def __init__(self, password: str):
+    def __init__(self):
         self.s = requests.Session()
-        self.s.verify = False
+        self.s.verify = _cfg.ssl_verify
         resp = self.s.post(f"{BASE_URL}/Login", json={
             "CompanyDB": COMPANY_DB,
-            "UserName": USERNAME,
-            "Password": password,
+            "UserName": _cfg.username,
+            "Password": _cfg.password,
         })
         if resp.status_code != 200:
             raise RuntimeError(f"Login failed ({resp.status_code}): {resp.text[:500]}")
@@ -162,10 +177,11 @@ def main():
     print("=" * 60)
     print("SAP B1 — Seed Test Data")
     print("=" * 60)
+    print(f"Client: {_cfg.client_name} ({_cfg.client_id})")
+    print(f"SAP B1: {BASE_URL}  company_db={COMPANY_DB}")
 
-    password = load_password()
     print("\nConnecting to SAP B1...")
-    b1 = B1Session(password)
+    b1 = B1Session()
 
     print("\nLooking up an item code for invoice lines...")
     item_code = find_item_code(b1)
