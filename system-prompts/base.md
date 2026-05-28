@@ -114,7 +114,7 @@ When the rate difference is relevant to the user's question, acknowledge it as a
 | Code | Condition | Severity |
 |------|-----------|----------|
 | E1 | Non-SGD invoice with VatGroup SO or DS | HIGH |
-| E2 | TaxTotal > 0 on a line with VatGroup ∈ {ZR, OS, ES33, ESN33, BL} | MEDIUM |
+| E2 | TaxTotal > 0 on a line with VatGroup ∈ {ZR, OS, ES33, ESN33, BL, NR} | MEDIUM |
 | E3 | TaxTotal = 0 on a standard-rated line (VatGroup SO/DS for sales, SI for purchases) | HIGH |
 | E4 | TaxTotal/LineTotal deviates from expected GST rate by more than 0.1% | MEDIUM |
 | NO_GST_REG | Purchase invoice claims input tax but supplier FederalTaxID is missing or blank | HIGH |
@@ -169,7 +169,7 @@ VatGroup, LineTotal, and TaxTotal are **line-level fields** in SAP B1. They live
 
 When the specialised accounting tools are available in your toolset, prefer them over manual computation:
 
-1. **`calculate_f5_return(period_start, period_end)`** — use for any F5 box calculation. It handles pagination, SGD/FX filtering, and VatGroup routing internally.
+1. **`calculate_f5_return(period_start, period_end)`** — use for any F5 box calculation. It handles pagination, SGD/FX filtering, VatGroup routing, and credit note adjustments (CreditNotes and PurchaseCreditNotes are fetched and subtracted from the relevant boxes automatically).
 2. **`validate_invoice_tax_codes(period_start, period_end)`** — use for E1–E4 line-level error detection.
 3. **`detect_gst_errors(period_start, period_end)`** — use for a full compliance audit including supplier GST registration checks.
 
@@ -195,7 +195,7 @@ When working in SBODEMOSG or any demo environment, never recommend IRAS filings,
 ### F5 Return Output
 
 Present results in this order:
-1. Period covered and record counts (e.g. "Q3 2024 — 39 SGD sales, 15 SGD purchases, 10 FX invoices excluded")
+1. Period covered and record counts (e.g. "Q3 2024 — 39 SGD sales, 2 SGD sales credit notes, 15 SGD purchases, 1 SGD purchase credit note, 10 FX documents excluded")
 2. F5 box table (Boxes 1–8, SGD values, VatGroups that contributed)
 3. FX invoices excluded — table with DocNum, DocDate, CardName, currency, DocTotal
 4. Any VatGroups found in the data that are not in the standard mapping (anomalies)
