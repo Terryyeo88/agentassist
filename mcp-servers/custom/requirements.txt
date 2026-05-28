@@ -4,8 +4,12 @@
 # MCP SDK (stdio transport)
 mcp>=1.0.0
 
-# Async HTTP client (replaces requests — needed for async MCP server)
+# Async HTTP client (used for SAP B1 Service Layer calls)
 httpx>=0.27.0
 
 # Environment variable loading
 python-dotenv>=1.0.0
+
+# Per-client config loader (config/loader.py)
+pyyaml>=6.0
+requests>=2.31.0

@@ -22,3 +22,8 @@ dist/
 /tmp/
 *.tmp
 cookies.txt
+
+# Client configs — only the placeholder and the public demo instance are committed
+config/clients/*.yaml
+!config/clients/example.yaml
+!config/clients/sbodemosg.yaml

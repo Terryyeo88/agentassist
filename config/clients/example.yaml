@@ -1,0 +1,38 @@
+# AgentAssist per-client configuration schema.
+# Copy this file to config/clients/<client_id>.yaml and fill in the values.
+#
+# SECURITY: No credentials go in this file.
+# Reference secrets by the NAME of the environment variable that holds them.
+# Set those variables in your .env file (see config/env.example).
+
+client_id: example                        # Must match the filename stem exactly.
+client_name: "Example Client Pte Ltd"     # Human-readable display name.
+gst_registration_number: "M90000001A"     # IRAS-issued GST reg no. Leave blank for demo/test.
+applicable_gst_rate: 0.09                 # 0.09 = 9% (current SG rate). 0.07 for pre-2024 demo data.
+
+sap_b1:
+  service_layer_url: "https://your-sap-host:50000/b1s/v2"
+  company_db: "YOUR_COMPANY_DB"
+  username_env_var: "SAP_USERNAME"        # Name of the env var that holds the SAP username.
+  password_env_var: "SAP_PASSWORD"        # Name of the env var that holds the SAP password.
+  ssl_verify: true                        # Set false ONLY for self-signed certs in dev/demo.
+
+period_defaults:
+  fiscal_year_start_month: 1             # 1 = January, 4 = April, etc.
+
+# Client-specific VatGroup codes NOT in the IRAS standard set.
+# Keys MUST NOT collide with standard codes (SO, DS, ZR, ES33, ESN33, OS,
+# SI, ZP, IM, IGDS, ME, NR, BL, EP, OP, TX-E33, TX-N33, TX-RE).
+# The loader will reject the config if any collision is detected.
+# Each entry must mirror the F5_BOX_MAPPING shape:
+#   MY_CODE:
+#     lt_box: box_5_taxable_purchases   # or null to exclude from all boxes
+#     tt_box: null                       # or a box key; null if no tax contribution
+#     side: purchase                     # "sales" or "purchase"
+custom_vat_groups: {}
+
+completeness_threshold: 0.10            # Flag if purchases < this fraction of sales count.
+
+report:
+  reviewer_name: ""                      # Reviewing tax professional (for report headers).
+  firm_name: ""                          # Accounting / advisory firm name.

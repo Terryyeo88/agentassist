@@ -4,8 +4,8 @@ Runs the 3 GST F5 baseline tests against live SAP B1 SBODEMOSG for Q3 2024.
 Outputs a structured JSON report and appends a summary to baseline-test-results.md.
 """
 
-import getpass
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,19 +13,39 @@ from pathlib import Path
 import requests
 import urllib3
 
+# Add repo root to sys.path so config.loader is importable.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(_REPO_ROOT / ".env")
+except ImportError:
+    pass  # rely on environment being pre-set if dotenv is unavailable
+
+from config.loader import load_client_config  # noqa: E402
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-BASE_URL = "https://35.186.145.230:55000/b1s/v2"
-COMPANY_DB = "SBODEMOSG"
-USERNAME = "manager"
-PERIOD_START = "2024-07-01"
+# Load client config — defaults to sbodemosg; override with CLIENT_ID env var.
+# check_connectivity=False: the script manages its own B1Session and will fail
+# loud on its own if the SAP instance is unreachable.
+_cfg = load_client_config(
+    os.environ.get("CLIENT_ID", "sbodemosg"),
+    check_connectivity=False,
+)
+
+BASE_URL = _cfg.service_layer_url
+COMPANY_DB = _cfg.company_db
+DEMO_GST_RATE = _cfg.applicable_gst_rate  # 0.07 for SBODEMOSG demo data
+
+PERIOD_START = "2024-07-01"   # test-specific period, not from config
 PERIOD_END = "2024-09-30"
 PERIOD_LABEL = "Q3 2024"
-DEMO_GST_RATE = 0.07  # SBODEMOSG uses 7% (pre-2024 demo rate)
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-CREDS_FILE = PROJECT_ROOT / "keys" / "sap_credentials.json"
 REPORT_FILE = PROJECT_ROOT / "exploration-notes" / "baseline-test-report-v0.json"
 RESULTS_FILE = PROJECT_ROOT / "exploration-notes" / "baseline-test-results.md"
 
@@ -83,21 +103,14 @@ KNOWN_VATGROUPS = {
 }
 
 
-def load_password() -> str:
-    if CREDS_FILE.exists():
-        creds = json.loads(CREDS_FILE.read_text(encoding="utf-8"))
-        return creds["password"]
-    return getpass.getpass("Enter SAP B1 manager password: ")
-
-
 class B1Session:
-    def __init__(self, password: str):
+    def __init__(self):
         self.s = requests.Session()
-        self.s.verify = False
+        self.s.verify = _cfg.ssl_verify
         resp = self.s.post(f"{BASE_URL}/Login", json={
             "CompanyDB": COMPANY_DB,
-            "UserName": USERNAME,
-            "Password": password,
+            "UserName": _cfg.username,
+            "Password": _cfg.password,
         })
         if resp.status_code != 200:
             raise RuntimeError(f"Login failed ({resp.status_code}): {resp.text[:500]}")
@@ -573,9 +586,10 @@ def main():
     print(f"Period: {PERIOD_LABEL} ({PERIOD_START} to {PERIOD_END})")
     print("=" * 60)
 
-    password = load_password()
+    print(f"\nClient: {_cfg.client_name} ({_cfg.client_id})")
+    print(f"SAP B1: {BASE_URL}  company_db={COMPANY_DB}")
     print("\nConnecting to SAP B1...")
-    b1 = B1Session(password)
+    b1 = B1Session()
 
     date_filter = f"DocDate ge '{PERIOD_START}' and DocDate le '{PERIOD_END}'"
 
