@@ -38,5 +38,24 @@
       "DocEntry": 613,
       "label": "Invoice 7 \u2014 Non-GST registered purchase (NR)"
     }
-  ]
+  ],
+  "credit_notes": [
+    {
+      "DocNum": 10,
+      "DocEntry": 11,
+      "label": "Credit Note A -- Standard-rated sales credit (SO)",
+      "line_total": 1000.0,
+      "tax_total": 70.0
+    }
+  ],
+  "purchase_credit_notes": [
+    {
+      "DocNum": 11,
+      "DocEntry": 12,
+      "label": "Credit Note B -- Standard-rated purchase credit (SI)",
+      "line_total": 500.0,
+      "tax_total": 35.0
+    }
+  ],
+  "credit_notes_created_at": "2026-05-28T09:18:37.678143+00:00"
 }

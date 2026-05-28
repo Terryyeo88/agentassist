@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Creates 6 synthetic test invoices in SAP B1 SBODEMOSG for GST F5 baseline testing.
-All dated 2024-07-15 (Q3 2024), tagged FreeText=BASELINE_TEST_DATA for cleanup.
+Creates synthetic test documents in SAP B1 SBODEMOSG for GST F5 baseline testing.
+Invoices 1–7 (Q3 2024) were created in an earlier run; this script now also creates
+Credit Notes A and B for T1.1 credit note support testing.
+All documents tagged FreeText=BASELINE_TEST_DATA (at line level for credit notes).
 """
 
 import copy
@@ -135,6 +137,43 @@ INVOICE_SPECS = [
     },
 ]
 
+# Credit note seeds for T1.1 — created separately from the original invoice seeds.
+# FreeText tagging is at the line level (FreeText is a line-level field in SAP B1 SL).
+# SAP B1 SBODEMOSG calculates TaxTotal from the VatGroup tax code at its demo rate (7%).
+# Expected deltas vs pre-seed Q3 2024 F5:
+#   Credit Note A: Box 1 -= 1000.00, Box 6 -= <SAP-calculated TaxTotal at 7% = 70.00>
+#   Credit Note B: Box 5 -= 500.00,  Box 7 -= <SAP-calculated TaxTotal at 7% = 35.00>
+CREDIT_NOTE_SPECS = [
+    {
+        "_entity": "CreditNotes",
+        "_label": "Credit Note A — Standard-rated sales credit (SO)",
+        "CardCode": "C26000",
+        "DocDate": "2024-08-01",
+        "DocumentLines": [{
+            "ItemDescription": "Credit — Standard-Rated Sale Return",
+            "Quantity": 1,
+            "UnitPrice": 1000.00,
+            "LineTotal": 1000.00,
+            "VatGroup": "SO",
+            "FreeText": "BASELINE_TEST_DATA",
+        }],
+    },
+    {
+        "_entity": "PurchaseCreditNotes",
+        "_label": "Credit Note B — Standard-rated purchase credit (SI)",
+        "CardCode": "V10000",
+        "DocDate": "2024-08-01",
+        "DocumentLines": [{
+            "ItemDescription": "Credit — Standard-Rated Purchase Return",
+            "Quantity": 1,
+            "UnitPrice": 500.00,
+            "LineTotal": 500.00,
+            "VatGroup": "SI",
+            "FreeText": "BASELINE_TEST_DATA",
+        }],
+    },
+]
+
 
 def load_password() -> str:
     if CREDS_FILE.exists():
@@ -182,56 +221,85 @@ def find_item_code(b1: B1Session) -> str:
 
 def main():
     print("=" * 60)
-    print("SAP B1 — Seed Test Data")
+    print("SAP B1 - Seed Test Data (Credit Notes)")
     print("=" * 60)
+    print()
+    print("Seed amounts:")
+    print("  Credit Note A (CreditNotes/SO):         LineTotal=1000.00")
+    print("  Credit Note B (PurchaseCreditNotes/SI): LineTotal= 500.00")
+    print("  TaxTotal is SAP-calculated (7% demo rate):")
+    print("    Credit Note A expected TaxTotal: 70.00")
+    print("    Credit Note B expected TaxTotal: 35.00")
+    print("  Expected F5 deltas vs pre-seed Q3 2024 figures:")
+    print("    Box 1 (standard-rated sales):   -1000.00")
+    print("    Box 5 (taxable purchases):        -500.00")
+    print("    Box 6 (output tax):                -70.00")
+    print("    Box 7 (input tax):                 -35.00")
+    print("    Box 4 (total sales):             -1000.00")
+    print("    Box 8 (net GST):                   -35.00  (Box 6 - Box 7 = -70 - -35)")
+    print()
 
     password = load_password()
     print("\nConnecting to SAP B1...")
     b1 = B1Session(password)
 
-    print("\nLooking up an item code for invoice lines...")
+    print("\nLooking up an item code for credit note lines...")
     item_code = find_item_code(b1)
 
-    invoices_out = []
-    purchases_out = []
+    credit_notes_out = []
+    purchase_credit_notes_out = []
     errors = []
 
-    print("\nCreating test invoices...\n")
-    for spec in INVOICE_SPECS:
+    print("\nCreating credit note seed documents...\n")
+    for spec in CREDIT_NOTE_SPECS:
         entity = spec["_entity"]
         label = spec["_label"]
         body = copy.deepcopy({k: v for k, v in spec.items() if not k.startswith("_")})
         for line in body["DocumentLines"]:
-            line["ItemCode"] = item_code
+            if "ItemCode" not in line:
+                line["ItemCode"] = item_code
 
         print(f"  {label}")
         try:
             result = b1.post(entity, body)
             doc_num = result.get("DocNum")
             doc_entry = result.get("DocEntry")
+            # Confirm actual TaxTotal SAP applied
+            detail = b1.get(f"{entity}({doc_entry})")
+            lines = detail.get("DocumentLines", [])
+            actual_tax = sum(l.get("TaxTotal", 0) for l in lines)
+            actual_lt = sum(l.get("LineTotal", 0) for l in lines)
             print(f"    ✓  DocNum: {doc_num}  DocEntry: {doc_entry}")
-            record = {"DocNum": doc_num, "DocEntry": doc_entry, "label": label}
-            if entity == "Invoices":
-                invoices_out.append(record)
+            print(f"       LineTotal: {actual_lt:.2f}  TaxTotal (SAP-calculated): {actual_tax:.2f}")
+            record = {"DocNum": doc_num, "DocEntry": doc_entry, "label": label,
+                      "line_total": actual_lt, "tax_total": actual_tax}
+            if entity == "CreditNotes":
+                credit_notes_out.append(record)
             else:
-                purchases_out.append(record)
+                purchase_credit_notes_out.append(record)
         except RuntimeError as exc:
             print(f"    ✗  FAILED: {exc}", file=sys.stderr)
             errors.append({"label": label, "error": str(exc)})
 
     if errors:
-        print(f"\n{len(errors)} invoice(s) failed — aborting.", file=sys.stderr)
+        print(f"\n{len(errors)} document(s) failed — aborting registry update.", file=sys.stderr)
         sys.exit(1)
 
-    registry = {
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "invoices": invoices_out,
-        "purchase_invoices": purchases_out,
-    }
+    # Load existing registry and append credit note entries
+    if REGISTRY_FILE.exists():
+        registry = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
+    else:
+        registry = {"invoices": [], "purchase_invoices": []}
+
+    registry["credit_notes"] = credit_notes_out
+    registry["purchase_credit_notes"] = purchase_credit_notes_out
+    registry["credit_notes_created_at"] = datetime.now(timezone.utc).isoformat()
+
     REGISTRY_FILE.write_text(json.dumps(registry, indent=2), encoding="utf-8")
 
-    print(f"\nRegistry saved → {REGISTRY_FILE}")
-    print(f"Done — {len(invoices_out)} sales invoices, {len(purchases_out)} purchase invoices created.")
+    print(f"\nRegistry updated → {REGISTRY_FILE}")
+    print(f"Done — {len(credit_notes_out)} sales credit note(s), "
+          f"{len(purchase_credit_notes_out)} purchase credit note(s) created.")
 
 
 if __name__ == "__main__":
