@@ -55,6 +55,14 @@ exploration-notes/baseline-test-results.md for full per-test scoring
 and the V1/V2 Test 3 Reclassification Note documenting a methodological
 contamination discovery.
 
+Two post-experiment implementation tasks have since been completed. T1.2
+(2026-05-27) resolved the NR VatGroup inconsistency: NR is now excluded from
+Box 5 per IRAS para 5.11(o) across tool code, reference script, and system
+prompt, with a known E2 fixture (DocNum 611) seeded for validation. T1.1
+(2026-05-28) added credit note support: all three custom tools now fetch
+CreditNotes and PurchaseCreditNotes and subtract their line amounts from the
+relevant F5 boxes, with two seed credit notes validating the implementation.
+
 **What is genuinely production-ready versus prototype**
 
 Production-ready: the VatGroup → F5 box mapping logic, the FX exclusion and E1 detection
@@ -68,18 +76,21 @@ Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
 
 **The three to five most important gaps before commercial deployment**
 
-1. Credit notes are not queried by any of the three custom tools. F5 calculations on data with
-   credit notes will overstate box totals.
+1. RESOLVED (T1.1, 2026-05-28): Credit note support added to all three custom tools.
+   `CreditNotes` and `PurchaseCreditNotes` are now fetched and their amounts subtracted from
+   the corresponding F5 boxes. Two SBODEMOSG seed credit notes (CN A: CreditNotes/SO/1000.00,
+   CN B: PurchaseCreditNotes/SI/500.00) validate the implementation against live data.
 2. No per-client configuration model exists. Switching from SBODEMOSG to a real client's
    database would require editing code.
 3. No report generation. The system produces conversational output only. A paying customer
    expects a document they can file or present to a manager.
 4. No audit trail or input immutability. A conversational Claude Desktop window is not a
    defensible work product for a GST review engagement.
-5. NR VatGroup compliance error: the code, reference script, and system prompt include NR in
-   Box 5; the knowledge base says NR should be excluded per IRAS para 5.11(o). Resolution
-   requires verifying against the current IRAS e-Tax Guide directly; investigation not yet
-   conducted.
+5. RESOLVED (T1.2, 2026-05-27): NR VatGroup corrected to Excluded across tool code, reference
+   script, and system prompt. NR is now excluded from Box 5 per IRAS para 5.11(o). DocNum 611
+   seeded as a known NR E2 fixture (LineTotal 500.00, TaxTotal 45.00 at 9% — rate anomaly vs
+   SBODEMOSG 7% demo norm, documented in test_data_registry.json and
+   nr-vatgroup-resolution.md).
 
 **The three to five strongest assets**
 
@@ -320,7 +331,10 @@ sap-b1-ai-agent/
 │   │   ├── test2-tax-classification.md    ← v3 Test 2 raw log; confirms 10/10 result
 │   │   └── test3-error-detection.md       ← v3 Test 3 raw log; 10/10; all 19 reference findings
 │   ├── security-decisions.md              ← Deferred-decision register for credentials in git history
-│   └── docnum-605-verification.md         ← Live SAP query confirming BL line TaxTotal=56.00
+│   ├── docnum-605-verification.md         ← Live SAP query confirming BL line TaxTotal=56.00
+│   ├── nr-vatgroup-resolution.md          ← T1.2 investigation: NR excluded from Box 5; DocNum 611 E2 fixture notes
+│   ├── credit-note-exploration.md         ← T1.1 pre-impl exploration + implementation summary + post-seed reference figures
+│   └── t1.1-verification.md               ← Read-only verification pass: NR T1.2 completeness, rate check, delta check
 ├── keys/
 │   ├── sap_credentials.json               ← CRITICAL: plaintext credentials; untracked but unprotected
 │   └── sap-b1-poc-sg.pem                  ← SSH PEM key for SAP CAL instance; untracked
@@ -329,17 +343,17 @@ sap-b1-ai-agent/
 │                                          ← Note: no IRAS source PDFs loaded at runtime; synthesis is the runtime knowledge
 ├── mcp-servers/
 │   ├── custom/
-│   │   ├── sap_b1_server.py               ← Primary MCP server; 664 lines; working
+│   │   ├── sap_b1_server.py               ← Primary MCP server; 837 lines; credit notes + NR E2 added (T1.1/T1.2)
 │   │   ├── requirements.txt               ← Three dependencies (mcp, httpx, python-dotenv)
 │   │   ├── README.md                      ← Setup and tool inventory; accurate
 │   │   └── __pycache__/                   ← Python bytecode cache
 │   └── MCP-SAP/                           ← Third-party HTTP MCP server (Spanish, FastAPI)
 │                                          ← Not used; retained as reference; separate git repo
 ├── scripts/
-│   ├── run_baseline_tests.py              ← Reference implementation; authoritative test runner
-│   ├── seed_test_data.py                  ← Creates 6 synthetic test invoices in SBODEMOSG
+│   ├── run_baseline_tests.py              ← Reference implementation; T1.1 updated: credit notes + NR E2
+│   ├── seed_test_data.py                  ← Creates synthetic test documents (7 invoices + 2 credit notes)
 │   ├── cleanup_test_data.py               ← Cancels seeded test invoices
-│   ├── test_data_registry.json            ← DocEntry registry for seeded invoices; current
+│   ├── test_data_registry.json            ← DocEntry registry; updated with credit notes and DocNum 611 tax_rate_note
 │   └── test-service-layer.sh              ← Basic connectivity test; shell script
 ├── skills/                                ← Directory exists; entirely empty
 └── system-prompts/
@@ -448,12 +462,14 @@ maintains the appropriate epistemic posture at each layer.
 
 ### Architectural debt
 
-Two unresolved design questions in the current implementation:
+One resolved and one remaining design question:
 
-1. **Credit notes**: The `calculate_f5_return` tool does not query `CreditNotes` or
-   `PurchaseCreditNotes`. The knowledge base explicitly states "DEDUCT credit notes with same
-   VatGroups" under Box 1. This gap is acknowledged in the test results (Gap G19) but not yet
-   resolved.
+1. **Credit notes**: RESOLVED (T1.1, 2026-05-28). All three custom tools now call
+   `_fetch_credit_notes_paginated(entity_type, period_start, period_end)`, which fetches
+   `CreditNotes` (entity_type="sales") or `PurchaseCreditNotes` (entity_type="purchases"),
+   tags each record `is_credit_note=True`, and returns the list. Callers negate LineTotal
+   and TaxTotal when subtracting from F5 boxes — negation is explicit at the call site, not
+   inside the fetch function. Two SBODEMOSG seed credit notes confirm correct reference figures.
 
 2. **Per-client configuration**: Credentials, server URL, and company DB are hardcoded as
    fallback values in `SAPB1Client.__init__`. Environment variables override them, but there is
@@ -468,25 +484,35 @@ Two unresolved design questions in the current implementation:
 
 #### Tool 12: `calculate_f5_return(period_start: str, period_end: str) -> str`
 
-**Purpose**: Compute all eight F5 boxes for a given date range.
+**Purpose**: Compute all eight F5 boxes for a given date range, including credit note
+adjustments (T1.1, 2026-05-28).
 
 **Inputs**: ISO date strings `YYYY-MM-DD`. No GST rate parameter (uses recorded `TaxTotal`
 values, not recomputed rates).
 
 **Outputs**: JSON string with keys: `period`, `currency` (always "SGD"), `boxes` (dict of 8
 box values, rounded to 2 dp), `fx_invoices_requiring_conversion` (list with doc_num,
-doc_date, currency, doc_total, card_name, type), `e1_candidates` (FX+SO lines), `record_counts`
-(sgd/fx split for sales and purchases), `anomalies` (unknown VatGroups).
+doc_date, currency, doc_total, card_name, type — now includes FX credit notes),
+`e1_candidates` (FX+SO lines), `record_counts` (sgd/fx split for sales and purchases),
+`credit_note_counts` (sgd/fx split for sales and purchase credit notes),
+`credit_notes_applied` (one entry per SGD credit note line processed, with doc_num,
+doc_date, card_name, type, vat_group, line_total_applied, tax_total_applied — all as
+negated amounts), `anomalies` (unknown VatGroups).
 
 **Internal logic**:
 
 - Fetches `Invoices` and `PurchaseInvoices` in pages of 20 records, using `$skip` pagination.
-- Splits documents by `DocCurrency`: "SGD", "S$", and blank are treated as SGD; all others
-  are FX.
-- Routes SGD lines through `F5_BOX_MAPPING`, a module-level dict keyed by VatGroup. The
-  mapping is derived from `sg-tax-code-mappings.md`.
+- Also fetches `CreditNotes` and `PurchaseCreditNotes` via `_fetch_credit_notes_paginated`.
+- Splits all four entity sets by `DocCurrency`: "SGD", "S$", and blank are treated as SGD;
+  all others are FX.
+- Routes SGD invoice lines through `F5_BOX_MAPPING` (add to boxes). Routes SGD credit note
+  lines through the same mapping but **subtracts** from boxes — credit note amounts are
+  positive in SAP B1, so `boxes[lt_box] -= lt` and `boxes[tt_box] -= tt`.
+- NR VatGroup: `lt_box=None`, `tt_box=None` — excluded from all boxes on both invoice and
+  credit note paths (T1.2 fix).
 - Box 8 = Box 6 − Box 7. Box 4 = Box 1 + Box 2 + Box 3. All computed in Python.
-- FX invoices are listed for user reference but never included in box totals.
+- FX documents (invoices and credit notes) are listed for user reference but never included
+  in box totals.
 - Unknown VatGroups are collected in `anomalies` and excluded from all boxes.
 
 **Hardcoded assumptions**:
@@ -507,7 +533,7 @@ mapping, E1 candidate detection, unknown VatGroup flagging, round-last arithmeti
 
 | Gap | Impact | Priority |
 |-----|--------|---------|
-| Credit notes (`CreditNotes`, `PurchaseCreditNotes` entities not queried) | Overstates all boxes on data with credit notes | Must-have |
+| Credit notes | RESOLVED T1.1 — CreditNotes and PurchaseCreditNotes now fetched and subtracted | — |
 | Manual journal entries | Misses GST-relevant journals | Should-have |
 | No `expected_rate` parameter | Tool always trusts `TaxTotal`; correct behaviour, but no rate-validation capability | Low |
 | FX conversion | Identifies FX invoices but provides no SGD-converted figures | Should-have |
@@ -521,8 +547,8 @@ mapping, E1 candidate detection, unknown VatGroup flagging, round-last arithmeti
 
 #### Tool 13: `validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07) -> str`
 
-**Purpose**: Per-line E1–E4 tax code validation across all invoices in a period, plus a
-VatGroup inventory of every code found.
+**Purpose**: Per-line E1–E4 tax code validation across all invoices and credit notes in a
+period, plus a VatGroup inventory of every code found (T1.1 update).
 
 **Inputs**: ISO date strings. `expected_rate` defaults to 0.07 (7%, matching SBODEMOSG); pass
 0.09 for post-2024 production data.
@@ -539,10 +565,15 @@ implements four checks:
 | Code | Condition | Notes |
 |------|-----------|-------|
 | E1 | `entity_type == "sales"` AND `DocCurrency` not SGD AND `VatGroup` in {SO, DS} | FX sales coded as local standard-rated |
-| E2 | `TaxTotal > 0.01` AND `VatGroup` in {ZR, OS, ES33, ESN33, BL} | GST charged on non-taxable supply |
+| E2 | `TaxTotal > 0.01` AND `VatGroup` in {ZR, OS, ES33, ESN33, BL, **NR**} | GST charged on non-taxable supply; NR added T1.2 |
 | E3 | `entity_type == "sales"` AND `VatGroup` in {SO, DS} AND `LineTotal > 0.01` AND `TaxTotal < 0.01` | Standard-rated line with zero tax |
 | E3 | `entity_type == "purchase"` AND `VatGroup == "SI"` AND `LineTotal > 0.01` AND `TaxTotal < 0.01` | Same on purchase side |
 | E4 | `VatGroup` in {SO, SI} AND `LineTotal > 0.01` AND `TaxTotal > 0.01` AND `abs(TaxTotal/LineTotal - expected_rate) > 0.001` | Rate deviation |
+
+Credit note lines are now also passed through `_classify_line` with `credit_note=True`, which
+prepends "Credit note — " to each description. This catches miscoded credit notes (e.g., a
+credit note that inherited an E2 error from the original invoice). Credit note VatGroups are
+included in the `vatgroup_inventory` counts.
 
 The `vatgroup_inventory` field was added in a mid-experiment patch (between v3 Test 2 run 1
 and run 2). The first v3 Test 2 run scored 8/10 because clean VatGroups were invisible to
@@ -551,20 +582,22 @@ any error-detection logic.
 
 **Hardcoded assumptions**:
 
-- E2 checks `_E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL"}`. Note the inclusion
-  of BL: a purchase invoice with BL + TaxTotal > 0 is flagged as E2. As of 2026-05-26, the
-  Python reference script has been extended to apply E2 checks to both sales AND purchases,
-  including BL in the zero-rate set. The script and the MCP tool now produce identical E2
-  findings. See scripts/run_baseline_tests.py and the V3 Test 3 documentation.
+- E2 checks `_E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR"}`. NR was added
+  in T1.2 (2026-05-27): a purchase invoice or credit note with NR + TaxTotal > 0 is a genuine
+  E2 error — non-taxable supply carrying GST. DocNum 611 (TaxTotal 45.00 at 9%) is the
+  known SBODEMOSG fixture for this check.
+- E4 checks VatGroups {SO, SI} only. NR is not in the E4 set, preventing double-flagging of
+  DocNum 611 (which has a rate of 9% vs SBODEMOSG norm of 7%).
 
-**What is not yet handled**: Same credit note and manual journal gaps as Tool 12.
+**What is not yet handled**: Same manual journal gap as Tool 12. Credit notes: RESOLVED T1.1.
 
 ---
 
 #### Tool 14: `detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07) -> str`
 
-**Purpose**: Full compliance audit combining E1–E4 line checks, a COMPLETENESS heuristic, and
-a NO_GST_REG supplier check. Returns findings sorted by severity HIGH → MEDIUM → LOW.
+**Purpose**: Full compliance audit combining E1–E4 line checks on invoices and credit notes,
+a COMPLETENESS heuristic, and a NO_GST_REG supplier check (now covering purchase credit notes
+too). Returns findings sorted by severity HIGH → MEDIUM → LOW. (T1.1 update, 2026-05-28)
 
 **Inputs**: Same as Tool 13.
 
@@ -579,11 +612,12 @@ Calls `_classify_line` for all lines (same as Tool 13). Additionally:
 ten sales invoices), appends a MEDIUM severity COMPLETENESS finding. This is a heuristic
 only. The 0.1 threshold is hardcoded.
 
-*NO_GST_REG*: For each purchase invoice with any line having `TaxTotal > 0.01`, fetches the
-supplier via `sap.get(f"/BusinessPartners('{card_code}')")` and checks `FederalTaxID`. If
-blank, appends a HIGH severity NO_GST_REG finding. One finding per supplier CardCode per run
-(deduplicates within the period). This is an additional SAP API call per unique supplier with
-input tax — important for performance at scale.
+*NO_GST_REG*: For each purchase invoice **and purchase credit note** with any line having
+`TaxTotal > 0.01`, fetches the supplier via `sap.get(f"/BusinessPartners('{card_code}')")` and
+checks `FederalTaxID`. If blank, appends a HIGH severity NO_GST_REG finding. One finding per
+supplier CardCode per run (deduplicates across both invoices and credit notes within the period).
+This is an additional SAP API call per unique supplier with input tax — important for
+performance at scale.
 
 **Severity assignments in the tool**:
 
@@ -604,9 +638,9 @@ exploration-notes/baseline-test-results.md § Decisions for the rationale.
 Score: 10/10 against the 19-finding reference set (11 E1 + 1 E2 + 7 NO_GST_REG). See
 exploration-notes/v3-raw-chats/test3-error-detection.md for the raw chat log and analysis.
 
-**What is not yet handled**: Same credit note and manual journal gaps as Tools 12 and 13. The
-NO_GST_REG check issues one API call per unique supplier per run; at production scale with
-many unique suppliers, this could be slow.
+**What is not yet handled**: Same manual journal gap as Tools 12 and 13. Credit notes:
+RESOLVED T1.1. The NO_GST_REG check issues one API call per unique supplier per run; at
+production scale with many unique suppliers, this could be slow.
 
 ---
 
@@ -669,25 +703,26 @@ current and accurate (effective 1 January 2024).
 - Clear scope statements for what is out of scope (Boxes 9–21, partial exemption, etc.)
 - The BL/NR/EP/OP exclusion rules correctly stated with their IRAS basis
 
-**Identified inconsistency — NR VatGroup treatment**:
+**NR VatGroup treatment — RESOLVED (T1.2, 2026-05-27)**:
 
-The knowledge base states at line 31: *"Per IRAS para 5.11(o): purchases from non-GST
-registered traders are EXCLUDED from Box 5"* and at line 63: *"EXCLUDE: BL, NR, EP, OP,
-TX-E33, TX-N33 — these are not 'taxable purchases' per IRAS."*
+The inconsistency identified in the original audit (code/reference script/system prompt
+included NR in Box 5, knowledge base said it should be excluded per IRAS para 5.11(o)) has
+been resolved. All four artefacts now agree: NR is excluded from Box 5.
 
-However, the MCP tool's `F5_BOX_MAPPING` maps NR to `"lt_box": "box_5_taxable_purchases"`,
-and the Python reference script `run_baseline_tests.py` line 38 includes NR in
-`PURCHASE_BOX5`. The system prompt `base.md` line 39 also includes NR in Box 5. The system
-prompt's VatGroup routing table was generated from the code, not from the knowledge base.
+Changes made in T1.2:
+- `F5_BOX_MAPPING` in `sap_b1_server.py`: NR `lt_box` set to `None`, `tt_box` set to `None`.
+- `PURCHASE_BOX5` in `run_baseline_tests.py`: NR removed.
+- `system-prompts/base.md`: NR listed as Excluded with IRAS para 5.11(o) citation.
+- `_E2_ZERO_RATE_CODES` in `sap_b1_server.py` and `E2_ZERO_RATE_CODES` in
+  `run_baseline_tests.py`: NR added — a purchase with NR + TaxTotal > 0 is a genuine E2
+  error (non-taxable supply carrying GST).
 
-Three of four artefacts (code, reference script, system prompt) include NR in Box 5, while
-the knowledge base (the cited IRAS authority) says it should be excluded. If the knowledge
-base citation is correct — and IRAS para 5.11(o) specifically excludes NR — then the code,
-reference script, and system prompt contain a compliance error. This error does not affect
-any test results because SBODEMOSG Q3 2024 contains no NR-coded invoices, but it would
-produce an incorrect result on production data with NR-coded purchases.
-
-This discrepancy should be resolved by checking the current IRAS e-Tax Guide text directly.
+A validation fixture was seeded: DocNum 611, PurchaseInvoices, VatGroup NR, LineTotal 500.00,
+TaxTotal 45.00. The TaxTotal reflects a 9% rate — an anomaly against the SBODEMOSG 7% demo
+norm (SAP applied the statutory rate to the NR-coded line at seed time). This is documented in
+`test_data_registry.json` and `exploration-notes/nr-vatgroup-resolution.md`. The 9% rate does
+not affect E2 detection; E4 does not apply to NR (E4 checks SO/SI only), so there is no
+double-flagging.
 
 **Identified gaps relative to Singapore production data requirements**:
 
@@ -805,37 +840,35 @@ confidently-wrong critical finding. Maximum 10.
 **Native transactions in period**: 47 sales invoices (39 SGD + 8 FX) and 17 purchase invoices
 (15 SGD + 2 FX), as retrieved by `run_baseline_tests.py` on 2026-05-25 00:13:33 UTC.
 
-**Seeded test invoices** (created by `seed_test_data.py`, 2026-05-25 00:04:47 UTC):
+**Seeded test invoices and credit notes** (current state in SBODEMOSG):
 
-| DocNum | Entity | VatGroup | Purpose |
-|--------|--------|----------|---------|
-| 1000 | Invoices | ZR | Test zero-rated sales box |
-| 1001 | Invoices | ES33 | Test exempt sales box |
-| 1002 | Invoices | OS | Test out-of-scope exclusion |
-| 605 | PurchaseInvoices | BL | Test blocked purchase exclusion AND E2 detection |
-| 606 | PurchaseInvoices | IM | Test import GST box |
-| 607 | PurchaseInvoices | ZP | Test zero-rated purchase box |
+The seed script was run on 2026-05-27 producing the following registered documents (DocNums
+are as assigned by SAP, not as planned — earlier runs at different DB states produced
+different DocNums). Credit note seeds were added separately on 2026-05-28.
 
-The 6 seeded invoices are tagged `FreeText=BASELINE_TEST_DATA` for identification. The
-`cleanup_test_data.py` script can cancel them. Current status: the registry file
-(`test_data_registry.json`) shows they were created on 2026-05-25 00:04:47. Based on git
-status, the seeded invoices have not been cleaned up — they remain in SBODEMOSG.
+| DocNum | Entity | VatGroup | LineTotal | TaxTotal | Notes |
+|--------|--------|----------|----------:|----------:|-------|
+| 1003 | Invoices | ZR | 5,000.00 | — | Test zero-rated sales box |
+| 1004 | Invoices | ES33 | 3,000.00 | — | Test exempt sales box |
+| 1005 | Invoices | OS | 2,000.00 | — | Test out-of-scope exclusion |
+| 608 | PurchaseInvoices | BL | 800.00 | 56.00 | Test blocked purchase exclusion; E2 fixture |
+| 609 | PurchaseInvoices | IM | 4,500.00 | 315.00 | Test import GST box |
+| 610 | PurchaseInvoices | ZP | 1,200.00 | 84.00 | Test zero-rated purchase box |
+| 611 | PurchaseInvoices | NR | 500.00 | 45.00 | Box 5 exclusion + NR E2 fixture; TaxTotal at 9% (anomaly vs 7% norm) |
+| 10 | CreditNotes | SO | 1,000.00 | 70.00 | T1.1 seed: reduces Box 1 + Box 6 |
+| 11 | PurchaseCreditNotes | SI | 500.00 | 35.00 | T1.1 seed: reduces Box 5 + Box 7 |
 
-**Important note**: The seeded purchase invoice "Invoice 4 — Blocked input tax (BL)" was
-assigned DocNum 605 in the demo database. This same DocNum is referenced as the E2 error
-(BL+TaxTotal=56) in the known-correct findings. This means the E2 test depends on the seed
-script having run AND the BL invoice having had its TaxTotal set to 56 by SAP B1's tax
-engine when applied to the `BL` VatGroup. This is not documented as an assumption but it is
-one: if SAP B1 does not apply tax to BL-coded lines (which it shouldn't, by definition), the
-TaxTotal might be 0, and DocNum 605 would not actually be an E2 error.
+Sales invoices 1–3 carry `FreeText=BASELINE_TEST_DATA` at header level. Purchase invoices
+4–6 same. Invoice 7 (NR) and credit notes A/B carry `FreeText=BASELINE_TEST_DATA` at line
+level (consistent with the exploration finding that FreeText is a line-level field in this
+SAP B1 instance). `cleanup_test_data.py` can cancel the invoice seeds; credit note cleanup
+has not yet been scripted. All nine documents remain active in SBODEMOSG.
 
-Looking at the reference JSON (`baseline-test-report-v0.json`): the test_3 output does not
-list DocNum 605 as an error — the reference script's Test 3 only detected 11 E1 errors.
-The E2 finding on DocNum 605 (TaxTotal=56) was apparently identified manually or outside the
-automated reference script, then incorporated into the `baseline-test-results.md` scoring
-rubric. This means the "known-correct" benchmark for Test 3 includes a finding (E2 DocNum 605)
-that is NOT produced by the Python reference script. The baseline-test-report-v0.json is
-therefore an incomplete reference for Test 3.
+**Note on DocNum 605 E2**: DocNum 605 (BL+TaxTotal=56) referenced in the Test 3 rubric is
+a **pre-existing SBODEMOSG invoice**, not a seeded one. DocNum 608 is the seeded BL invoice.
+Both carry BL+TaxTotal>0 and both appear as E2 findings. The E2 check on DocNum 605 has
+always been against live SBODEMOSG data; `docnum-605-verification.md` confirms TaxTotal=56
+via a live query.
 
 ### Versions tested
 
@@ -1152,9 +1185,9 @@ engagement.
 
 **Things that might break under production data conditions**:
 
-1. **Credit notes**: No tool queries `CreditNotes` or `PurchaseCreditNotes`. Any client with
-   credit notes in the period will receive incorrect F5 figures, with no warning except the
-   system prompt's caveat ("credit notes not checked").
+1. **Credit notes**: RESOLVED (T1.1, 2026-05-28). All three tools now query CreditNotes and
+   PurchaseCreditNotes and subtract their amounts from the relevant boxes. The system prompt
+   caveat has been updated to describe credit note handling, not warn of its absence.
 
 2. **Custom VatGroup codes**: Production SAP B1 instances commonly have local-language or
    company-specific VatGroup codes not in the standard mapping. These would fall into the
@@ -1162,9 +1195,9 @@ engagement.
    transactions coded to a custom VatGroup would silently receive an undercount, with only a
    generic "unknown VatGroup" anomaly warning.
 
-3. **NR VatGroup compliance error**: If a client has NR-coded purchases, the tool will include
-   them in Box 5, which may be incorrect per IRAS para 5.11(o). The error would be invisible
-   to the client because it looks like correct behavior.
+3. **NR VatGroup compliance error**: RESOLVED (T1.2, 2026-05-27). NR is now excluded from
+   Box 5 across tool code, reference script, and system prompt. An NR line with TaxTotal > 0
+   is correctly flagged as E2. DocNum 611 is the live validation fixture.
 
 4. **SAP B1 DocumentLines structure variations**: Some SAP B1 configurations compute
    `TaxTotal` at header level rather than line level, or use `VatSum` instead of `TaxTotal` in
@@ -1346,11 +1379,15 @@ and delivery-layer, not architectural.
 
 ### Appendix B — Reference figures
 
-Reference figures for Q3 2024 (2024-07-01 to 2024-09-30), SBODEMOSG FP2502. Source:
-`scripts/run_baseline_tests.py` automated run, 2026-05-25 00:13:33 UTC. These are the
-known-correct comparison figures for all numeric test scoring.
+> **Status**: These figures require a re-baseline run against the current SBODEMOSG state.
+> The figures below are from the 2026-05-25 run and are now stale because: (a) T1.2 changed
+> the NR treatment in the reference script (NR excluded from Box 5), (b) additional invoice
+> seeds (DocNums 608–611) and credit note seeds (DocNums 10 and 11) have been created since
+> then. Run `scripts/run_baseline_tests.py` against live SBODEMOSG to regenerate. The
+> post-seed, post-T1.1 figures confirmed via live query on 2026-05-28 are shown as a
+> secondary table below.
 
-**F5 Boxes (Test 1 reference)**
+**F5 Boxes (2026-05-25 baseline — stale, pre-T1.2, pre-seed invoices 608–611)**
 
 | Box | Description | SGD Value |
 |-----|-------------|----------:|
@@ -1358,14 +1395,32 @@ known-correct comparison figures for all numeric test scoring.
 | Box 2 | Zero-rated supplies (LineTotal, VatGroup ZR) | 5,000.00 |
 | Box 3 | Exempt supplies (LineTotal, VatGroups ES33+ESN33) | 3,000.00 |
 | Box 4 | Total supplies (Box 1+2+3) | 378,589.97 |
-| Box 5 | Taxable purchases (LineTotal, VatGroups SI+ZP+IM+IGDS+ME+NR) | 123,277.76 |
+| Box 5 | Taxable purchases (LineTotal, VatGroups SI+ZP+IM+IGDS+ME — NR now excluded) | 123,277.76 |
 | Box 6 | Output tax due (TaxTotal, VatGroups SO+DS) | 25,941.32 |
 | Box 7 | Input tax claimed (TaxTotal, VatGroups SI+IM+IGDS) | 8,545.45 |
 | Box 8 | Net GST payable (Box 6 − Box 7) | 17,395.87 |
 
-Source invoice counts: 39 SGD sales, 8 FX sales, 15 SGD purchases, 2 FX purchases.
+**F5 Boxes (2026-05-28 — post-seed, post-T1.2, post-T1.1, confirmed via live query)**
 
-**VatGroups in period (Test 2 reference)**
+All 9 seed documents active (invoices 1003–1005, 608–611; credit notes 10, 11).
+NR (DocNum 611) excluded from Box 5. Credit note A (SO/1000.00) reduces Box 1 and Box 6.
+Credit note B (SI/500.00) reduces Box 5 and Box 7.
+
+| Box | Description | SGD Value |
+|-----|-------------|----------:|
+| Box 1 | Standard-rated supplies | 369,589.97 |
+| Box 2 | Zero-rated supplies | 10,000.00 |
+| Box 3 | Exempt supplies | 6,000.00 |
+| Box 4 | Total supplies (Box 1+2+3) | 385,589.97 |
+| Box 5 | Taxable purchases (NR excluded, CN B deducted) | 128,477.76 |
+| Box 6 | Output tax due (CN A deducted) | 25,871.32 |
+| Box 7 | Input tax claimed (CN B deducted) | 8,825.45 |
+| Box 8 | Net GST payable (Box 6 − Box 7) | 17,045.87 |
+
+Source document counts (2026-05-28): 50 SGD sales invoices, 8 FX, 19 SGD purchase invoices,
+2 FX, 1 SGD CreditNote, 1 SGD PurchaseCreditNote.
+
+**VatGroups in period (Test 2 reference — updated post-seed)**
 
 | Code | Description | F5 Box |
 |------|-------------|--------|
@@ -1377,22 +1432,21 @@ Source invoice counts: 39 SGD sales, 8 FX sales, 15 SGD purchases, 2 FX purchase
 | IM | Import GST | Box 5 (LineTotal) + Box 7 (TaxTotal) |
 | ZP | Zero-rated purchase | Box 5 (LineTotal) only |
 | BL | Blocked input (Reg 26/27) | Excluded |
+| NR | Non-GST-registered supplier | Excluded (T1.2 fix; previously incorrectly in Box 5) |
 
-**Known-correct issues in Q3 2024 (Test 3 reference)**
+**Known-correct issues in Q3 2024 (Test 3 reference — updated post-T1.1)**
+
+The reference script (`run_baseline_tests.py`) now auto-detects E1, E2 (incl. NR), E3, E4,
+NO_GST_REG, and COMPLETENESS. All findings are machine-generated.
 
 | Type | Count | Notes |
 |------|-------|-------|
-| E1 (FX+SO miscoding) | 11 | DocNums: 958, 964, 965, 967 (×2 lines), 971, 974 (×3 lines), 977, 982. Source: Python script |
-| E2 (BL with TaxTotal=56) | 1 | DocNum 605. Source: manual identification (not in Python script output) |
-| NO_GST_REG | 7 | Supplier purchase invoices with input tax claimed but blank FederalTaxID. Source: documented in baseline-test-results.md; not produced by Python script |
-| COMPLETENESS | 0 | Purchase/sales ratio 15/47 = 0.32; above 0.10 threshold; no flag expected |
+| E1 (FX+SO miscoding) | 11 | DocNums: 958, 964, 965, 967 (×2 lines), 971, 974 (×3 lines), 977, 982 |
+| E2 (non-taxable with TaxTotal>0) | 3 | DocNums 605 (BL/56.00), 608 (BL/56.00), 611 (NR/45.00). NR E2 enabled by T1.2 |
+| NO_GST_REG | 7 | Supplier purchase invoices with input tax claimed but blank FederalTaxID |
+| COMPLETENESS | 0 | Purchase/sales ratio above 0.10 threshold |
 | E3 | 0 | No standard-rated lines with zero tax in period |
-| E4 | 0 | No rate deviations (all rates are 7% consistently in SBODEMOSG demo data) |
-
-Note: The Python reference script (`run_baseline_tests.py`) auto-detects only E1 errors from
-test_3. E2 and NO_GST_REG findings are documented in the test results commentary but were not
-produced by automated script output. Any future automated scoring of Test 3 must extend the
-reference script to include these check types.
+| E4 | 0 | No rate deviations within {SO, SI} scope (DocNum 611 NR at 9% is outside E4 scope) |
 
 **FX invoices excluded from F5 (10 documents)**
 
@@ -1416,10 +1470,9 @@ reference script to include these check types.
 Items that arose during the audit and require a decision or investigation before the next
 strategic or engineering conversation.
 
-1. **NR VatGroup**: Is NR correctly included in Box 5 (as the code, reference script, and
-   system prompt assume) or correctly excluded (as the knowledge base states per IRAS para
-   5.11(o))? Check the current IRAS e-Tax Guide text and resolve the inconsistency across all
-   four artefacts.
+1. **NR VatGroup**: RESOLVED (T1.2, 2026-05-27). NR is now excluded from Box 5 per IRAS
+   para 5.11(o) across all four artefacts. NR E2 detection added. DocNum 611 is the live
+   validation fixture. See exploration-notes/nr-vatgroup-resolution.md.
 
 2. **NO_GST_REG severity**: RESOLVED 2026-05-26. Standardized to HIGH across both the tool
    and the system prompt's error code table. See baseline-test-results.md § Decisions.
@@ -1441,9 +1494,11 @@ strategic or engineering conversation.
    there a Singapore data residency option, or does all data route through US/EU servers?
    This affects the compliance disclosure required when accessing client financial data.
 
-8. **Seeded test data cleanup**: Have the 6 seeded invoices (DocNums 1000-1002 and 605-607)
-   been cancelled in SBODEMOSG? If not, running `seed_test_data.py` again would create
-   duplicate invoices with different DocNums, invalidating the reference DocNum lists.
+8. **Seeded test data cleanup**: Nine documents are now active in SBODEMOSG (invoices
+   1003–1005, 608–611; credit notes 10, 11). Running `seed_test_data.py` again would create
+   further duplicates with new DocNums. `cleanup_test_data.py` cancels the invoice seeds;
+   credit note cancellation has not yet been scripted. Decision pending with Collin on whether
+   to clean up the 608–611 generation before re-baselining.
 
 9. **`git` file at root**: RESOLVED 2026-05-27. Deleted.
 
@@ -1461,12 +1516,23 @@ strategic or engineering conversation.
     include ZP.
 
 13. **Credit note prevalence**: For target mid-market Singapore SAP B1 clients, what fraction
-    of quarters contain credit notes? Determines urgency of the credit note gap before first
-    paid engagement.
+    of quarters contain credit notes? The technical gap is resolved (T1.1); this question now
+    governs how prominently credit note support should feature in customer-facing positioning.
+
+14. **Re-baseline run**: `scripts/run_baseline_tests.py` contains a placeholder instead of
+    concrete reference figures pending the 608–611 fixture decision with Collin. Once that
+    decision is made, run the script against live SBODEMOSG and update both the script's
+    comment block and Appendix B of this document.
+
+15. **DocNum 611 rate anomaly**: The NR seed carries TaxTotal 45.00 at 9% — an anomaly vs
+    SBODEMOSG 7% demo norm. This is documented in `test_data_registry.json` (tax_rate_note
+    field) and `nr-vatgroup-resolution.md`. No functional impact; flagged for awareness.
 
 ---
 
 *End of document. Generated 2026-05-26 by repository audit; updated 2026-05-27 to reflect
 Test 3 completion, V1/V2 contamination discovery and resolution, security hygiene fixes, and
-reference script extension. All findings based on files present in the repository on the
-`master` branch.*
+reference script extension; updated 2026-05-28 to reflect T1.2 (NR VatGroup exclusion from
+Box 5, NR E2 detection, DocNum 611 fixture) and T1.1 (credit note support in all three custom
+tools, two SBODEMOSG credit note seeds, post-seed reference figures). All findings based on
+files present in the repository on the `master` branch.*

@@ -2,6 +2,21 @@
 """
 Runs the 3 GST F5 baseline tests against live SAP B1 SBODEMOSG for Q3 2024.
 Outputs a structured JSON report and appends a summary to baseline-test-results.md.
+
+T1.1 update: credit notes (CreditNotes, PurchaseCreditNotes) are fetched and included.
+  - Test 1: credit note line amounts are subtracted from the corresponding F5 boxes.
+  - Test 2: credit note VatGroups are included in the VatGroup inventory.
+  - Test 3: credit note lines are checked for E1–E4; NO_GST_REG covers purchase
+            credit notes in addition to purchase invoices.
+T1.1 Part B: NR added to E2_ZERO_RATE_CODES — DocNum 611 (VatGroup NR, TaxTotal 45.00)
+  now appears in Test 3 E2 output.
+
+Post-seed reference figures: regenerate by running this script against
+the live SBODEMOSG instance after the 608–611 fixture decision is
+finalised with Collin. Current known seeds active: original 605–607,
+second generation 608–611 (NR seed 611 confirmed live with TaxTotal=45.00
+at 9% rate, documented as known E2 fixture — see test_data_registry.json),
+CN A DocNum 10 SO 1000.00/70.00, CN B DocNum 11 SI 500.00/35.00.
 """
 
 import json
@@ -55,7 +70,8 @@ SALES_BOX2 = {"ZR"}
 SALES_BOX3 = {"ES33", "ESN33"}
 SALES_EXCLUDED = {"OS"}
 
-PURCHASE_BOX5 = {"SI", "ZP", "IM", "IGDS", "ME", "NR"}
+PURCHASE_BOX5 = {"SI", "ZP", "IM", "IGDS", "ME"}
+# NR excluded per IRAS para 5.11(o): purchases from non-GST registered traders
 PURCHASE_BOX7 = {"SI", "IM", "IGDS"}
 PURCHASE_EXCLUDED = {"BL", "EP", "OP", "TX-E33", "TX-N33", "TX-RE"}
 
@@ -64,9 +80,11 @@ ZERO_RATE_SALES = {"ZR", "OS", "ES33", "ESN33"}  # legacy — kept for reference
 # Codes where VatSum=0 would be an error (E3 check)
 STANDARD_RATE_CODES = {"SO", "SI"}
 
-# Matches _E2_ZERO_RATE_CODES in sap_b1_server.py.
-# Adds BL vs old ZERO_RATE_SALES and applies to BOTH sales and purchases.
-E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL"}
+# Matches _E2_ZERO_RATE_CODES in sap_b1_server.py (NR added in T1.1 Part B).
+# NR with TaxTotal > 0 is a genuine E2: non-taxable purchase carrying GST.
+# DocNum 611 (VatGroup NR, LineTotal 500.00, TaxTotal 45.00 at 9% rate) is a
+# confirmed E2 fixture. Detection is expected and correct — see test_data_registry.json.
+E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR"}
 
 _SEVERITY = {
     "E1": "HIGH", "E2": "MEDIUM", "E3": "HIGH", "E4": "MEDIUM",
@@ -95,7 +113,7 @@ KNOWN_VATGROUPS = {
     "IM": ("Box 5 + Box 7", "Import GST"),
     "IGDS": ("Box 5 + Box 7", "Import GST Deferment Scheme"),
     "ME": ("Box 5 only", "Major exporter scheme"),
-    "NR": ("Box 5 only", "Non-GST-registered supplier"),
+    "NR": ("Excluded", "Non-GST-registered supplier"),
     "BL": ("Excluded", "Blocked input tax (Reg 26/27)"),
     "TX-E33": ("Excluded", "Reg 33 exempt purchase"),
     "TX-N33": ("Excluded", "Non-Reg 33 exempt purchase"),
@@ -181,16 +199,27 @@ def extract_lines(docs: list[dict], entity_type: str) -> list[dict]:
 
 # ─── Test 1: F5 Calculation ────────────────────────────────────────────────────
 
-def run_test_1(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
-    print("\n[Test 1] F5 Calculation...")
+def run_test_1(
+    invoices: list[dict],
+    purchase_invoices: list[dict],
+    credit_notes: list[dict],
+    purchase_credit_notes: list[dict],
+) -> dict:
+    print("\n[Test 1] F5 Calculation (invoices + credit note adjustments)...")
 
     sgd_sales_docs = [d for d in invoices if is_sgd(d)]
     fx_sales_docs = [d for d in invoices if not is_sgd(d)]
     sgd_purchase_docs = [d for d in purchase_invoices if is_sgd(d)]
     fx_purchase_docs = [d for d in purchase_invoices if not is_sgd(d)]
+    sgd_sales_cn = [d for d in credit_notes if is_sgd(d)]
+    fx_sales_cn = [d for d in credit_notes if not is_sgd(d)]
+    sgd_purchase_cn = [d for d in purchase_credit_notes if is_sgd(d)]
+    fx_purchase_cn = [d for d in purchase_credit_notes if not is_sgd(d)]
 
     sales_lines = extract_lines(sgd_sales_docs, "Invoices")
     purchase_lines = extract_lines(sgd_purchase_docs, "PurchaseInvoices")
+    cn_sales_lines = extract_lines(sgd_sales_cn, "CreditNotes")
+    cn_purchase_lines = extract_lines(sgd_purchase_cn, "PurchaseCreditNotes")
 
     def sum_lt(lines, vatgroups):
         return round(sum(l["LineTotal"] for l in lines if l["VatGroup"] in vatgroups), 2)
@@ -198,13 +227,23 @@ def run_test_1(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
     def sum_vat(lines, vatgroups):
         return round(sum(l["VatSum"] for l in lines if l["VatGroup"] in vatgroups), 2)
 
+    # Invoice contributions (positive)
     box_1 = sum_lt(sales_lines, SALES_BOX1)
     box_2 = sum_lt(sales_lines, SALES_BOX2)
     box_3 = sum_lt(sales_lines, SALES_BOX3)
-    box_4 = round(box_1 + box_2 + box_3, 2)
     box_5 = sum_lt(purchase_lines, PURCHASE_BOX5)
     box_6 = sum_vat(sales_lines, SALES_BOX1)
     box_7 = sum_vat(purchase_lines, PURCHASE_BOX7)
+
+    # Credit note adjustments: amounts are positive in SAP B1 — subtract from boxes.
+    box_1 = round(box_1 - sum_lt(cn_sales_lines, SALES_BOX1), 2)
+    box_2 = round(box_2 - sum_lt(cn_sales_lines, SALES_BOX2), 2)
+    box_3 = round(box_3 - sum_lt(cn_sales_lines, SALES_BOX3), 2)
+    box_5 = round(box_5 - sum_lt(cn_purchase_lines, PURCHASE_BOX5), 2)
+    box_6 = round(box_6 - sum_vat(cn_sales_lines, SALES_BOX1), 2)
+    box_7 = round(box_7 - sum_vat(cn_purchase_lines, PURCHASE_BOX7), 2)
+
+    box_4 = round(box_1 + box_2 + box_3, 2)
     box_8 = round(box_6 - box_7, 2)
 
     boxes = {
@@ -218,9 +257,17 @@ def run_test_1(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
         "box_8": box_8,
     }
 
+    all_fx = (fx_sales_docs + fx_purchase_docs + fx_sales_cn + fx_purchase_cn)
     fx_flagged = []
-    for doc in fx_sales_docs + fx_purchase_docs:
-        entity = "Invoices" if doc in fx_sales_docs else "PurchaseInvoices"
+    for doc in all_fx:
+        if doc in fx_sales_docs:
+            entity = "Invoices"
+        elif doc in fx_purchase_docs:
+            entity = "PurchaseInvoices"
+        elif doc in fx_sales_cn:
+            entity = "CreditNotes"
+        else:
+            entity = "PurchaseCreditNotes"
         fx_flagged.append({
             "DocNum": doc.get("DocNum"),
             "DocDate": str(doc.get("DocDate", ""))[:10],
@@ -232,19 +279,21 @@ def run_test_1(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
         })
 
     # Scoring: 1 pt per box calculated (always 8), 1 for FX detection, 1 for BL/OS exclusion
-    score = 8  # all 8 boxes always calculated
-    notes_parts = [f"Boxes 1-8 calculated from {len(sgd_sales_docs)} SGD sales and {len(sgd_purchase_docs)} SGD purchase invoices."]
+    score = 8
+    notes_parts = [
+        f"Boxes 1-8 calculated from {len(sgd_sales_docs)} SGD sales invoices, "
+        f"{len(sgd_purchase_docs)} SGD purchase invoices, "
+        f"{len(sgd_sales_cn)} SGD sales credit note(s), "
+        f"{len(sgd_purchase_cn)} SGD purchase credit note(s)."
+    ]
 
     if fx_flagged:
         score += 1
-        notes_parts.append(f"FX invoices detected and excluded: {len(fx_flagged)} document(s).")
+        notes_parts.append(f"FX documents detected and excluded: {len(fx_flagged)}.")
     else:
-        score += 1  # correct to flag zero FX if none exist
-        notes_parts.append("No FX invoices found in period (correct to report 0).")
+        score += 1
+        notes_parts.append("No FX documents found in period (correct to report 0).")
 
-    # Verify BL/OS excluded from Box 5:
-    # Box 5 uses PURCHASE_BOX5 which is disjoint from PURCHASE_EXCLUDED by definition.
-    # Award the point and report how much was correctly excluded.
     bl_os_excluded = sum_lt(purchase_lines, PURCHASE_EXCLUDED)
     score += 1
     if bl_os_excluded > 0:
@@ -256,12 +305,19 @@ def run_test_1(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
 
     for k, v in boxes.items():
         print(f"    {k.replace('_', ' ').upper()}: SGD {v:,.2f}")
-    print(f"    FX invoices flagged: {len(fx_flagged)}")
+    print(f"    FX documents flagged: {len(fx_flagged)}")
+    print(f"    Credit notes applied: {len(sgd_sales_cn)} sales, {len(sgd_purchase_cn)} purchase")
     print(f"    Score: {score}/10")
 
     return {
         "boxes": boxes,
         "fx_invoices_flagged": fx_flagged,
+        "credit_note_counts": {
+            "sgd_sales": len(sgd_sales_cn),
+            "fx_sales": len(fx_sales_cn),
+            "sgd_purchases": len(sgd_purchase_cn),
+            "fx_purchases": len(fx_purchase_cn),
+        },
         "score": score,
         "max_score": 10,
         "notes": " ".join(notes_parts),
@@ -270,12 +326,19 @@ def run_test_1(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
 
 # ─── Test 2: Tax Code Classification ─────────────────────────────────────────
 
-def run_test_2(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
-    print("\n[Test 2] Tax Code Classification...")
+def run_test_2(
+    invoices: list[dict],
+    purchase_invoices: list[dict],
+    credit_notes: list[dict],
+    purchase_credit_notes: list[dict],
+) -> dict:
+    print("\n[Test 2] Tax Code Classification (invoices + credit notes)...")
 
     all_lines = (
         extract_lines(invoices, "Invoices")
         + extract_lines(purchase_invoices, "PurchaseInvoices")
+        + extract_lines(credit_notes, "CreditNotes")
+        + extract_lines(purchase_credit_notes, "PurchaseCreditNotes")
     )
 
     # Collect unique VatGroups
@@ -293,7 +356,7 @@ def run_test_2(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
 
     # Detect FX + SO mismatches (overseas sale coded SO instead of ZR)
     mismatches = []
-    for doc in invoices:
+    for doc in list(invoices) + list(credit_notes):
         if not is_sgd(doc):
             for line in doc.get("DocumentLines", []):
                 vg = (line.get("VatGroup") or "").strip()
@@ -304,7 +367,7 @@ def run_test_2(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
                         "CardName": doc.get("CardName", ""),
                         "DocCurrency": doc.get("DocCurrency", ""),
                         "VatGroup": vg,
-                        "issue": f"Foreign currency ({doc.get('DocCurrency')}) sales invoice uses {vg} — should be ZR for overseas sales",
+                        "issue": f"Foreign currency ({doc.get('DocCurrency')}) document uses {vg} — should be ZR for overseas sales",
                     })
 
     known_count = sum(1 for v in vatgroups_found if v["known"])
@@ -336,7 +399,13 @@ def run_test_2(invoices: list[dict], purchase_invoices: list[dict]) -> dict:
 
 # ─── Test 3: Error Detection ──────────────────────────────────────────────────
 
-def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Session) -> dict:
+def run_test_3(
+    invoices: list[dict],
+    purchase_invoices: list[dict],
+    credit_notes: list[dict],
+    purchase_credit_notes: list[dict],
+    b1: B1Session,
+) -> dict:
     """
     Independent implementation of detect_gst_errors logic.
     Does NOT import from sap_b1_server.py — kept separate to detect divergence.
@@ -345,6 +414,18 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
     - E4 threshold: script uses 0.005, MCP tool uses 0.001
     - E4 purchase scope: script checks SI+IM+IGDS, MCP tool checks SI only
     - E4 sales scope: script checks SO+DS (SALES_BOX1), MCP tool checks SO only
+
+    T1.1 additions:
+    - Credit note lines checked for E1–E4 (descriptions prefixed "Credit note —")
+    - NO_GST_REG extended to purchase credit notes
+    - NR added to E2_ZERO_RATE_CODES (Part B). DocNum 611: VatGroup NR,
+      LineTotal 500.00, TaxTotal 45.00 (9% rate — anomaly vs SBODEMOSG 7%
+      demo norm; SAP applied statutory rate at seed time). Retained as a known
+      E2 fixture: NR with TaxTotal > 0.01 is a genuine compliance error
+      regardless of rate. E2 detection on this line is expected and correct.
+      The 9% rate means this line would also trigger E4 if E4 checks SO/SI
+      only — confirm _E4_STANDARD_RATE_CODES does not include NR to ensure
+      no double-flagging.
     """
     print("\n[Test 3] Error Detection (E1, E2, E3, E4, NO_GST_REG, COMPLETENESS)...")
 
@@ -363,7 +444,7 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
             vg = (line.get("VatGroup") or "").strip()
             line_num = line.get("LineNum")
             line_total = safe_float(line.get("LineTotal"))
-            tax_total = safe_float(line.get("TaxTotal"))  # TaxTotal is line-level tax in SAP B1
+            tax_total = safe_float(line.get("TaxTotal"))
 
             base = dict(
                 doc_num=doc_num, doc_date=doc_date,
@@ -372,7 +453,6 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                 line_total=line_total, tax_total=tax_total,
             )
 
-            # E1: FX sales invoice using standard-rated code
             if is_fx and vg in SALES_BOX1:
                 findings.append({**base,
                     "check_type": "E1", "severity": _SEVERITY["E1"],
@@ -381,8 +461,6 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                     "recommendation": _RECOMMENDATION["E1"],
                 })
 
-            # E2: GST charged on non-taxable supply (sales side)
-            # Uses E2_ZERO_RATE_CODES (includes BL), not old ZERO_RATE_SALES
             if tax_total > 0.01 and vg in E2_ZERO_RATE_CODES:
                 findings.append({**base,
                     "check_type": "E2", "severity": _SEVERITY["E2"],
@@ -390,7 +468,6 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                     "recommendation": _RECOMMENDATION["E2"],
                 })
 
-            # E3: Standard-rated sales code with zero GST
             if vg in {"SO", "DS"} and line_total > 0.01 and tax_total < 0.01:
                 findings.append({**base,
                     "check_type": "E3", "severity": _SEVERITY["E3"],
@@ -398,7 +475,6 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                     "recommendation": _RECOMMENDATION["E3"],
                 })
 
-            # E4: GST rate deviation — script checks SO+DS; MCP tool checks SO only (known divergence)
             if vg in SALES_BOX1 and line_total > 0.01 and tax_total > 0.01:
                 ratio = tax_total / line_total
                 if abs(ratio - DEMO_GST_RATE) > 0.005:
@@ -420,7 +496,7 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
             vg = (line.get("VatGroup") or "").strip()
             line_num = line.get("LineNum")
             line_total = safe_float(line.get("LineTotal"))
-            tax_total = safe_float(line.get("TaxTotal"))  # TaxTotal is line-level tax in SAP B1
+            tax_total = safe_float(line.get("TaxTotal"))
 
             base = dict(
                 doc_num=doc_num, doc_date=doc_date,
@@ -429,7 +505,6 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                 line_total=line_total, tax_total=tax_total,
             )
 
-            # E2: GST charged on non-taxable supply (purchase side)
             if tax_total > 0.01 and vg in E2_ZERO_RATE_CODES:
                 findings.append({**base,
                     "check_type": "E2", "severity": _SEVERITY["E2"],
@@ -437,7 +512,6 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                     "recommendation": _RECOMMENDATION["E2"],
                 })
 
-            # E3: Standard-rated purchase code with zero GST
             if vg == "SI" and line_total > 0.01 and tax_total < 0.01:
                 findings.append({**base,
                     "check_type": "E3", "severity": _SEVERITY["E3"],
@@ -445,7 +519,6 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                     "recommendation": _RECOMMENDATION["E3"],
                 })
 
-            # E4: GST rate deviation — script checks SI+IM+IGDS; MCP tool checks SI only (known divergence)
             if vg in {"SI", "IM", "IGDS"} and line_total > 0.01 and tax_total > 0.01:
                 ratio = tax_total / line_total
                 if abs(ratio - DEMO_GST_RATE) > 0.005:
@@ -456,13 +529,109 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                         "recommendation": _RECOMMENDATION["E4"],
                     })
 
+    # ── Sales credit note checks: E1, E2, E3, E4 ─────────────────────────────
+    for doc in credit_notes:
+        doc_num = doc.get("DocNum")
+        doc_date = str(doc.get("DocDate", ""))[:10]
+        card_code = doc.get("CardCode", "")
+        card_name = doc.get("CardName", "")
+        currency = doc.get("DocCurrency", "SGD")
+        is_fx = not is_sgd(doc)
+
+        for line in doc.get("DocumentLines", []):
+            vg = (line.get("VatGroup") or "").strip()
+            line_num = line.get("LineNum")
+            line_total = safe_float(line.get("LineTotal"))
+            tax_total = safe_float(line.get("TaxTotal"))
+
+            base = dict(
+                doc_num=doc_num, doc_date=doc_date,
+                card_code=card_code, card_name=card_name,
+                line_num=line_num, vat_group=vg,
+                line_total=line_total, tax_total=tax_total,
+            )
+
+            if is_fx and vg in SALES_BOX1:
+                findings.append({**base,
+                    "check_type": "E1", "severity": _SEVERITY["E1"],
+                    "doc_currency": currency,
+                    "description": f"Credit note — FX ({currency}) with VatGroup={vg} — overseas sale should use ZR",
+                    "recommendation": _RECOMMENDATION["E1"],
+                })
+
+            if tax_total > 0.01 and vg in E2_ZERO_RATE_CODES:
+                findings.append({**base,
+                    "check_type": "E2", "severity": _SEVERITY["E2"],
+                    "description": f"Credit note — Tax {tax_total:.2f} on non-taxable sales supply (VatGroup={vg})",
+                    "recommendation": _RECOMMENDATION["E2"],
+                })
+
+            if vg in {"SO", "DS"} and line_total > 0.01 and tax_total < 0.01:
+                findings.append({**base,
+                    "check_type": "E3", "severity": _SEVERITY["E3"],
+                    "description": f"Credit note — VatGroup={vg} but tax=0 on SGD {line_total:.2f} line",
+                    "recommendation": _RECOMMENDATION["E3"],
+                })
+
+            if vg in SALES_BOX1 and line_total > 0.01 and tax_total > 0.01:
+                ratio = tax_total / line_total
+                if abs(ratio - DEMO_GST_RATE) > 0.005:
+                    findings.append({**base,
+                        "check_type": "E4", "severity": _SEVERITY["E4"],
+                        "effective_rate_pct": round(ratio * 100, 2),
+                        "description": f"Credit note — Effective GST rate {ratio*100:.2f}% deviates from expected {DEMO_GST_RATE*100:.0f}%",
+                        "recommendation": _RECOMMENDATION["E4"],
+                    })
+
+    # ── Purchase credit note checks: E2, E3, E4 ──────────────────────────────
+    for doc in purchase_credit_notes:
+        doc_num = doc.get("DocNum")
+        doc_date = str(doc.get("DocDate", ""))[:10]
+        card_code = doc.get("CardCode", "")
+        card_name = doc.get("CardName", "")
+
+        for line in doc.get("DocumentLines", []):
+            vg = (line.get("VatGroup") or "").strip()
+            line_num = line.get("LineNum")
+            line_total = safe_float(line.get("LineTotal"))
+            tax_total = safe_float(line.get("TaxTotal"))
+
+            base = dict(
+                doc_num=doc_num, doc_date=doc_date,
+                card_code=card_code, card_name=card_name,
+                line_num=line_num, vat_group=vg,
+                line_total=line_total, tax_total=tax_total,
+            )
+
+            if tax_total > 0.01 and vg in E2_ZERO_RATE_CODES:
+                findings.append({**base,
+                    "check_type": "E2", "severity": _SEVERITY["E2"],
+                    "description": f"Credit note — Tax {tax_total:.2f} on non-taxable purchase supply (VatGroup={vg})",
+                    "recommendation": _RECOMMENDATION["E2"],
+                })
+
+            if vg == "SI" and line_total > 0.01 and tax_total < 0.01:
+                findings.append({**base,
+                    "check_type": "E3", "severity": _SEVERITY["E3"],
+                    "description": f"Credit note — VatGroup=SI but tax=0 on SGD {line_total:.2f} line",
+                    "recommendation": _RECOMMENDATION["E3"],
+                })
+
+            if vg in {"SI", "IM", "IGDS"} and line_total > 0.01 and tax_total > 0.01:
+                ratio = tax_total / line_total
+                if abs(ratio - DEMO_GST_RATE) > 0.005:
+                    findings.append({**base,
+                        "check_type": "E4", "severity": _SEVERITY["E4"],
+                        "effective_rate_pct": round(ratio * 100, 2),
+                        "description": f"Credit note — Effective GST rate {ratio*100:.2f}% deviates from expected {DEMO_GST_RATE*100:.0f}%",
+                        "recommendation": _RECOMMENDATION["E4"],
+                    })
+
     # ── NO_GST_REG: one finding per unregistered supplier with input tax ──────
-    # Two-pass: aggregate all invoices per CardCode, then fetch BP once per CardCode.
-    # Matches MCP tool's dedup-by-CardCode approach; extends it with aggregate invoice
-    # count and total input tax (additional context, not a divergence).
+    # Covers purchase invoices AND purchase credit notes.
     print("    Checking supplier GST registrations...", end="\r")
-    supplier_tax: dict = {}  # card_code → {card_name, doc_nums, total_input_tax}
-    for doc in purchase_invoices:
+    supplier_tax: dict = {}
+    for doc in list(purchase_invoices) + list(purchase_credit_notes):
         card_code = doc.get("CardCode", "")
         if not card_code:
             continue
@@ -501,14 +670,13 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
                 "description": (
                     f"Input tax claimed from supplier {card_code} ({info['card_name']}) "
                     f"without a GST registration number — "
-                    f"{len(info['doc_nums'])} invoice(s), SGD {total_tax:.2f} total input tax."
+                    f"{len(info['doc_nums'])} document(s), SGD {total_tax:.2f} total input tax."
                 ),
                 "recommendation": _RECOMMENDATION["NO_GST_REG"],
             })
     print(f"    Checked {len(supplier_tax)} supplier(s) with input tax claims.     ")
 
     # ── COMPLETENESS ──────────────────────────────────────────────────────────
-    # Threshold 0.10 matches MCP tool detect_gst_errors exactly.
     sales_count = len(invoices)
     purchase_count = len(purchase_invoices)
     if sales_count > 0:
@@ -553,7 +721,6 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
         "by_severity": by_severity,
     }
 
-    # 6 pts for running all checks, up to 4 more for finding real issues
     score = min(6 + min(len(findings), 4), 10)
 
     print(f"    Total findings: {summary['total_findings']}  "
@@ -562,8 +729,21 @@ def run_test_3(invoices: list[dict], purchase_invoices: list[dict], b1: B1Sessio
         print(f"      {ct}: {cnt}")
     print(f"    Score: {score}/10")
 
+    # DocNum 611: VatGroup NR, LineTotal 500.00, TaxTotal 45.00 (9% rate —
+    # anomaly vs SBODEMOSG 7% demo norm; SAP applied statutory rate at seed time).
+    # Retained as a known E2 fixture: NR with TaxTotal > 0.01 is a genuine
+    # compliance error regardless of rate. E2 detection on this line is expected
+    # and correct. The 9% rate means this line would also trigger E4 if E4 checks
+    # SO/SI only — confirm _E4_STANDARD_RATE_CODES does not include NR to ensure
+    # no double-flagging.
+    nr_e2 = [f for f in findings if f.get("check_type") == "E2" and f.get("vat_group") == "NR"]
+    if nr_e2:
+        print(f"    NR E2 check: DocNum(s) {[f['doc_num'] for f in nr_e2]} flagged ✓")
+    else:
+        print("    NR E2 check: no NR E2 findings (expected DocNum 611)")
+
     notes = (
-        f"Checks: E1, E2(sales+purchases,incl.BL), E3, E4, NO_GST_REG, COMPLETENESS. "
+        f"Checks: E1, E2(sales+purchases+credit notes, incl.BL+NR), E3, E4, NO_GST_REG, COMPLETENESS. "
         f"Findings: {len(findings)} "
         f"(HIGH: {by_severity['HIGH']}, MEDIUM: {by_severity['MEDIUM']})."
     )
@@ -593,17 +773,20 @@ def main():
 
     date_filter = f"DocDate ge '{PERIOD_START}' and DocDate le '{PERIOD_END}'"
 
-    print(f"\nFetching invoices for {PERIOD_LABEL}...")
+    print(f"\nFetching invoices and credit notes for {PERIOD_LABEL}...")
     # page_size=20: SAP B1 SL enforces a server-side 20-record cap regardless of $top value,
     # so we must paginate in steps of 20 to retrieve all records beyond the first page.
     invoices = fetch_all(b1, "Invoices", date_filter, page_size=20)
     purchase_invoices = fetch_all(b1, "PurchaseInvoices", date_filter, page_size=20)
+    credit_notes = fetch_all(b1, "CreditNotes", date_filter, page_size=20)
+    purchase_credit_notes = fetch_all(b1, "PurchaseCreditNotes", date_filter, page_size=20)
 
-    print(f"\nLoaded: {len(invoices)} sales invoices, {len(purchase_invoices)} purchase invoices.")
+    print(f"\nLoaded: {len(invoices)} sales invoices, {len(purchase_invoices)} purchase invoices, "
+          f"{len(credit_notes)} sales credit note(s), {len(purchase_credit_notes)} purchase credit note(s).")
 
-    t1 = run_test_1(invoices, purchase_invoices)
-    t2 = run_test_2(invoices, purchase_invoices)
-    t3 = run_test_3(invoices, purchase_invoices, b1)
+    t1 = run_test_1(invoices, purchase_invoices, credit_notes, purchase_credit_notes)
+    t2 = run_test_2(invoices, purchase_invoices, credit_notes, purchase_credit_notes)
+    t3 = run_test_3(invoices, purchase_invoices, credit_notes, purchase_credit_notes, b1)
 
     overall = t1["score"] + t2["score"] + t3["score"]
     run_ts = datetime.now(timezone.utc).isoformat()
@@ -612,9 +795,11 @@ def main():
         "run_date": run_ts,
         "period": PERIOD_LABEL,
         "database": COMPANY_DB,
-        "version": "v0-baseline",
+        "version": "v0-baseline-t1.1",
         "invoices_fetched": len(invoices),
         "purchase_invoices_fetched": len(purchase_invoices),
+        "credit_notes_fetched": len(credit_notes),
+        "purchase_credit_notes_fetched": len(purchase_credit_notes),
         "test_1_f5_calculation": t1,
         "test_2_tax_classification": t2,
         "test_3_error_detection": t3,
@@ -635,7 +820,7 @@ def main():
     # Append summary to baseline-test-results.md
     b1_vals = t1["boxes"]
     md_summary = f"""
-## Automated Baseline Run v0
+## Automated Baseline Run (T1.1)
 
 *Run date: {run_ts[:19].replace("T", " ")} UTC | Script: run_baseline_tests.py*
 
@@ -661,7 +846,8 @@ def main():
 | Box 7 (Input tax claimed) | SGD {b1_vals["box_7"]:,.2f} |
 | Box 8 (Net GST payable) | SGD {b1_vals["box_8"]:,.2f} |
 
-FX invoices flagged (excluded from boxes): {len(t1["fx_invoices_flagged"])}
+Credit notes applied: {t1["credit_note_counts"]["sgd_sales"]} SGD sales, {t1["credit_note_counts"]["sgd_purchases"]} SGD purchase
+FX documents flagged (excluded from boxes): {len(t1["fx_invoices_flagged"])}
 
 ### Test 2: VatGroups Found
 
