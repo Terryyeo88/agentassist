@@ -218,7 +218,13 @@ def compile(  # noqa: A001 — shadows builtin; intentional, chain.py does not u
 
 
 def report_input(compiled: CompileOutput) -> ReportInput:
-    """Step f — shape CompileOutput into the flat dict T1.4's PDF renderer consumes.
+    """Step f — produce a lightweight ReportInput summary dict.
+
+    DEPRECATED as of T1.4: the report package (report.contract.load_compile_output,
+    report.report.build_report, report.render.render_pdf) consumes the full CompileOutput
+    JSON written to disk by run_chain, not this flat summary. This step is retained so
+    run_chain's return signature and callers remain unchanged; it may be removed in a
+    later milestone.
 
     Note for T1.4 integration: classify issues carry vat_group, line_total, tax_total
     which enable E2-by-VatGroup template routing (Document-2). Join to detect issues
