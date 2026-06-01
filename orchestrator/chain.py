@@ -96,4 +96,7 @@ def run_chain(
     _write_output(dict(compiled), out_path)
     log.info(f"run_chain: output written to {out_path}")
 
+    # The authoritative T1.4 input is the CompileOutput at out_path, not the
+    # ReportInput summary returned here. Callers that need the full report should
+    # pass out_path to report.contract.load_compile_output.
     return report, out_path
