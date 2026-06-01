@@ -27,3 +27,8 @@ cookies.txt
 config/clients/*.yaml
 !config/clients/example.yaml
 !config/clients/sbodemosg.yaml
+
+# Generated outputs
+exploration-notes/t1.4-reports/
+exploration-notes/t1.6-tool-outputs/*.json
+*.pdf

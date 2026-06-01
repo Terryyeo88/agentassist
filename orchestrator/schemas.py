@@ -136,6 +136,14 @@ class CompileOutput(TypedDict):
 
 
 class ReportInput(TypedDict):
+    """DEPRECATED as of T1.4.
+
+    T1.4 consumes the full CompileOutput JSON (written to
+    exploration-notes/t1.6-tool-outputs/) directly via report.contract.load_compile_output.
+    ReportInput is retained as a possible lightweight summary for future consumers
+    (e.g. a machine-readable summary API) and may be removed in a later milestone.
+    Do not add new fields here; extend CompileOutput / the report package instead.
+    """
     period: Period
     boxes: dict[str, float]
     issues: list[ClassifyIssue | DetectIssue]  # merged, sorted by severity then doc_num

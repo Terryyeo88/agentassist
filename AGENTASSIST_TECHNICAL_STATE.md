@@ -16,8 +16,9 @@ production readiness gaps, and security and data handling. It surfaces findings 
 including inconsistencies and gaps, regardless of how they reflect on the current state of the
 work.
 
-The repository is at `C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent`. T1.3 landed on
-`master`; T1.6 is on branch `t1.6-orchestration-chain` (pending merge).
+The repository is at `C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent`. T1.3 and T1.6 are
+on `master` (T1.6 merged 2026-06-01). T1.4 is on branch `t1.4-pdf-report-generation` (ready
+to merge).
 
 ---
 
@@ -78,11 +79,12 @@ Production-ready: the VatGroup → F5 box mapping logic, the FX exclusion and E1
 logic, the pagination handling, and the system prompt's orchestration rules. These are
 implemented cleanly, tested against reference figures, and produce correct output.
 
-Prototype only: the overall delivery mechanism (Claude Desktop + stdio), the audit trail
-(none exists), and the reporting infrastructure (conversational output only). Per-client
-configuration is resolved (T1.3). The deterministic orchestration chain (T1.6) replaces
-Claude's conversational tool selection and produces structured JSON; a PDF renderer (T1.4)
-remains the missing delivery layer.
+Prototype only: the overall delivery mechanism (Claude Desktop + stdio) and the audit trail
+(none exists). Per-client configuration is resolved (T1.3). The deterministic orchestration
+chain (T1.6) replaces Claude's conversational tool selection and produces structured JSON.
+Report generation is resolved (T1.4, 2026-06-01): the `report/` package consumes
+`CompileOutput` and renders a signed PDF deliverable; `python run_agent.py --report` triggers
+it end-to-end.
 Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
 
 **The three to five most important gaps before commercial deployment**
@@ -95,8 +97,10 @@ Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
    `load_client_config()` with full validation pipeline, credential env-var resolution,
    VatGroup-collision detection, and optional SAP connectivity probe. Switching clients is
    now a YAML file + env-var change. `config/clients/sbodemosg.yaml` is the first client.
-3. No report generation. The system produces conversational output only. A paying customer
-   expects a document they can file or present to a manager.
+3. RESOLVED (T1.4, 2026-06-01): Report generation delivered. `report/` package: contract →
+   enrich/routing → sections → render; `run_agent.py --report`; `CompileOutput` is the input
+   (ReportInput is a deprecated stub); classify↔detect join by (doc_num, error_code);
+   Document-2 template routing; 124 tests passing.
 4. No audit trail or input immutability. A conversational Claude Desktop window is not a
    defensible work product for a GST review engagement.
 5. RESOLVED (T1.2, 2026-05-27): NR VatGroup corrected to Excluded across tool code, reference
@@ -292,9 +296,8 @@ state.
 
 The business framing above implies specific technical priorities:
 
-- **Report generation** is critical-path: without the PDF deliverable,
-  the engagement cannot be completed professionally. See Production
-  Readiness Gap Analysis § Reporting and audit trail.
+- **Report generation** — RESOLVED (T1.4, 2026-06-01): the `report/` package delivers the
+  signed PDF. See § T1.4 for full detail.
 - **Per-client configuration** is critical-path: without it, the system
   cannot be deployed beyond SBODEMOSG. See § Per-client configuration.
 - **Credit note support** is critical-path: most real clients have
@@ -354,7 +357,8 @@ sap-b1-ai-agent/
 │   └── t1.1-verification.md               ← Read-only verification pass: NR T1.2 completeness, rate check, delta check
 │   ├── t1.6-scope.md                      ← T1.6 scope and design doc; gate pseudocode; chain step schemas
 │   ├── codebase-state-report.md           ← 2026-05-28 frozen audit snapshot (pre-T1.3/T1.6); historical only
-│   └── t1.6-tool-outputs/                 ← chain-run-<ts>.json outputs (generated; path provisional pending T1.5)
+│   ├── t1.6-tool-outputs/                 ← chain-run-<ts>.json outputs (generated; path provisional pending T1.5)
+│   └── t1.4-reports/                      ← Generated PDF reports (generated; gitignored)
 ├── keys/
 │   ├── sap_credentials.json               ← CRITICAL: plaintext credentials; untracked but unprotected
 │   └── sap-b1-poc-sg.pem                  ← SSH PEM key for SAP CAL instance; untracked
@@ -376,7 +380,14 @@ sap-b1-ai-agent/
 │   ├── gates.py                           ← gate_1 … gate_5; pure arithmetic / set-membership; no LLM
 │   ├── schemas.py                         ← TypedDicts for all inter-step data shapes
 │   └── steps.py                           ← fetch, calculate, classify, detect, compile, report_input
-├── run_agent.py                           ← T1.6 CLI: --client <id> --period <start> <end>
+├── report/                                ← T1.4: signed PDF report generator
+│   ├── __init__.py                        ← generate_report(compile_output, client_config) → Path
+│   ├── contract.py                        ← Input type aliases; CompileOutput is the T1.4 input
+│   ├── enrich.py                          ← Three-source join keyed by (doc_num, error_code)
+│   ├── routing.py                         ← Document-2 IRAS template routing; E2-by-VatGroup; Template 4/5
+│   ├── sections.py                        ← Eight report sections as structured dicts
+│   └── render.py                          ← Section dicts → PDF
+├── run_agent.py                           ← CLI: --client <id> --period <start> <end> [--report]
 ├── scripts/
 │   ├── run_baseline_tests.py              ← Reference implementation; T1.1 updated: credit notes + NR E2
 │   ├── seed_test_data.py                  ← Creates synthetic test documents (7 invoices + 2 credit notes)
@@ -385,8 +396,14 @@ sap-b1-ai-agent/
 │   └── test-service-layer.sh              ← Basic connectivity test; shell script
 ├── skills/                                ← Directory exists; entirely empty
 ├── tests/
+│   ├── fixtures/
+│   │   └── chain-run-sample.json          ← Static CompileOutput fixture for T1.4 e2e test
 │   ├── test_chain.py                      ← 11 hermetic acceptance tests; no live SAP; Gate 2 acceptance test
-│   └── test_gates.py                      ← 30 unit tests; all five gates; pure Python
+│   ├── test_enrich.py                     ← T1.4: three-source join, (doc_num, error_code) aggregation
+│   ├── test_gates.py                      ← 30 unit tests; all five gates; pure Python
+│   ├── test_report_e2e.py                 ← T1.4: full end-to-end from CompileOutput fixture to PDF
+│   ├── test_routing.py                    ← T1.4: Document-2 template routing, Template 4/5 switching
+│   └── test_sections.py                   ← T1.4: eight sections, HitL language invariants
 └── system-prompts/
     ├── base.md                            ← Primary orchestration prompt; production-ready
     ├── test1-prefix.md                    ← Task prefix for F5 calculation; working
@@ -583,6 +600,83 @@ Issues (detect): 21
 Warnings       : 1 (Gate 1 $inlinecount unavailable)
 Exit           : 0
 ```
+
+---
+
+## T1.4 — Signed PDF report generator (COMPLETE 2026-06-01)
+
+### Package: `report/`
+
+| Module | Role |
+|--------|------|
+| `contract.py` | Input type aliases; declares `CompileOutput` as the T1.4 input contract |
+| `enrich.py` | Three-source join: classify amounts + detect severity + manifest backfill; keyed by `(doc_num, error_code)` |
+| `routing.py` | Document-2 IRAS template routing — E2-by-VatGroup branching, Template 5 default, Template 4 via `actively_makes_exempt_supplies` config flag |
+| `sections.py` | Builds each of the eight report sections as structured dicts |
+| `render.py` | Converts section dicts to PDF |
+| `__init__.py` | Public surface: `generate_report(compile_output, client_config) → Path` |
+
+**CLI**: `python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30 --report`
+
+### Input contract decision
+
+T1.4 consumes the full `CompileOutput` JSON produced by the T1.6 chain — not the flat `ReportInput` dict. `ReportInput` (defined in `orchestrator/schemas.py`) is now a deprecated stub retained for backward compatibility; it is no longer the T1.4 input surface.
+
+The switch was made because `CompileOutput` carries the full three-source structure (classify issues, detect issues, manifest) that T1.4 needs for enrichment and routing. `ReportInput` had already discarded per-source detail before T1.4 could access it.
+
+### Three-source join: (doc_num, error_code) aggregation
+
+`enrich.py` aggregates findings from three sources:
+
+1. **`classify` output** — per-line issues from `validate_invoice_tax_codes`; carries VatGroup, LineTotal and TaxTotal amounts.
+2. **`detect` output** — per-finding severity assignments from `detect_gst_errors`; carries severity (HIGH/MEDIUM/LOW) and description.
+3. **`manifest` backfill** — FetchManifest doc_num set; used to confirm coverage and handle findings (COMPLETENESS, NO_GST_REG) that have no per-line VatGroup counterpart in classify.
+
+The join key is `(doc_num, error_code)`. COMPLETENESS findings (`doc_num=None`) take the backfill path directly without classify enrichment.
+
+### Document-2 IRAS template routing
+
+`routing.py` maps each E2 finding to the correct IRAS GST return amendment template based on VatGroup:
+
+- **E2-by-VatGroup branching**: the applicable template depends on the specific zero-rated or exempt VatGroup — the E2 error code alone is not sufficient for routing.
+- **Template 5 default**: findings without a specific Document-2 assignment route to Template 5.
+- **Template 4** is used instead of Template 5 when `actively_makes_exempt_supplies` is set in `ClientConfig` — reflecting the IRAS distinction between businesses that make exempt supplies as a principal activity vs. incidentally.
+
+### Eight report sections
+
+1. **Cover / metadata**: client name, GST registration, period, run timestamp, reviewer name and firm.
+2. **Methodology disclosure**: what was examined (SGD invoices, purchase invoices, credit notes), what was excluded (FX, manual journals, custom VatGroups), and the data source.
+3. **Data scope**: period, record counts by entity type, items examined count, FX exclusions.
+4. **F5 box table**: all eight boxes with VatGroup attribution per box.
+5. **Error findings**: issues sorted HIGH → MEDIUM → LOW then by doc_num; each includes DocNum, date, counterparty, error code, description, IRAS template routing (where applicable), and recommendation.
+6. **Edge cases for reviewer judgment**: findings flagged for human review (semantic VatGroup appropriateness, ambiguous E1 candidates, cross-finding correlation).
+7. **Items not examined**: explicit list — FX invoices pending conversion, manual journals, custom VatGroup transactions, COMPLETENESS context.
+8. **Reviewer sign-off block**: reviewer name, firm, date, and signature line; disclaimer that the report is a working paper and not an IRAS submission.
+
+### Human-in-the-loop invariant
+
+The report contains no system-generated filing directives. The system surfaces findings and routes them to the applicable IRAS template; the reviewer determines whether to accept, escalate, or dismiss each finding and signs the final document. The signed report carries the reviewer's professional name and responsibility. This invariant is enforced in `sections.py`: findings use language such as "candidate for review" and "recommend verification" rather than "must reclassify" or "submit amendment."
+
+### Appendix 1 wording
+
+Appendix 1 of the report (IRAS amendment framework reference) sources its wording verbatim from the IRAS ASK Guide, 16th edition, pp. 72–73. It does not derive from the coverage-analysis exploration notes. The IRAS ASK Guide wording is used to ensure amendment procedure descriptions match the authoritative official guide.
+
+### Test state
+
+**124 tests passing** across four test files (no live SAP in any test):
+
+| File | Coverage |
+|------|----------|
+| `tests/test_routing.py` | Document-2 template routing, E2-by-VatGroup branching, Template 4/5 switching |
+| `tests/test_enrich.py` | Three-source join, (doc_num, error_code) aggregation, COMPLETENESS backfill path |
+| `tests/test_sections.py` | All eight sections; human-in-the-loop language invariants; reviewer sign-off block |
+| `tests/test_report_e2e.py` | Full end-to-end: `tests/fixtures/chain-run-sample.json` → `generate_report()` → PDF; section presence; no filing directives |
+
+`tests/fixtures/chain-run-sample.json` is the static `CompileOutput` fixture used by the e2e test.
+
+### Document positioning
+
+The generated report is a **working paper** — a structured, reviewer-signed document for pre-filing review prepared with the assistance of AgentAssist. It is not an IRAS submission. The cover page and disclaimer section make this explicit.
 
 ---
 
@@ -1160,23 +1254,11 @@ environment with PDF output. Must-have before first paid engagement.
 
 ### Reporting and audit trail
 
-**Exists now**: None. Claude Desktop produces conversational text with no record of tool calls,
-no immutable log of what data was accessed, and no structured output that can be delivered to
-a client.
+**Structured output — RESOLVED (T1.4, 2026-06-01)**: The `report/` package delivers a signed PDF report containing methodology disclosure, period and data scope, F5 box table with VatGroup attribution, error findings with DocNums and IRAS template routing, edge cases for reviewer judgment, items not examined, and a reviewer sign-off block. `run_agent.py --report` triggers it end-to-end from the T1.6 chain output. See § T1.4 for full detail.
 
-**What's needed**:
-- Structured output: a PDF or HTML report with methodology statement, period and data
-  scope, F5 box table with VatGroup attribution, issues found with DocNums and
-  recommendations, list of items not examined (credit notes, manual journals, FX invoices
-  pending conversion), and a disclaimer.
-- Immutable audit trail: a timestamped log of every tool call, every API response, and every
-  finding, stored in a format that can be produced to support the client's own GST filing
-  records. This matters for Singapore PDPA compliance (data minimization, purpose limitation)
-  and for the defensibility of the firm's work product.
-- Input immutability: the invoice data used in the analysis should be snapshotted and stored,
-  so the findings can be re-derived from the same inputs months later if questioned.
+**Audit trail — OPEN (T1.5, Collin)**: No immutable log of tool calls, API responses, or findings exists. A timestamped, tamper-evident log is required to support client GST filing records, Singapore PDPA compliance (data minimization, purpose limitation), and the defensibility of the firm's work product. Input immutability (snapshotting the invoice data used in the analysis) is part of this gap.
 
-**Estimated work**: 3–5 weeks. Must-have before first paid engagement.
+**Estimated work for T1.5**: 2–3 weeks. Must-have before first paid engagement.
 
 ### Test fixtures beyond SBODEMOSG
 
@@ -1414,8 +1496,7 @@ data residency, Anthropic API data usage disclosure).
 4. The NO_GST_REG check triggers false positives for legitimate small suppliers, causing
    the client to question the system's accuracy.
 
-5. The report is a conversational Claude Desktop transcript that the client doesn't know how
-   to interpret, store, or present to their auditors.
+5. RESOLVED (T1.4, 2026-06-01): The `report/` package generates a structured PDF with methodology disclosure and reviewer sign-off block. The remaining delivery-format gap is the audit trail (T1.5) — the chain run JSON is not yet immutably timestamped and tamper-evident.
 
 ### Recommendations on the most leverage-positive next pieces of work
 
@@ -1429,10 +1510,7 @@ current e-Tax Guide. If the knowledge base is correct (NR excluded from Box 5), 
 tool code, reference script, and system prompt. If the code is correct (NR included), update
 the knowledge base. This discrepancy could produce incorrect output on production data.
 
-**3. Build minimal report output (2–3 weeks).** Test 3 is now validated. The next gate is a
-structured deliverable — even a simple markdown-to-PDF conversion of the tool output would be
-sufficient for early engagement. Without a deliverable format, the engagement cannot be
-completed professionally.
+**3. RESOLVED (T1.4, 2026-06-01): Report generation complete.** The `report/` package generates a signed PDF from `CompileOutput`; 124 tests pass. The remaining pre-engagement gate is the audit trail (T1.5, Collin) — immutable logging of tool calls and chain inputs.
 
 **4. Trigger the git history scrub when the first of the security-decisions.md conditions is
 met.** The credential exposure in aec650f9 is documented and tolerable for the current
@@ -1444,11 +1522,11 @@ conceptually a real E2 (zero-rated purchases should not carry GST) that neither 
 the MCP tool currently catches. Low effort, improves completeness of the error-detection layer.
 
 Updated path to first revenue (T1.1 credit notes, T1.2 NR fix, T1.3 per-client config, T1.6
-deterministic chain: all complete): **report generation (T1.4) is the single remaining
-component before a professional engagement can be completed.** Build the PDF renderer, then
-demonstrate on a pilot customer's real (or real-adjacent) data. The core architecture is proven
-at 30/30 conversational (V0→V3) and 41/41 chain tests; the remaining gap is delivery format,
-not correctness.
+deterministic chain, T1.4 PDF report: all complete): **audit trail and input immutability
+(T1.5, Collin) is the single remaining component before a professional engagement can be
+completed.** The core architecture is proven at 30/30 conversational (V0→V3), 41/41 chain
+tests, and 124/124 report tests; the remaining gap is defensible work-product logging, not
+correctness or delivery format.
 
 ---
 
@@ -1628,11 +1706,74 @@ strategic or engineering conversation.
     SBODEMOSG 7% demo norm. This is documented in `test_data_registry.json` (tax_rate_note
     field) and `nr-vatgroup-resolution.md`. No functional impact; flagged for awareness.
 
+16. **T1.5 audit trail** (OPEN, Collin): Immutable timestamped logging of every chain run —
+    tool calls, API responses, chain inputs, and findings. Required for Singapore PDPA compliance
+    and defensibility of work product. The output path (`exploration-notes/t1.6-tool-outputs/`)
+    is provisional pending T1.5 integration.
+
+17. **Source adapter + 4× fetch tech-debt** (OPEN): The three tool-step functions (`calculate`,
+    `classify`, `detect`) each re-fetch from SAP independently; the Fetch step builds only the
+    manifest. Each chain run makes ~4× the minimum necessary SAP round-trips. Substituting an
+    alternative source (CSV extract, test fixture) would require changing step function
+    signatures. Deferred to T1.6.1.
+
+18. **Production-data robustness — custom VatGroups silently excluded** (OPEN): SAP B1
+    instances commonly have company-specific VatGroup codes not in the standard mapping. These
+    fall into `anomalies` and are silently excluded from all calculations. A client with material
+    custom-VatGroup volume would receive an undercount with only a generic anomaly warning.
+
+19. **Production-data robustness — header-level TaxTotal** (OPEN): Some SAP B1 configurations
+    compute `TaxTotal` at header level or use `VatSum` instead of `TaxTotal` in DocumentLines.
+    The tools exclusively use `TaxTotal` at line level. Behavior against non-standard
+    configurations is untested and could produce incorrect results silently.
+
+20. **Production-data robustness — NO_GST_REG UDF** (OPEN): Some SAP B1 configurations store
+    GST registration numbers in a User Defined Field rather than the standard `FederalTaxID`.
+    For those clients, all suppliers would appear unregistered, generating false positives across
+    every purchase invoice with input tax.
+
+21. **Static fixtures beyond SBODEMOSG** (OPEN): Test coverage is limited to SBODEMOSG Q3 2024
+    data plus seeded edge-case invoices. Synthetic static fixtures are needed for: GST rate
+    transition period, partial exemption, reverse charge, NULL FederalTaxID (legitimate small
+    suppliers below the GST threshold), custom VatGroup codes, and non-standard TaxTotal
+    structure. Fixtures should be static (not dependent on a live SAP instance) to be
+    reproducible.
+
+22. **ZP+TaxTotal E2 gap** (OPEN): DocNum 610 (ZP+TaxTotal=84) is a real E2 (zero-rated
+    purchases should not carry GST) not currently caught by either the reference script or the
+    `_E2_ZERO_RATE_CODES` set. Low effort to extend; improves error-detection completeness.
+
+23. **Manual journals** (OPEN): All three custom tools and the T1.6 chain skip
+    `JournalEntries`. GST-relevant manual journals (e.g., VAT adjustments, F7 corrections) are
+    invisible to the system. Impact depends on client's SAP B1 usage patterns.
+
+24. **Reasoning-layer evaluation harness** (OPEN): There is no automated harness to evaluate
+    Claude's reasoning quality on the classify/detect steps against a stored reference. The
+    current evidence base is conversational chat logs. Required for regression testing as Claude
+    model versions change.
+
+25. **PDPA / Anthropic DPA** (OPEN): All tool output and user messages are sent to the Claude
+    API. A data processing agreement with Anthropic is required before accessing real client
+    financial data under Singapore PDPA. Anthropic's current API terms and data residency
+    options (US/EU servers only vs. Singapore) need to be confirmed and disclosed to clients.
+
+26. **Security history scrub** (OPEN): Credential files (`sap_credentials.json`,
+    `sap-b1-poc-sg.pem`) exist in the initial commit (aec650f9). A mandatory history scrub is
+    required before any of the triggers listed in `exploration-notes/security-decisions.md` are
+    reached.
+
+27. **Fallback-credentials inconsistency** (OPEN): `SAPB1Client.__init__` contains hardcoded
+    fallback credentials (base URL, company DB, username, password) applied silently when
+    environment variables are absent. A production deployment that fails to set env vars would
+    silently attempt to connect to the SBODEMOSG demo instance. This should either be removed
+    (fail-fast with a clear error) or explicitly documented as a development convenience with a
+    warning log.
+
 ---
 
 *End of document. Generated 2026-05-26 by repository audit; updated 2026-05-27 (Test 3,
 V1/V2 contamination, security hygiene, reference script extension); updated 2026-05-28 (T1.2
 NR VatGroup exclusion, T1.1 credit notes, post-seed reference figures); updated 2026-06-01
-(T1.3 per-client config and T1.6 deterministic orchestration chain). T1.3 is on `master`
-(commit `92f83b1`). T1.6 is on branch `t1.6-orchestration-chain` (commits `2fc7284`,
-`d31fb92`) — pending review and merge.*
+(T1.3 per-client config and T1.6 deterministic orchestration chain — T1.6 merged to `master`
+on 2026-06-01); updated 2026-06-01 (T1.4 signed PDF report generator). T1.3 and T1.6 are on
+`master`. T1.4 is on branch `t1.4-pdf-report-generation` (ready to merge).*
