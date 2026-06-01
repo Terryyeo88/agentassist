@@ -1,20 +1,20 @@
 {
-  "run_date": "2026-05-26T14:21:35.750135+00:00",
+  "run_date": "2026-05-28T09:03:53.122553+00:00",
   "period": "Q3 2024",
   "database": "SBODEMOSG",
   "version": "v0-baseline",
-  "invoices_fetched": 47,
-  "purchase_invoices_fetched": 17,
+  "invoices_fetched": 50,
+  "purchase_invoices_fetched": 21,
   "test_1_f5_calculation": {
     "boxes": {
       "box_1": 370589.97,
-      "box_2": 5000.0,
-      "box_3": 3000.0,
-      "box_4": 378589.97,
-      "box_5": 123277.76,
+      "box_2": 10000.0,
+      "box_3": 6000.0,
+      "box_4": 386589.97,
+      "box_5": 129477.76,
       "box_6": 25941.32,
-      "box_7": 8545.45,
-      "box_8": 17395.87
+      "box_7": 8860.45,
+      "box_8": 17080.87
     },
     "fx_invoices_flagged": [
       {
@@ -110,7 +110,7 @@
     ],
     "score": 10,
     "max_score": 10,
-    "notes": "Boxes 1-8 calculated from 39 SGD sales and 15 SGD purchase invoices. FX invoices detected and excluded: 10 document(s). BL/OS lines (SGD 800.00) correctly excluded from Box 5."
+    "notes": "Boxes 1-8 calculated from 42 SGD sales and 19 SGD purchase invoices. FX invoices detected and excluded: 10 document(s). BL/OS lines (SGD 1600.00) correctly excluded from Box 5."
   },
   "test_2_tax_classification": {
     "vatgroups_found": [
@@ -130,6 +130,12 @@
         "code": "IM",
         "description": "Import GST",
         "f5_box": "Box 5 + Box 7",
+        "known": true
+      },
+      {
+        "code": "NR",
+        "description": "Non-GST-registered supplier",
+        "f5_box": "Box 5 only",
         "known": true
       },
       {
@@ -255,20 +261,20 @@
     ],
     "score": 10,
     "max_score": 10,
-    "notes": "Found 8 unique VatGroup codes: 8 known, 0 unknown/unmapped. 11 FX+SO mismatch(es) detected."
+    "notes": "Found 9 unique VatGroup codes: 9 known, 0 unknown/unmapped. 11 FX+SO mismatch(es) detected."
   },
   "test_3_error_detection": {
     "period": "2024-07-01 to 2024-09-30",
     "summary": {
-      "total_findings": 19,
+      "total_findings": 20,
       "by_check_type": {
         "NO_GST_REG": 7,
         "E1": 11,
-        "E2": 1
+        "E2": 2
       },
       "by_severity": {
         "HIGH": 18,
-        "MEDIUM": 1,
+        "MEDIUM": 2,
         "LOW": 0
       }
     },
@@ -396,14 +402,18 @@
         "line_num": null,
         "vat_group": null,
         "line_total": null,
-        "tax_total": 455.0,
-        "affected_invoice_count": 3,
+        "tax_total": 955.0,
+        "affected_invoice_count": 7,
         "affected_doc_nums": [
           605,
           606,
-          607
+          607,
+          608,
+          609,
+          610,
+          611
         ],
-        "description": "Input tax claimed from supplier V10000 (Acme Associates) without a GST registration number \u2014 3 invoice(s), SGD 455.00 total input tax.",
+        "description": "Input tax claimed from supplier V10000 (Acme Associates) without a GST registration number \u2014 7 invoice(s), SGD 955.00 total input tax.",
         "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
       },
       {
@@ -584,11 +594,25 @@
         "severity": "MEDIUM",
         "description": "Tax 56.00 charged on non-taxable purchase supply (VatGroup=BL)",
         "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code."
+      },
+      {
+        "doc_num": 608,
+        "doc_date": "2024-07-15",
+        "card_code": "V10000",
+        "card_name": "Acme Associates",
+        "line_num": 0,
+        "vat_group": "BL",
+        "line_total": 800.0,
+        "tax_total": 56.0,
+        "check_type": "E2",
+        "severity": "MEDIUM",
+        "description": "Tax 56.00 charged on non-taxable purchase supply (VatGroup=BL)",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code."
       }
     ],
     "score": 10,
     "max_score": 10,
-    "notes": "Checks: E1, E2(sales+purchases,incl.BL), E3, E4, NO_GST_REG, COMPLETENESS. Findings: 19 (HIGH: 18, MEDIUM: 1)."
+    "notes": "Checks: E1, E2(sales+purchases,incl.BL), E3, E4, NO_GST_REG, COMPLETENESS. Findings: 20 (HIGH: 18, MEDIUM: 2)."
   },
   "overall_score": 30,
   "overall_max": 30
