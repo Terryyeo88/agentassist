@@ -207,15 +207,58 @@ def _load_sap_config() -> ClientConfig:
     return load_client_config(client_id, check_connectivity=False)
 
 
-_client_config = _load_sap_config()
+try:
+    _client_config = _load_sap_config()
+    # Merge client-specific VatGroup codes into the standard mapping (additive only).
+    # Collision with standard codes is already rejected by load_client_config, so
+    # this loop can only add new codes — never overwrite existing ones.
+    for _code, _mapping in _client_config.custom_vat_groups.items():
+        F5_BOX_MAPPING[_code] = _mapping
+    sap = SAPB1Client(_client_config)
+except RuntimeError as _init_err:
+    logger.warning(
+        f"SAP client not initialised at module load time: {_init_err} — "
+        "call configure_client() before using any tool."
+    )
+    sap = None
 
-# Merge client-specific VatGroup codes into the standard mapping (additive only).
-# Collision with standard codes is already rejected by load_client_config, so
-# this loop can only add new codes — never overwrite existing ones.
-for _code, _mapping in _client_config.custom_vat_groups.items():
-    F5_BOX_MAPPING[_code] = _mapping
 
-sap = SAPB1Client(_client_config)
+def configure_client(
+    service_layer_url: str,
+    company_db: str,
+    username: str,
+    password: str,
+    ssl_verify: bool,
+    custom_vat_groups: Optional[dict] = None,
+) -> None:
+    """
+    Override the module-level SAP client for orchestrator chain use.
+    Accepts primitives only — no ClientConfig import; keeps dependency direction one-way.
+    Call once before invoking any step function. Does not affect MCP tool signatures.
+    """
+    global sap
+
+    class _Cfg:
+        pass
+
+    cfg = _Cfg()
+    cfg.service_layer_url = service_layer_url
+    cfg.company_db = company_db
+    cfg.username = username
+    cfg.password = password
+    cfg.ssl_verify = ssl_verify
+    cfg.client_id = "<chain-configured>"
+
+    sap = SAPB1Client(cfg)
+
+    if custom_vat_groups:
+        for _code, _mapping in custom_vat_groups.items():
+            if _code not in F5_BOX_MAPPING:
+                F5_BOX_MAPPING[_code] = _mapping
+
+    logger.info(
+        f"configure_client: SAP client set for {company_db} at {service_layer_url}"
+    )
 
 
 def _fetch_invoices_paginated(entity: str, period_start: str, period_end: str) -> list:
