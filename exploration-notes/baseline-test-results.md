@@ -722,3 +722,61 @@ Total findings: 19 (HIGH: 18, MEDIUM: 1)
 - [HIGH] E1 DocNum 965: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
 
 ---
+
+## Automated Baseline Run v0
+
+*Run date: 2026-05-28 09:03:53 UTC | Script: run_baseline_tests.py*
+
+### Results Summary
+
+| Test | Score | Notes |
+|------|-------|-------|
+| Test 1: F5 Calculation | 10/10 | Boxes 1-8 calculated from 42 SGD sales and 19 SGD purchase invoices. FX invoices |
+| Test 2: Tax Classification | 10/10 | Found 9 unique VatGroup codes: 9 known, 0 unknown/unmapped. 11 FX+SO mismatch(es |
+| Test 3: Error Detection | 10/10 | Checks: E1, E2(sales+purchases,incl.BL), E3, E4, NO_GST_REG, COMPLETENESS. Findi |
+| **Overall** | **30/30** | |
+
+### Test 1: F5 Box Values (SGD)
+
+| Box | Value |
+|-----|-------|
+| Box 1 (Standard-rated supplies) | SGD 370,589.97 |
+| Box 2 (Zero-rated supplies) | SGD 10,000.00 |
+| Box 3 (Exempt supplies) | SGD 6,000.00 |
+| Box 4 (Total supplies) | SGD 386,589.97 |
+| Box 5 (Taxable purchases) | SGD 129,477.76 |
+| Box 6 (Output tax) | SGD 25,941.32 |
+| Box 7 (Input tax claimed) | SGD 8,860.45 |
+| Box 8 (Net GST payable) | SGD 17,080.87 |
+
+FX invoices flagged (excluded from boxes): 10
+
+### Test 2: VatGroups Found
+
+- `BL`: Blocked input tax (Reg 26/27) → Excluded
+- `ES33`: Exempt supply (Reg 33) → Box 3
+- `IM`: Import GST → Box 5 + Box 7
+- `NR`: Non-GST-registered supplier → Box 5 only
+- `OS`: Out of scope → Excluded
+- `SI`: Standard-rated input → Box 5 + Box 7
+- `SO`: Standard-rated output → Box 1 + Box 6
+- `ZP`: Zero-rated purchase → Box 5 only
+- `ZR`: Zero-rated supply → Box 2
+
+FX+SO mismatches detected: 11
+
+### Test 3: Findings
+
+Total findings: 20 (HIGH: 18, MEDIUM: 2)
+- [HIGH] NO_GST_REG DocNum 592: Input tax claimed from supplier V1010 (Far East Imports) without a GST registrat
+- [HIGH] NO_GST_REG DocNum 594: Input tax claimed from supplier V70000 (SMD Technologies) without a GST registra
+- [HIGH] NO_GST_REG DocNum 595: Input tax claimed from supplier V20000 (Lasercom) without a GST registration num
+- [HIGH] NO_GST_REG DocNum 600: Input tax claimed from supplier V60000 (CTI Computers) without a GST registratio
+- [HIGH] NO_GST_REG DocNum 601: Input tax claimed from supplier V30000 (Blockies Corporation) without a GST regi
+- [HIGH] NO_GST_REG DocNum 604: Input tax claimed from supplier V50000 (Lumarx) without a GST registration numbe
+- [HIGH] NO_GST_REG DocNum 605: Input tax claimed from supplier V10000 (Acme Associates) without a GST registrat
+- [HIGH] E1 DocNum 958: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+- [HIGH] E1 DocNum 964: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+- [HIGH] E1 DocNum 965: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+
+---
