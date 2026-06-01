@@ -16,8 +16,8 @@ production readiness gaps, and security and data handling. It surfaces findings 
 including inconsistencies and gaps, regardless of how they reflect on the current state of the
 work.
 
-The repository is at `C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent`, current branch
-`phase2-accounting-workflows`.
+The repository is at `C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent`. T1.3 landed on
+`master`; T1.6 is on branch `t1.6-orchestration-chain` (pending merge).
 
 ---
 
@@ -32,6 +32,15 @@ curated knowledge base documenting Singapore VatGroup-to-F5-box routing rules wi
 citations; and (3) a system prompt enforcing procedural constraints, output format, and
 environment awareness. The system runs locally via Claude Desktop on the developer's Windows
 machine connected to a cloud-hosted SAP B1 SBODEMOSG demo database.
+
+Two infrastructure layers have since been added. T1.3 (2026-05-31, `master`) delivered a
+per-client YAML config system (`config/loader.py`, `config/clients/`) with credential
+resolution, GST-rate sanity checking, VatGroup-collision detection, and an SAP connectivity
+probe. T1.6 (2026-06-01, branch `t1.6-orchestration-chain`) replaced Claude's conversational
+tool selection with a deterministic six-step orchestration chain (`orchestrator/`) gated by
+five pure-Python reconciliation checks; the chain runs as
+`python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30` and writes structured
+JSON output to `exploration-notes/t1.6-tool-outputs/`.
 
 **What has been validated**
 
@@ -69,9 +78,11 @@ Production-ready: the VatGroup → F5 box mapping logic, the FX exclusion and E1
 logic, the pagination handling, and the system prompt's orchestration rules. These are
 implemented cleanly, tested against reference figures, and produce correct output.
 
-Prototype only: the overall delivery mechanism (Claude Desktop + stdio), the credential
-handling (hardcoded fallbacks), the per-client configuration model (none exists), the audit
-trail (none exists), and the reporting infrastructure (conversational output only).
+Prototype only: the overall delivery mechanism (Claude Desktop + stdio), the audit trail
+(none exists), and the reporting infrastructure (conversational output only). Per-client
+configuration is resolved (T1.3). The deterministic orchestration chain (T1.6) replaces
+Claude's conversational tool selection and produces structured JSON; a PDF renderer (T1.4)
+remains the missing delivery layer.
 Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
 
 **The three to five most important gaps before commercial deployment**
@@ -80,8 +91,10 @@ Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
    `CreditNotes` and `PurchaseCreditNotes` are now fetched and their amounts subtracted from
    the corresponding F5 boxes. Two SBODEMOSG seed credit notes (CN A: CreditNotes/SO/1000.00,
    CN B: PurchaseCreditNotes/SI/500.00) validate the implementation against live data.
-2. No per-client configuration model exists. Switching from SBODEMOSG to a real client's
-   database would require editing code.
+2. RESOLVED (T1.3, 2026-05-31): Per-client YAML config (`config/clients/<id>.yaml`),
+   `load_client_config()` with full validation pipeline, credential env-var resolution,
+   VatGroup-collision detection, and optional SAP connectivity probe. Switching clients is
+   now a YAML file + env-var change. `config/clients/sbodemosg.yaml` is the first client.
 3. No report generation. The system produces conversational output only. A paying customer
    expects a document they can file or present to a manager.
 4. No audit trail or input immutability. A conversational Claude Desktop window is not a
@@ -312,7 +325,11 @@ sap-b1-ai-agent/
 ├── git                                    ← DELETED 2026-05-27
 ├── claude-code-master-prompt-phase2-tools.md ← Historical Claude Code prompting spec; reference only
 ├── config/
-│   └── env.example                        ← Template for SAP B1 connection env vars; complete
+│   ├── clients/
+│   │   ├── example.yaml                   ← Schema template for per-client config
+│   │   └── sbodemosg.yaml                 ← SBODEMOSG client config (credentials via env vars)
+│   ├── loader.py                          ← T1.3: load_client_config → ClientConfig; 8-step validation
+│   └── env.example                        ← Template for SAP B1 connection env vars
 ├── exploration-notes/
 │   ├── baseline-test-results.md           ← Primary experimental log; production-ready document
 │   ├── baseline-test-report-v0.json       ← Machine-generated reference run; authoritative
@@ -335,6 +352,9 @@ sap-b1-ai-agent/
 │   ├── nr-vatgroup-resolution.md          ← T1.2 investigation: NR excluded from Box 5; DocNum 611 E2 fixture notes
 │   ├── credit-note-exploration.md         ← T1.1 pre-impl exploration + implementation summary + post-seed reference figures
 │   └── t1.1-verification.md               ← Read-only verification pass: NR T1.2 completeness, rate check, delta check
+│   ├── t1.6-scope.md                      ← T1.6 scope and design doc; gate pseudocode; chain step schemas
+│   ├── codebase-state-report.md           ← 2026-05-28 frozen audit snapshot (pre-T1.3/T1.6); historical only
+│   └── t1.6-tool-outputs/                 ← chain-run-<ts>.json outputs (generated; path provisional pending T1.5)
 ├── keys/
 │   ├── sap_credentials.json               ← CRITICAL: plaintext credentials; untracked but unprotected
 │   └── sap-b1-poc-sg.pem                  ← SSH PEM key for SAP CAL instance; untracked
@@ -349,6 +369,14 @@ sap-b1-ai-agent/
 │   │   └── __pycache__/                   ← Python bytecode cache
 │   └── MCP-SAP/                           ← Third-party HTTP MCP server (Spanish, FastAPI)
 │                                          ← Not used; retained as reference; separate git repo
+├── orchestrator/                          ← T1.6: deterministic chain package
+│   ├── __init__.py
+│   ├── chain.py                           ← run_chain(client_config, period) → (ReportInput, Path)
+│   ├── exceptions.py                      ← GateFailure, ChainError
+│   ├── gates.py                           ← gate_1 … gate_5; pure arithmetic / set-membership; no LLM
+│   ├── schemas.py                         ← TypedDicts for all inter-step data shapes
+│   └── steps.py                           ← fetch, calculate, classify, detect, compile, report_input
+├── run_agent.py                           ← T1.6 CLI: --client <id> --period <start> <end>
 ├── scripts/
 │   ├── run_baseline_tests.py              ← Reference implementation; T1.1 updated: credit notes + NR E2
 │   ├── seed_test_data.py                  ← Creates synthetic test documents (7 invoices + 2 credit notes)
@@ -356,6 +384,9 @@ sap-b1-ai-agent/
 │   ├── test_data_registry.json            ← DocEntry registry; updated with credit notes and DocNum 611 tax_rate_note
 │   └── test-service-layer.sh              ← Basic connectivity test; shell script
 ├── skills/                                ← Directory exists; entirely empty
+├── tests/
+│   ├── test_chain.py                      ← 11 hermetic acceptance tests; no live SAP; Gate 2 acceptance test
+│   └── test_gates.py                      ← 30 unit tests; all five gates; pure Python
 └── system-prompts/
     ├── base.md                            ← Primary orchestration prompt; production-ready
     ├── test1-prefix.md                    ← Task prefix for F5 calculation; working
@@ -471,10 +502,87 @@ One resolved and one remaining design question:
    and TaxTotal when subtracting from F5 boxes — negation is explicit at the call site, not
    inside the fetch function. Two SBODEMOSG seed credit notes confirm correct reference figures.
 
-2. **Per-client configuration**: Credentials, server URL, and company DB are hardcoded as
-   fallback values in `SAPB1Client.__init__`. Environment variables override them, but there is
-   no config file mechanism for switching between clients or environments. Any production
-   deployment would need a config layer that does not currently exist.
+2. **Per-client configuration**: RESOLVED (T1.3, 2026-05-31). `config/loader.py` loads
+   per-client YAML from `config/clients/<id>.yaml`, resolves credentials from env vars, validates
+   GST rate and VatGroup codes, and optionally probes SAP connectivity. `configure_client()`
+   (T1.6) injects the resolved credentials into `sap_b1_server` at chain-run time without
+   importing `config/` into `mcp-servers/` — dependency direction preserved.
+
+---
+
+## T1.3 — Per-client configuration (RESOLVED 2026-05-31)
+
+`config/loader.py` provides `load_client_config(client_id, *, check_connectivity=True) → ClientConfig`. Per-client config YAML lives in `config/clients/<id>.yaml`; `sbodemosg.yaml` is the first.
+
+**Validation pipeline** (each step fails with a human-readable message):
+1. Locate and parse `config/clients/<id>.yaml`
+2. Validate required fields (`client_id`, `client_name`, `applicable_gst_rate`, `sap_b1` block)
+3. `client_id` must match filename stem
+4. Resolve credential env-var names to values (stores values, never stores var names)
+5. Sanity-check `applicable_gst_rate` in `[0.05, 0.15]`
+6. Detect `custom_vat_groups` collisions with the 17 standard IRAS VatGroup codes
+7. Optional SAP login probe (logs out immediately on success; skipped by consumers that manage sessions)
+
+**`ClientConfig` fields**: `client_id`, `client_name`, `gst_registration_number`, `applicable_gst_rate`, `service_layer_url`, `company_db`, `username`, `password`, `ssl_verify`, `fiscal_year_start_month`, `custom_vat_groups`, `completeness_threshold`, `reviewer_name`, `firm_name`.
+
+**Independence contract**: `config/loader.py` has zero dependency on `mcp-servers/` or `scripts/`. Both may import it; they must not import each other.
+
+---
+
+## T1.6 — Deterministic orchestration chain (COMPLETE 2026-06-01)
+
+**What it replaced**: Claude's conversational tool selection — the model deciding at runtime which MCP tools to call and in what order. For an auditable GST review, "Claude decided to skip validate_invoice_tax_codes" is not defensible; the chain makes that impossible.
+
+### Package: `orchestrator/`
+
+| File | Responsibility |
+|---|---|
+| `chain.py` | `run_chain(client_config, period) → (ReportInput, Path)` — top-level entry point; calls configure_client, runs six steps and five gates, writes output JSON |
+| `steps.py` | Six step functions: `fetch`, `calculate`, `classify`, `detect`, `compile`, `report_input` |
+| `gates.py` | Five gate functions (`gate_1_record_count` … `gate_5_cross_tool_consistency`); each raises `GateFailure` on halt; no LLM calls |
+| `schemas.py` | TypedDicts for all inter-step shapes (`Period`, `FetchManifest`, `F5ReturnOutput`, `ClassifyOutput`, `DetectOutput`, `CompileOutput`, `ReportInput`, …) |
+| `exceptions.py` | `GateFailure(Exception)`, `ChainError(Exception)` |
+
+**CLI**: `python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30`
+
+**Chain sequence**:
+```
+fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect → gate_4
+      → compile → gate_5 → report_input → write chain-run-<ts>.json → return ReportInput
+```
+
+**Five deterministic gates** (pure arithmetic / set-membership, never an LLM call):
+
+| Gate | After | Check |
+|------|-------|-------|
+| 1 | Fetch | SAP `$inlinecount` vs fetched count; warn-pass when unavailable |
+| 2 | Calculate | `box_4 == box_1+box_2+box_3` and `box_8 == box_6−box_7` (tolerance 0.01) |
+| 3 | Classify | `summary.total == len(issues)` and all issue VatGroups present in inventory |
+| 4 | Detect | `sum(severity_counts) == len(issues)` and no dangling `doc_num` references |
+| 5 | Compile | E1 doc_num sets agree across calculate/detect; unknown VatGroups agree across calculate/classify |
+
+**Output**: `exploration-notes/t1.6-tool-outputs/chain-run-<YYYYMMDD-HHMMSS>.json` (full `CompileOutput`). Path provisional pending T1.5 audit-trail integration.
+
+**Connection seam**: `configure_client(service_layer_url, company_db, username, password, ssl_verify, custom_vat_groups)` added to `sap_b1_server.py`. Takes primitives; no `config/` import into `mcp-servers/` — dependency direction preserved. The module-level init (`_load_sap_config()`) is now wrapped in try/except so the module imports cleanly even when `CLIENT_ID` is not set; `configure_client()` overwrites the global `sap` client before any step function runs.
+
+**Design decisions and known limitations**:
+
+- **Gate 1 dormancy**: SBODEMOSG's SAP B1 Service Layer (version 1000250) does not return `odata.count` for `$inlinecount=allpages` queries. Gate 1 always warn-passes on this instance; pagination completeness is verified only structurally (`len(page) < 20` sentinel in the fetch helper), not arithmetically against a SAP-reported total.
+- **~4× redundant fetch (tech-debt)**: Steps b/c/d (`calculate`, `classify`, `detect`) each re-fetch from SAP independently. The Fetch step (step a) builds only the `FetchManifest` (doc_nums set for Gate 4, items_examined for the report); it does not pre-fetch on behalf of the tool steps. Each chain run makes ~4× the minimum necessary SAP round-trips. Deferred to T1.6.1.
+- **Source-adapter decision deferred**: The three tool-step functions call `sap_b1_server` directly. Substituting an alternative source (CSV extract, test fixture) would require changing step function signatures. Deferred until a second source adapter is needed.
+- **`compile` step**: Aggregates four step outputs deterministically. Surfaced warnings are built from data (not scraped from logs): Gate 1 inline-count absence, Gate 2 calc anomalies, Gate 3 unknown-VatGroup entries.
+- **`report_input` step**: Shapes `CompileOutput` into the flat `ReportInput` dict T1.4 will consume. Detect issues are sorted HIGH → MEDIUM → LOW then by doc_num (COMPLETENESS issues, which carry `doc_num=None`, sort last). T1.4 will later join `classify` issues onto detect issues by `(doc_num, error_code)` to enable E2-by-VatGroup routing — deferred reconciliation.
+
+**Test state**: **41/41 tests pass** (`tests/test_gates.py`: 30 unit tests across all five gates; `tests/test_chain.py`: 11 hermetic acceptance tests covering clean run, Gate 2 acceptance test with corrupted box_4, and three gate-failure paths via the full chain — no live SAP in any test).
+
+**Live validation** (2026-06-01, SBODEMOSG Q3 2024):
+```
+Items examined : purchase_credit_note=1, purchase_invoice=21, sales_credit_note=1, sales_invoice=50
+box_8 (net GST): 17,045.87   (matches T1.1 reference figures)
+Issues (detect): 21
+Warnings       : 1 (Gate 1 $inlinecount unavailable)
+Exit           : 0
+```
 
 ---
 
@@ -1044,21 +1152,11 @@ environment with PDF output. Must-have before first paid engagement.
 
 ### Per-client configuration
 
-**Exists now**: Credentials, server URL, and company DB are set via environment variables
-(overriding hardcoded fallbacks). No per-client config file. The system prompt hardcodes
-`SBODEMOSG` as the current environment.
+**Status: RESOLVED (T1.3, 2026-05-31)** — see T1.3 section above for full detail.
 
-**What's needed**:
-- A per-client config file format (YAML or JSON) specifying: SAP Service Layer URL,
-  company DB name, authentication credentials, GST registration number, applicable period
-  defaults, custom VatGroup overrides (if the client uses non-standard codes), and
-  completeness thresholds.
-- The system prompt's environment statement must be dynamically generated from the config
-  rather than hardcoded.
-- A mechanism to validate the config before running (check SAP connectivity, verify VatGroups
-  are in the mapping, etc.).
+`config/loader.py` + `config/clients/*.yaml` + `ClientConfig` dataclass. `run_agent.py --client <id>` loads and validates the config before invoking `run_chain`.
 
-**Estimated work**: 1–2 weeks. Should-have before first paid engagement.
+**Remaining gap**: The system prompt's `SBODEMOSG` environment statement is still hardcoded — dynamic per-client prompt generation is deferred to T1.4 or a separate prompt-templating task.
 
 ### Reporting and audit trail
 
@@ -1345,10 +1443,12 @@ internal-only phase. It becomes intolerable at the first trigger listed in secur
 conceptually a real E2 (zero-rated purchases should not carry GST) that neither the script nor
 the MCP tool currently catches. Low effort, improves completeness of the error-detection layer.
 
-The path to first revenue is: fix credit notes → resolve NR VatGroup → build minimal report
-output → demonstrate on a friendly pilot customer's real (or real-adjacent) data → iterate
-from findings. The core architecture is proven (30/30 on SBODEMOSG); the gaps are operational
-and delivery-layer, not architectural.
+Updated path to first revenue (T1.1 credit notes, T1.2 NR fix, T1.3 per-client config, T1.6
+deterministic chain: all complete): **report generation (T1.4) is the single remaining
+component before a professional engagement can be completed.** Build the PDF renderer, then
+demonstrate on a pilot customer's real (or real-adjacent) data. The core architecture is proven
+at 30/30 conversational (V0→V3) and 41/41 chain tests; the remaining gap is delivery format,
+not correctness.
 
 ---
 
@@ -1530,9 +1630,9 @@ strategic or engineering conversation.
 
 ---
 
-*End of document. Generated 2026-05-26 by repository audit; updated 2026-05-27 to reflect
-Test 3 completion, V1/V2 contamination discovery and resolution, security hygiene fixes, and
-reference script extension; updated 2026-05-28 to reflect T1.2 (NR VatGroup exclusion from
-Box 5, NR E2 detection, DocNum 611 fixture) and T1.1 (credit note support in all three custom
-tools, two SBODEMOSG credit note seeds, post-seed reference figures). All findings based on
-files present in the repository on the `master` branch.*
+*End of document. Generated 2026-05-26 by repository audit; updated 2026-05-27 (Test 3,
+V1/V2 contamination, security hygiene, reference script extension); updated 2026-05-28 (T1.2
+NR VatGroup exclusion, T1.1 credit notes, post-seed reference figures); updated 2026-06-01
+(T1.3 per-client config and T1.6 deterministic orchestration chain). T1.3 is on `master`
+(commit `92f83b1`). T1.6 is on branch `t1.6-orchestration-chain` (commits `2fc7284`,
+`d31fb92`) — pending review and merge.*
