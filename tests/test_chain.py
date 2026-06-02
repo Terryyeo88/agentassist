@@ -149,40 +149,48 @@ def _patch_chain(monkeypatch, manifest=None, calc=None, cls=None, det=None, tmp_
     monkeypatch.setattr("orchestrator.chain.calculate",  lambda cfg, p: calc)
     monkeypatch.setattr("orchestrator.chain.classify",   lambda cfg, p: cls)
     monkeypatch.setattr("orchestrator.chain.detect",     lambda cfg, p: det)
-
-    # Redirect file writes to tmp_path to keep tests side-effect-free
-    if tmp_path is not None:
-        monkeypatch.setattr("orchestrator.chain._OUTPUT_DIR", tmp_path)
+    # tmp_path accepted for call-site compatibility but chain no longer writes JSON
 
 
 # ---------------------------------------------------------------------------
-# Test: clean run returns a valid ReportInput
+# Test: clean run returns a valid CompileOutput and gate_results
 # ---------------------------------------------------------------------------
 
 class TestRunChainClean:
-    def test_returns_report_input_on_all_gates_pass(self, cfg, monkeypatch, tmp_path):
+    def test_returns_compile_output_on_all_gates_pass(self, cfg, monkeypatch, tmp_path):
         _patch_chain(monkeypatch, tmp_path=tmp_path)
-        report, out_path = run_chain(cfg, _PERIOD)
+        compile_out, gate_results = run_chain(cfg, _PERIOD)
 
-        assert isinstance(report, dict)
-        assert "boxes" in report
-        assert "issues" in report
-        assert "period" in report
-        assert "items_examined" in report
-        assert "generated_at" in report
+        # CompileOutput top-level keys
+        assert isinstance(compile_out, dict)
+        assert "period" in compile_out
+        assert "fetch_manifest" in compile_out
+        assert "calculate" in compile_out
+        assert "classify" in compile_out
+        assert "detect" in compile_out
+        assert "surfaced_warnings" in compile_out
 
-    def test_output_json_written(self, cfg, monkeypatch, tmp_path):
+    def test_gate_results_all_passed_with_5_gates(self, cfg, monkeypatch, tmp_path):
         _patch_chain(monkeypatch, tmp_path=tmp_path)
-        _, out_path = run_chain(cfg, _PERIOD)
-        assert out_path.exists()
+        _, gate_results = run_chain(cfg, _PERIOD)
+
+        assert gate_results["all_passed"] is True
+        assert len(gate_results["gates"]) == 5
+        for entry in gate_results["gates"]:
+            assert entry["passed"] is True
+            assert isinstance(entry["checked"], dict)
 
     def test_items_examined_counts_records(self, cfg, monkeypatch, tmp_path):
         _patch_chain(monkeypatch, tmp_path=tmp_path)
-        report, _ = run_chain(cfg, _PERIOD)
+        compile_out, _ = run_chain(cfg, _PERIOD)
         # manifest has 3 sales_invoice records
-        assert report["items_examined"].get("sales_invoice") == 3
+        sales_invoices = [
+            r for r in compile_out["fetch_manifest"]["records"]
+            if r["doc_type"] == "sales_invoice"
+        ]
+        assert len(sales_invoices) == 3
 
-    def test_issues_sorted_high_first(self, cfg, monkeypatch, tmp_path):
+    def test_detect_issues_contain_high_and_medium(self, cfg, monkeypatch, tmp_path):
         det = _make_detect()
         det["issues"].append({
             "severity": "MEDIUM", "error_code": "E2",
@@ -193,14 +201,15 @@ class TestRunChainClean:
         det["severity_counts"]["MEDIUM"] = 1
         # Gate 5 only checks E1, and calc.e1_candidates={1} vs detect E1={1} ✓
         _patch_chain(monkeypatch, det=det, tmp_path=tmp_path)
-        report, _ = run_chain(cfg, _PERIOD)
-        sevs = [i["severity"] for i in report["issues"]]
-        assert sevs == sorted(sevs, key=lambda s: {"HIGH": 0, "MEDIUM": 1, "LOW": 2}[s])
+        compile_out, _ = run_chain(cfg, _PERIOD)
+        severities = {i["severity"] for i in compile_out["detect"]["issues"]}
+        assert "HIGH" in severities
+        assert "MEDIUM" in severities
 
     def test_gate1_warning_surfaced_when_inline_count_none(self, cfg, monkeypatch, tmp_path):
         _patch_chain(monkeypatch, tmp_path=tmp_path)
-        report, _ = run_chain(cfg, _PERIOD)
-        assert any("Gate 1" in w for w in report["warnings"])
+        compile_out, _ = run_chain(cfg, _PERIOD)
+        assert any("Gate 1" in w for w in compile_out["surfaced_warnings"])
 
 
 # ---------------------------------------------------------------------------

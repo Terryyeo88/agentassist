@@ -25,10 +25,14 @@ position without tool-confirmed evidence.
 
 **Layer 3 — Orchestration chain** (`orchestrator/`): a deterministic six-step chain
 (`fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect → gate_4 → compile →
-gate_5 → report_input`) replaces Claude's conversational tool selection. Each gate is pure
-arithmetic or set-membership with no LLM call; a failing gate halts the chain before any
-downstream step runs. Output is a `CompileOutput` JSON written to
-`exploration-notes/t1.6-tool-outputs/`.
+gate_5`) replaces Claude's conversational tool selection. Each gate is pure arithmetic or
+set-membership with no LLM call; a failing gate halts the chain before any downstream step
+runs. Returns `(CompileOutput, gate_results)`.
+
+**Audit bundle** (`audit_bundle/`): every successful run is sealed into a tamper-evident
+bundle under `audit/<client_id>/`. SHA-256 per artefact + root hash over canonical JSON of
+the manifest. `python -m audit_bundle.verify <bundle-dir>` re-hashes everything and confirms
+nothing changed after sealing.
 
 **Report package** (`report/`): consumes the `CompileOutput` JSON and renders a signed PDF.
 The three-source join (classify amounts + detect severity + manifest backfill) is keyed by
@@ -48,7 +52,8 @@ localisation) Q3 2024.
 | T1.2 | NR VatGroup excluded from Box 5 per IRAS para 5.11(o); NR E2 detection | COMPLETE 2026-05-27 |
 | T1.3 | Per-client YAML config (`config/clients/<id>.yaml`), 8-step validation pipeline | COMPLETE 2026-05-31 |
 | T1.6 | Deterministic six-step chain with five gates; `run_agent.py` CLI | COMPLETE 2026-06-01 |
-| T1.4 | Signed PDF report generator (`report/` package); `--report` flag | COMPLETE 2026-06-01 |
+| T1.4 | Signed PDF report generator (`report/` package) | COMPLETE 2026-06-01 |
+| T1.5 | Sealed audit bundle (`audit_bundle/`); SHA-256 tamper-evident; verify CLI | COMPLETE 2026-06-02 |
 
 **Live validation figures (SBODEMOSG Q3 2024):**
 ```
@@ -57,15 +62,20 @@ box_8 (net GST): 17,045.87
 Issues (detect): 21
 ```
 
-**Test suite: 124 tests passing** (no live SAP required).
+**Test suite: 169 tests passing** (1 skipped: read-only advisory, Windows; no live SAP required).
 
 ```
-tests/test_gates.py          30 unit tests — all five gates
-tests/test_chain.py          11 acceptance tests — chain + gate-failure paths
-tests/test_routing.py        T1.4 — Document-2 template routing, E2-by-VatGroup
-tests/test_enrich.py         T1.4 — three-source join, (doc_num, error_code) aggregation
-tests/test_sections.py       T1.4 — eight sections, HitL language invariants
-tests/test_report_e2e.py     T1.4 — full e2e from CompileOutput fixture to PDF
+tests/test_gates.py              30 unit tests — all five gates
+tests/test_chain.py              11 acceptance tests — chain + gate-failure paths
+tests/test_routing.py            T1.4 — Document-2 template routing, E2-by-VatGroup
+tests/test_enrich.py             T1.4 — three-source join, (doc_num, error_code) aggregation
+tests/test_sections.py           T1.4 — eight sections, HitL language invariants
+tests/test_report_e2e.py         T1.4 — full e2e from CompileOutput fixture to PDF
+tests/test_audit_canonical.py    T1.5 — canonical_json, sha256_bytes/file
+tests/test_audit_redaction.py    T1.5 — allow-list credential exclusion
+tests/test_audit_seal_verify.py  T1.5 — seal/verify round-trip, tamper detection
+tests/test_gate_record.py        T1.5 — gate_results shaping; GateFailure.checked
+tests/test_run_agent_e2e.py      T1.5 — e2e seal from fixture; T7 determinism
 ```
 
 **Validated on demo data only.** All results are against SBODEMOSG, an SAP-maintained demo
@@ -88,30 +98,41 @@ cp config/env.example .env
 # edit .env: SAP_USERNAME=manager  SAP_PASSWORD=manager
 ```
 
-### 2. Run the chain
+### 2. Run the chain and seal a bundle
 
 ```bash
 python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30
 ```
 
-Writes `exploration-notes/t1.6-tool-outputs/chain-run-<YYYYMMDD-HHMMSS>.json` and prints a
-summary to stdout:
+Every successful run renders the PDF and writes a sealed audit bundle:
 
 ```
-Items examined : {...}
-box_8 (net GST): 17,045.87
-Issues (detect): 21
-Output JSON    : exploration-notes/t1.6-tool-outputs/chain-run-20240101-120000.json
+=== CHAIN COMPLETE ===
+  Items examined : {...}
+  box_8 (net GST): 17,045.87
+  Issues (detect): 21
+  Report PDF     : exploration-notes/t1.4-reports/sbodemosg-2024-07-01-2024-09-30-<ts>.pdf
+
+=== BUNDLE SEALED ===
+  Bundle         : audit/sbodemosg/2024-07-01_2024-09-30/<run-ts>/
+  Verify         : python -m audit_bundle.verify audit/sbodemosg/2024-07-01_2024-09-30/<run-ts>/
 ```
 
-### 3. Generate the PDF report
+On `GateFailure` (arithmetic reconciliation failure), the chain halts with a message and no
+bundle is written. The report requires `config/clients/<id>.yaml` to have `report.reviewer_name`
+and `report.firm_name` set.
+
+### 3. Audit bundles
+
+Each bundle under `audit/<client_id>/<period>/<run-ts>/` contains eight artefacts covered by
+`manifest.json` (per-artefact SHA-256 + root hash). To verify integrity after the fact:
 
 ```bash
-python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30 --report
+python -m audit_bundle.verify audit/sbodemosg/2024-07-01_2024-09-30/<run-ts>/
+# PASS  (or FAIL with a list of mismatched artefacts / root_hash mismatch)
 ```
 
-Writes `exploration-notes/t1.4-reports/<client>-<start>-<end>-<ts>.pdf`. The report requires
-`config/clients/<id>.yaml` to have `report.reviewer_name` and `report.firm_name` set.
+The `audit/` directory is gitignored. Bundles contain no SAP credentials.
 
 ---
 
@@ -145,13 +166,21 @@ sap-b1-ai-agent/
 ├── scripts/
 │   ├── run_baseline_tests.py     ← Reference implementation; auto-generates Test 3 reference
 │   └── seed_test_data.py         ← Inserts SBODEMOSG test invoices + credit notes
+├── audit/                        ← sealed audit bundles (generated; gitignored)
+├── audit_bundle/                 ← T1.5: seal / verify / gate-record package
+│   ├── canonical.py              ← canonical_json, sha256_bytes/file
+│   ├── config_redaction.py       ← redact_config; allow-list; _DENY_ALWAYS
+│   ├── gate_record.py            ← build_gate_results; gates.json schema
+│   ├── manifest.py               ← build_manifest; root-hash construction
+│   ├── provenance.py             ← gather_provenance; git SHA; file hashes
+│   ├── seal.py                   ← seal_bundle; _AUDIT_ROOT; mark_readonly
+│   └── verify.py                 ← verify_bundle; python -m audit_bundle.verify CLI
 ├── tests/
 │   ├── fixtures/
-│   │   └── chain-run-sample.json ← Static CompileOutput for e2e test
-│   └── test_*.py                 ← 124 tests; no live SAP required
+│   │   └── chain-run-sample.json ← Static CompileOutput for e2e tests
+│   └── test_*.py                 ← 169 tests; no live SAP required
 └── exploration-notes/
     ├── baseline-test-results.md  ← V0→V3 experimental log; all three tests
-    ├── t1.6-tool-outputs/        ← chain-run-<ts>.json outputs (generated)
     └── t1.4-reports/             ← PDF reports (generated; gitignored)
 ```
 
@@ -167,9 +196,9 @@ sap-b1-ai-agent/
 - **NO_GST_REG false positives**: the check uses `FederalTaxID` on `BusinessPartners`. Clients
   whose SAP B1 stores GST registration numbers in a UDF will see false positives on every
   purchase invoice with input tax.
-- **No audit trail yet (T1.5)**: the chain-run JSON is not immutably timestamped or
-  tamper-evident. An audit-trail layer (T1.5) is required before the output is defensible as a
-  work product for a GST engagement.
+- **Re-derivability boundary**: the sealed bundle records what the chain saw, not a frozen
+  SAP snapshot. Full offline replay from frozen line bytes is deferred to the Tier-2 source
+  adapter (`rederivation_grade: "same-SAP-state"`).
 - **Live SAP B1 only**: there is no CSV/extract source adapter. The chain requires a live SAP
   B1 Service Layer connection. Substituting an alternative source requires changes to step
   function signatures.
