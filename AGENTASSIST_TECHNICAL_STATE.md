@@ -101,8 +101,11 @@ Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
    enrich/routing → sections → render; `run_agent.py --report`; `CompileOutput` is the input
    (ReportInput is a deprecated stub); classify↔detect join by (doc_num, error_code);
    Document-2 template routing; 124 tests passing.
-4. No audit trail or input immutability. A conversational Claude Desktop window is not a
-   defensible work product for a GST review engagement.
+4. RESOLVED (T1.5, 2026-06-02): Audit trail and input immutability delivered. Each chain
+   run produces a sealed, tamper-evident bundle under `audit/<client_id>/`; SHA-256 per
+   artefact + root-hash construction; `python -m audit_bundle.verify <bundle-dir>` detects
+   any post-seal edit; credentials stripped via explicit allow-list; gate results recorded;
+   169 tests passing.
 5. RESOLVED (T1.2, 2026-05-27): NR VatGroup corrected to Excluded across tool code, reference
    script, and system prompt. NR is now excluded from Box 5 per IRAS para 5.11(o). DocNum 611
    seeded as a known NR E2 fixture (LineTotal 500.00, TaxTotal 45.00 at 9% — rate anomaly vs
@@ -373,9 +376,18 @@ sap-b1-ai-agent/
 │   │   └── __pycache__/                   ← Python bytecode cache
 │   └── MCP-SAP/                           ← Third-party HTTP MCP server (Spanish, FastAPI)
 │                                          ← Not used; retained as reference; separate git repo
+├── audit/                                 ← sealed audit bundles; gitignored
+├── audit_bundle/                          ← T1.5: seal/verify/gate-record package
+│   ├── canonical.py                       ← canonical_json, sha256_bytes/file
+│   ├── config_redaction.py                ← redact_config; allow-list; _DENY_ALWAYS
+│   ├── gate_record.py                     ← build_gate_results; gates.json schema
+│   ├── manifest.py                        ← build_manifest; root-hash construction
+│   ├── provenance.py                      ← gather_provenance; git SHA; file hashes
+│   ├── seal.py                            ← seal_bundle; _AUDIT_ROOT; mark_readonly
+│   └── verify.py                          ← verify_bundle; __main__ CLI
 ├── orchestrator/                          ← T1.6: deterministic chain package
 │   ├── __init__.py
-│   ├── chain.py                           ← run_chain(client_config, period) → (ReportInput, Path)
+│   ├── chain.py                           ← run_chain(client_config, period) → (CompileOutput, gate_results); report_input retired (P3)
 │   ├── exceptions.py                      ← GateFailure, ChainError
 │   ├── gates.py                           ← gate_1 … gate_5; pure arithmetic / set-membership; no LLM
 │   ├── schemas.py                         ← TypedDicts for all inter-step data shapes
@@ -398,11 +410,16 @@ sap-b1-ai-agent/
 ├── tests/
 │   ├── fixtures/
 │   │   └── chain-run-sample.json          ← Static CompileOutput fixture for T1.4 e2e test
-│   ├── test_chain.py                      ← 11 hermetic acceptance tests; no live SAP; Gate 2 acceptance test
+│   ├── test_audit_canonical.py            ← T1.5: canonical_json, sha256_bytes/file
+│   ├── test_audit_redaction.py            ← T1.5: allow-list credential exclusion
+│   ├── test_audit_seal_verify.py          ← T1.5: seal/verify round-trip, tamper detection
+│   ├── test_chain.py                      ← 11 hermetic acceptance tests (P3: updated for new return type)
 │   ├── test_enrich.py                     ← T1.4: three-source join, (doc_num, error_code) aggregation
+│   ├── test_gate_record.py                ← T1.5: gate_results shaping; GateFailure.checked
 │   ├── test_gates.py                      ← 30 unit tests; all five gates; pure Python
 │   ├── test_report_e2e.py                 ← T1.4: full end-to-end from CompileOutput fixture to PDF
 │   ├── test_routing.py                    ← T1.4: Document-2 template routing, Template 4/5 switching
+│   ├── test_run_agent_e2e.py              ← T1.5: e2e seal from fixture; T7 determinism
 │   └── test_sections.py                   ← T1.4: eight sections, HitL language invariants
 └── system-prompts/
     ├── base.md                            ← Primary orchestration prompt; production-ready
@@ -554,7 +571,7 @@ One resolved and one remaining design question:
 
 | File | Responsibility |
 |---|---|
-| `chain.py` | `run_chain(client_config, period) → (ReportInput, Path)` — top-level entry point; calls configure_client, runs six steps and five gates, writes output JSON |
+| `chain.py` | `run_chain(client_config, period) → (CompileOutput, gate_results)` — top-level entry point; calls configure_client, runs six steps and five gates. `report_input` step retired (P3); JSON persistence moved to `seal_bundle`. |
 | `steps.py` | Six step functions: `fetch`, `calculate`, `classify`, `detect`, `compile`, `report_input` |
 | `gates.py` | Five gate functions (`gate_1_record_count` … `gate_5_cross_tool_consistency`); each raises `GateFailure` on halt; no LLM calls |
 | `schemas.py` | TypedDicts for all inter-step shapes (`Period`, `FetchManifest`, `F5ReturnOutput`, `ClassifyOutput`, `DetectOutput`, `CompileOutput`, `ReportInput`, …) |
@@ -578,7 +595,7 @@ fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect →
 | 4 | Detect | `sum(severity_counts) == len(issues)` and no dangling `doc_num` references |
 | 5 | Compile | E1 doc_num sets agree across calculate/detect; unknown VatGroups agree across calculate/classify |
 
-**Output**: `exploration-notes/t1.6-tool-outputs/chain-run-<YYYYMMDD-HHMMSS>.json` (full `CompileOutput`). Path provisional pending T1.5 audit-trail integration.
+**Output**: sealed bundle written under `audit/<client_id>/` by `run_agent.py` (T1.5). The provisional path `exploration-notes/t1.6-tool-outputs/` was removed in P3 when the chain write moved into `seal_bundle`.
 
 **Connection seam**: `configure_client(service_layer_url, company_db, username, password, ssl_verify, custom_vat_groups)` added to `sap_b1_server.py`. Takes primitives; no `config/` import into `mcp-servers/` — dependency direction preserved. The module-level init (`_load_sap_config()`) is now wrapped in try/except so the module imports cleanly even when `CLIENT_ID` is not set; `configure_client()` overwrites the global `sap` client before any step function runs.
 
@@ -588,9 +605,9 @@ fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect →
 - **~4× redundant fetch (tech-debt)**: Steps b/c/d (`calculate`, `classify`, `detect`) each re-fetch from SAP independently. The Fetch step (step a) builds only the `FetchManifest` (doc_nums set for Gate 4, items_examined for the report); it does not pre-fetch on behalf of the tool steps. Each chain run makes ~4× the minimum necessary SAP round-trips. Deferred to T1.6.1.
 - **Source-adapter decision deferred**: The three tool-step functions call `sap_b1_server` directly. Substituting an alternative source (CSV extract, test fixture) would require changing step function signatures. Deferred until a second source adapter is needed.
 - **`compile` step**: Aggregates four step outputs deterministically. Surfaced warnings are built from data (not scraped from logs): Gate 1 inline-count absence, Gate 2 calc anomalies, Gate 3 unknown-VatGroup entries.
-- **`report_input` step**: Shapes `CompileOutput` into the flat `ReportInput` dict T1.4 will consume. Detect issues are sorted HIGH → MEDIUM → LOW then by doc_num (COMPLETENESS issues, which carry `doc_num=None`, sort last). T1.4 will later join `classify` issues onto detect issues by `(doc_num, error_code)` to enable E2-by-VatGroup routing — deferred reconciliation.
+- **`report_input` step**: RETIRED (P3). `run_chain` now returns `(CompileOutput, gate_results)` directly; `build_report` in `run_agent.py` consumes `CompileOutput` unchanged. The `ReportInput` TypedDict stub is retained in `orchestrator/schemas.py` for reference only.
 
-**Test state**: **41/41 tests pass** (`tests/test_gates.py`: 30 unit tests across all five gates; `tests/test_chain.py`: 11 hermetic acceptance tests covering clean run, Gate 2 acceptance test with corrupted box_4, and three gate-failure paths via the full chain — no live SAP in any test).
+**Test state**: **169 tests passing** (1 skipped: T8 read-only advisory check, Windows). T1.5 added 45 new tests across five files; `tests/test_chain.py` updated in P3 to match the `(CompileOutput, gate_results)` return type. `tests/test_gates.py` (30 tests) unchanged — the return-value addition does not affect any pass/fail assertion.
 
 **Live validation** (2026-06-01, SBODEMOSG Q3 2024):
 ```
@@ -677,6 +694,86 @@ Appendix 1 of the report (IRAS amendment framework reference) sources its wordin
 ### Document positioning
 
 The generated report is a **working paper** — a structured, reviewer-signed document for pre-filing review prepared with the assistance of AgentAssist. It is not an IRAS submission. The cover page and disclaimer section make this explicit.
+
+---
+
+## T1.5 — Audit trail + input immutability (COMPLETE 2026-06-02)
+
+### Package: `audit_bundle/`
+
+| Module | Role |
+|--------|------|
+| `canonical.py` | `canonical_json(obj) → bytes`: keys sorted recursively, no whitespace, UTF-8; sets serialised as sorted lists so runtime `set` fields and JSON-loaded `list` fields hash identically. `sha256_bytes(data)` and `sha256_file(path)` return `"sha256:<hex>"`; file variant streams in 64 KiB chunks. |
+| `config_redaction.py` | `redact_config(cfg: ClientConfig) → dict`: explicit allow-list of 11 fields; `username`, `password`, `ssl_verify` unconditionally excluded via `_DENY_ALWAYS` (disjoint from the allow-list). A future `ClientConfig` field is excluded by default — the allow-list is positive, not a deny-list. |
+| `provenance.py` | `gather_provenance(expected_rate)`: repo commit (`git rev-parse --short HEAD`; `"unknown"` on failure), `chain_version="t1.6"`, `report_template_version="t1.4"`, `system_prompt_hash`, `kb_slice_hash`, `rederivation_grade="same-SAP-state"`. |
+| `manifest.py` | `build_manifest(engagement, provenance, artefact_paths, bundle_dir) → dict`: per-artefact `{path, sha256, bytes}` sorted by POSIX path; root hash = `sha256_bytes(canonical_json(manifest-minus-root_hash))`. |
+| `gate_record.py` | `build_gate_results(records) → dict`: shapes `{all_passed, gates:[{gate, name, after_step, status, passed, checked, message?}]}`. WARN_PASS counts as passed; FAIL sets `all_passed: false`. |
+| `seal.py` | `seal_bundle(*, client_config, period, compile_output, gate_results, report_pdf_path, run_started_at, run_completed_at) → Path`: writes 8 artefacts, builds and writes `manifest.json`, marks bundle read-only. `_AUDIT_ROOT` is module-level for test redirection via monkeypatch. |
+| `verify.py` | `verify_bundle(bundle_dir) → (ok, problems[])`: re-hashes each artefact against the manifest listing; recomputes root over `manifest-minus-root_hash`. Runnable as `python -m audit_bundle.verify <bundle-dir>` (PASS / FAIL, exit 0 / 1). |
+
+### Bundle layout
+
+```
+audit/<client_id>/<period-start>_<period-end>/<run-ts>/
+    manifest.json                ← written last; covers all other artefacts
+    config.json                  ← allow-listed ClientConfig; credentials stripped
+    inputs/
+    │   └── fetch-manifest.json  ← FetchManifest from Step a
+    steps/
+    │   ├── calculate.json       ← F5ReturnOutput from Step c
+    │   ├── classify.json        ← ClassifyOutput from Step b
+    │   └── detect.json          ← DetectOutput from Step d
+    gates.json                   ← all five gate results with checked values
+    compile-output.json          ← full CompileOutput
+    report.pdf                   ← signed PDF from T1.4
+```
+
+All JSON written via `canonical_json` for stable, deterministic hashing. `run_ts` is `YYYYMMDD-HHMMSS` in UTC, derived from `run_started_at`.
+
+### Root-hash construction and verification
+
+`manifest.json` is written last and covers all other artefacts. Root hash = SHA-256 over canonical JSON of the manifest with the `root_hash` field removed. Verification: re-hash each artefact against its listed sha256, then recompute root over `manifest-minus-root_hash`. Any post-seal edit — to any artefact file or any manifest field — fails verification. `python -m audit_bundle.verify <bundle-dir>` prints PASS (exit 0) or FAIL with a problem list (exit 1).
+
+### Gate result capture (P3 orchestrator changes)
+
+Gates 1–5 now return a `checked` dict of the values each gate inspected when deciding. On success the dict is returned; on failure it is attached to `GateFailure.checked`. `chain.py` wraps each gate call in try/except, records `{gate, name, after_step, status, passed, checked, message?}`, and threads the list out as the second return value of `run_chain`. A halted chain re-raises `GateFailure` after recording; `exc.checked` carries the failing gate's values for diagnostics without re-parsing the exception message.
+
+### Always-seal in run_agent.py
+
+Every successful `run_agent.py` invocation:
+
+1. Captures `run_started_at` (UTC ISO) before `run_chain`.
+2. `compile_output, gate_results = run_chain(cfg, period)`.
+3. Renders PDF via the existing T1.4 wiring (`build_report → render_pdf`); `generated_at` sourced from `compile_output["fetch_manifest"]["fetched_at"]`.
+4. Captures `run_completed_at`.
+5. `seal_bundle(...)` writes the sealed bundle under `audit/<client_id>/`.
+6. Prints bundle path and `python -m audit_bundle.verify <bundle-dir>` to stdout.
+
+On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero; no bundle written. A halt means the data did not reconcile — there is no valid review to seal.
+
+### Re-derivability boundary
+
+`rederivation_grade: "same-SAP-state"` in provenance. Re-running the deterministic chain against the same SAP data state reproduces `compile-output.json` byte-for-byte. Full offline replay from frozen line bytes is deferred to the Tier-2 source adapter (see Appendix C #16); until that adapter exists, re-derivability requires a live SAP instance with the same data state.
+
+### Secrets policy
+
+`config.json` is written from `_ALLOW_LIST` (11 fields). `username`, `password`, and `ssl_verify` are absent from the allow-list and additionally guarded by `_DENY_ALWAYS`. Tests assert `"HUNTER2_TEST"` never appears in any bundle file (binary scan covers JSON + PDF alike); tests assert `_ALLOW_LIST ∩ _DENY_ALWAYS = ∅`.
+
+### Read-only caveat
+
+`_mark_readonly` in `seal.py` sets `0o444` / `0o555` after sealing — best-effort and advisory. The tamper evidence is the hash, not the file permission. On Windows, `os.chmod` sets the read-only attribute but cannot prevent an administrator from overriding it. T8 asserts the flag is set on POSIX; skipped on Windows with an explicit reason.
+
+### Test state
+
+**169 tests passing** (1 skipped: T8 read-only advisory check, Windows):
+
+| File | Coverage |
+|------|----------|
+| `tests/test_audit_canonical.py` | `canonical_json` order-independence, byte stability, UTF-8 passthrough; `sha256_bytes` and `sha256_file` |
+| `tests/test_audit_redaction.py` | Allow-list completeness, credential value/key exclusion, `_ALLOW_LIST` / `_DENY_ALWAYS` disjoint invariant |
+| `tests/test_audit_seal_verify.py` | T1–T5 + T8: 8 artefacts present; verify passes on fresh bundle; tamper detected on artefact and manifest; credential scan; read-only flag on POSIX |
+| `tests/test_gate_record.py` | `build_gate_results` unit tests; clean-run 5-gate integration via `run_chain`; `GateFailure.checked` carries box values on corrupted box_4 |
+| `tests/test_run_agent_e2e.py` | Sealed bundle produced + `verify_bundle` passes; T7 `compile-output.json` bytes deterministic across seals from identical inputs; `GateFailure` exits non-zero with no bundle created |
 
 ---
 
@@ -1256,9 +1353,7 @@ environment with PDF output. Must-have before first paid engagement.
 
 **Structured output — RESOLVED (T1.4, 2026-06-01)**: The `report/` package delivers a signed PDF report containing methodology disclosure, period and data scope, F5 box table with VatGroup attribution, error findings with DocNums and IRAS template routing, edge cases for reviewer judgment, items not examined, and a reviewer sign-off block. `run_agent.py --report` triggers it end-to-end from the T1.6 chain output. See § T1.4 for full detail.
 
-**Audit trail — OPEN (T1.5, Collin)**: No immutable log of tool calls, API responses, or findings exists. A timestamped, tamper-evident log is required to support client GST filing records, Singapore PDPA compliance (data minimization, purpose limitation), and the defensibility of the firm's work product. Input immutability (snapshotting the invoice data used in the analysis) is part of this gap.
-
-**Estimated work for T1.5**: 2–3 weeks. Must-have before first paid engagement.
+**Audit trail — RESOLVED (T1.5, 2026-06-02)**: Every successful chain run now produces a sealed, tamper-evident bundle under `audit/<client_id>/`. The bundle contains a per-artefact SHA-256 manifest with a root hash, secrets-stripped config, all step outputs, gate results with checked values, and the signed PDF. `python -m audit_bundle.verify <bundle-dir>` re-hashes the bundle and confirms the root hash — any post-seal edit is detected. Credentials never enter the bundle (explicit allow-list + `_DENY_ALWAYS` guard). The `audit/` directory is gitignored.
 
 ### Test fixtures beyond SBODEMOSG
 
@@ -1496,7 +1591,7 @@ data residency, Anthropic API data usage disclosure).
 4. The NO_GST_REG check triggers false positives for legitimate small suppliers, causing
    the client to question the system's accuracy.
 
-5. RESOLVED (T1.4, 2026-06-01): The `report/` package generates a structured PDF with methodology disclosure and reviewer sign-off block. The remaining delivery-format gap is the audit trail (T1.5) — the chain run JSON is not yet immutably timestamped and tamper-evident.
+5. RESOLVED (T1.5, 2026-06-02): Audit trail and input immutability delivered. Sealed bundle under `audit/<client_id>/`; SHA-256 per artefact + root hash; `verify_bundle` detects tampering; secrets stripped; gate results recorded; 169 tests passing.
 
 ### Recommendations on the most leverage-positive next pieces of work
 
@@ -1510,7 +1605,7 @@ current e-Tax Guide. If the knowledge base is correct (NR excluded from Box 5), 
 tool code, reference script, and system prompt. If the code is correct (NR included), update
 the knowledge base. This discrepancy could produce incorrect output on production data.
 
-**3. RESOLVED (T1.4, 2026-06-01): Report generation complete.** The `report/` package generates a signed PDF from `CompileOutput`; 124 tests pass. The remaining pre-engagement gate is the audit trail (T1.5, Collin) — immutable logging of tool calls and chain inputs.
+**3. RESOLVED (T1.5, 2026-06-02): Audit trail complete.** The `audit_bundle/` package seals every run into a tamper-evident bundle; `verify_bundle` detects any post-seal edit; 169 tests pass. All five Tier-1 items are now resolved.
 
 **4. Trigger the git history scrub when the first of the security-decisions.md conditions is
 met.** The credential exposure in aec650f9 is documented and tolerable for the current
@@ -1521,12 +1616,11 @@ internal-only phase. It becomes intolerable at the first trigger listed in secur
 conceptually a real E2 (zero-rated purchases should not carry GST) that neither the script nor
 the MCP tool currently catches. Low effort, improves completeness of the error-detection layer.
 
-Updated path to first revenue (T1.1 credit notes, T1.2 NR fix, T1.3 per-client config, T1.6
-deterministic chain, T1.4 PDF report: all complete): **audit trail and input immutability
-(T1.5, Collin) is the single remaining component before a professional engagement can be
-completed.** The core architecture is proven at 30/30 conversational (V0→V3), 41/41 chain
-tests, and 124/124 report tests; the remaining gap is defensible work-product logging, not
-correctness or delivery format.
+**All five Tier-1 items complete** (T1.1 credit notes, T1.2 NR fix, T1.3 per-client config,
+T1.6 deterministic chain, T1.4 PDF report, T1.5 audit trail). The core architecture is proven
+at 30/30 conversational (V0→V3) and 169/169 tests. The three remaining gates to a paid pilot
+are production-data trust (Gate B), PDPA compliance (Gate C), and security history scrub
+(Gate C) — none are correctness or delivery-format gaps.
 
 ---
 
@@ -1706,10 +1800,13 @@ strategic or engineering conversation.
     SBODEMOSG 7% demo norm. This is documented in `test_data_registry.json` (tax_rate_note
     field) and `nr-vatgroup-resolution.md`. No functional impact; flagged for awareness.
 
-16. **T1.5 audit trail** (OPEN, Collin): Immutable timestamped logging of every chain run —
-    tool calls, API responses, chain inputs, and findings. Required for Singapore PDPA compliance
-    and defensibility of work product. The output path (`exploration-notes/t1.6-tool-outputs/`)
-    is provisional pending T1.5 integration.
+16. **T1.5 audit trail** (RESOLVED, 2026-06-02, Terry): Sealed bundle under `audit/<client_id>/`;
+    per-artefact SHA-256 + root hash; `python -m audit_bundle.verify <bundle-dir>`; secrets
+    stripped; gate results captured; 169 tests. The provisional path
+    `exploration-notes/t1.6-tool-outputs/` was removed in P3 — `audit/` is now the canonical
+    sink. **Deferred (tied to Tier-2 source adapter):** full offline replay from frozen line
+    bytes; until the source adapter exists, re-derivability requires a live SAP instance with
+    the same data state (`rederivation_grade: "same-SAP-state"`).
 
 17. **Source adapter + 4× fetch tech-debt** (OPEN): The three tool-step functions (`calculate`,
     `classify`, `detect`) each re-fetch from SAP independently; the Fetch step builds only the
@@ -1775,5 +1872,7 @@ strategic or engineering conversation.
 V1/V2 contamination, security hygiene, reference script extension); updated 2026-05-28 (T1.2
 NR VatGroup exclusion, T1.1 credit notes, post-seed reference figures); updated 2026-06-01
 (T1.3 per-client config and T1.6 deterministic orchestration chain — T1.6 merged to `master`
-on 2026-06-01); updated 2026-06-01 (T1.4 signed PDF report generator). T1.3 and T1.6 are on
-`master`. T1.4 is on branch `t1.4-pdf-report-generation` (ready to merge).*
+on 2026-06-01); updated 2026-06-01 (T1.4 signed PDF report generator); updated 2026-06-02
+(T1.5 audit trail + input immutability — `audit_bundle/` package, sealed bundles, verify CLI,
+gate-result capture in orchestrator, always-seal in run_agent; Tier 1 fully closed; 169 tests).
+All six Tier-1 milestones on `master` (or branch `t1.5-audit-trail`, pending merge).*
