@@ -225,3 +225,16 @@ def test_T8_config_json_readonly_after_seal_posix(tmp_path, monkeypatch):
     assert not (file_mode & stat.S_IWRITE), (
         f"config.json is still writable after seal (mode={oct(file_mode)})"
     )
+
+
+def test_report_pdf_is_writable_after_seal(tmp_path, monkeypatch):
+    # report.pdf must NOT be marked read-only: Windows PDF viewers try to write
+    # last-opened-page state when opening a file; read-only causes them to report
+    # "file corrupted" rather than "file is read-only".  Integrity is protected
+    # by its sha256 in manifest.json.
+    bundle_dir = _do_seal(tmp_path, monkeypatch)
+    pdf_path = bundle_dir / "report.pdf"
+    file_mode = os.stat(pdf_path).st_mode
+    assert bool(file_mode & stat.S_IWRITE), (
+        f"report.pdf should remain writable after seal but mode={oct(file_mode)}"
+    )

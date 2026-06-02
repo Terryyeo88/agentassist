@@ -31,6 +31,13 @@ def _mark_readonly(bundle_dir: Path) -> None:
     but never propagate; on Windows os.chmod sets the read-only attribute but
     cannot prevent an administrator from overriding it.
 
+    report.pdf is intentionally left writable: PDF viewers on Windows try to
+    write last-opened-page state or annotation cache when opening a file; if
+    the file is read-only they report "file cannot be opened" rather than
+    "file is read-only".  The PDF's integrity is protected by its sha256 in
+    manifest.json — the file-permission guard is redundant and user-hostile
+    for this specific artefact.
+
     Files are processed before their parent directories so that POSIX systems
     do not lose directory-write before finishing individual file chmods.
     """
@@ -40,6 +47,8 @@ def _mark_readonly(bundle_dir: Path) -> None:
         for path in paths:
             try:
                 if path.is_file():
+                    if path.name == "report.pdf":
+                        continue  # leave PDF writable — see docstring
                     os.chmod(path, 0o444)
                 elif path.is_dir():
                     os.chmod(path, 0o555)
