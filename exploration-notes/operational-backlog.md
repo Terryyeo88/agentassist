@@ -1,6 +1,10 @@
-# Operational backlog — deferred (as of 2026-06-01, post-T1.4)
+# Operational backlog — deferred (updated 2026-06-02, post-T1.5)
 Not development blockers. Action in a later session. Full detail in
 AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
+
+**T1.5 completed 2026-06-02.** All six Tier-1 items are done; 169 tests passing. The
+`audit/` directory is now the canonical output sink (gitignored). The provisional path
+`exploration-notes/t1.6-tool-outputs/` was removed in P3.
 
 1. SAP CAL instance lifecycle (Appendix C #5, #17) — trial at 35.186.145.230 may have
    lapsed; confirm it is live; parameterise the IP fully into per-client config and remove
@@ -12,3 +16,8 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
 3. Fallback-credentials inconsistency (Appendix C #27) — verify SAPB1Client.__init__: if it
    falls back to demo creds when env vars are absent, change to fail-fast (RuntimeError) and
    reconcile the two contradicting doc sections.
+4. Audit store housekeeping — the `audit/` directory is gitignored and grows with every run.
+   No retention / destruction policy exists yet (deferred to PDPA framework, Gate C). Before
+   first real-client run, define: how long bundles are kept, where they live in production
+   (local disk vs. object storage), and who has read access. See Appendix C #25 for the
+   broader PDPA context.

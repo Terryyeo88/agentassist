@@ -29,6 +29,7 @@ config/clients/*.yaml
 !config/clients/sbodemosg.yaml
 
 # Generated outputs
+audit/
 exploration-notes/t1.4-reports/
 exploration-notes/t1.6-tool-outputs/*.json
 *.pdf
