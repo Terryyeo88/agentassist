@@ -113,6 +113,39 @@ class NotExaminedSection:
 
 
 @dataclass
+class AICandidateRow:
+    doc_num: int
+    line_index: int
+    doc_date: str
+    card_name: str
+    line_description: str
+    suspected_category: str
+    confidence: str
+    phrasing: str    # verbatim from the judgment artefact
+
+
+@dataclass
+class AICandidatesSection:
+    """AI-surfaced Reg 26/27 candidates, optionally rendered in Section 5.
+
+    show=False  → render nothing (flag is OFF).
+    show=True, status="disabled"
+                → same (no artefact was produced).
+    show=True, status="ok", candidate_count >= 1
+                → render the candidates table.
+    show=True, status="ok", candidate_count == 0
+                → render "No AI-surfaced candidates".
+    show=True, status="errored"
+                → render "AI candidate pass did not complete".
+    """
+    show: bool
+    status: str              # "ok" | "errored" | "disabled"
+    candidates: list[AICandidateRow]
+    disclaimer: str
+    candidate_count: int
+
+
+@dataclass
 class SignatureSection:
     reviewer_name: str
     firm_name: str
@@ -327,4 +360,63 @@ def build_signature_section(client_config: Any) -> SignatureSection:
         firm_name=getattr(client_config, "firm_name", ""),
         gst_registration_number=getattr(client_config, "gst_registration_number", ""),
         disclaimer=DISCLAIMER_TEXT,
+    )
+
+
+def build_ai_candidates_section(
+    judgment_artefact: dict | None,
+    *,
+    show: bool,
+) -> AICandidatesSection:
+    """Build the optional AI-candidates subsection for Section 5.
+
+    When show=False the section is built with status="disabled" so the renderer
+    can skip it unconditionally without reading the artefact.  When show=True
+    the artefact is examined; a missing artefact (None) produces status="errored"
+    so the renderer shows the placeholder line.
+
+    AI candidates are NEVER included in deterministic finding totals; this
+    section is purely additive and visually separate.
+    """
+    if not show:
+        return AICandidatesSection(
+            show=False, status="disabled", candidates=[], disclaimer="",
+            candidate_count=0,
+        )
+
+    if judgment_artefact is None:
+        return AICandidatesSection(
+            show=True, status="errored", candidates=[], disclaimer="",
+            candidate_count=0,
+        )
+
+    status: str = str(judgment_artefact.get("status") or "errored")
+    disclaimer: str = str(judgment_artefact.get("disclaimer") or "")
+
+    if status != "ok":
+        return AICandidatesSection(
+            show=True, status=status, candidates=[], disclaimer=disclaimer,
+            candidate_count=0,
+        )
+
+    raw_candidates: list = judgment_artefact.get("candidates") or []
+    candidates: list[AICandidateRow] = [
+        AICandidateRow(
+            doc_num=int(c.get("doc_num") or 0),
+            line_index=int(c.get("line_index") or 0),
+            doc_date=str(c.get("doc_date") or ""),
+            card_name=str(c.get("card_name") or ""),
+            line_description=str(c.get("line_description") or ""),
+            suspected_category=str(c.get("suspected_category") or ""),
+            confidence=str(c.get("confidence") or ""),
+            phrasing=str(c.get("phrasing") or ""),
+        )
+        for c in raw_candidates
+    ]
+    return AICandidatesSection(
+        show=True,
+        status="ok",
+        candidates=candidates,
+        disclaimer=disclaimer,
+        candidate_count=len(candidates),
     )

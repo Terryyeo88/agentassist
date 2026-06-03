@@ -57,6 +57,10 @@ class ClientConfig:
     # Report metadata
     reviewer_name: str
     firm_name: str
+    # AI candidates subsection in the PDF (default OFF — must stay false until the
+    # recall/precision measurement gate is met; the artefact always seals into the
+    # bundle regardless of this flag).
+    show_ai_candidates: bool = False
 
 
 class ConfigError(RuntimeError):
@@ -168,6 +172,16 @@ def load_client_config(
     period = raw.get("period_defaults") or {}
     report = raw.get("report") or {}
 
+    # show_ai_candidates: default OFF — stays false until the measurement gate is met.
+    # Accepts Python-style bool or YAML boolean (true/false/yes/no/on/off).
+    _raw_ai = report.get("show_ai_candidates", False)
+    if not isinstance(_raw_ai, bool):
+        raise ConfigError(
+            f"report.show_ai_candidates in '{client_id}.yaml' must be a boolean "
+            f"(true or false), got: {_raw_ai!r}"
+        )
+    show_ai: bool = bool(_raw_ai)
+
     return ClientConfig(
         client_id=raw["client_id"],
         client_name=raw["client_name"],
@@ -183,6 +197,7 @@ def load_client_config(
         completeness_threshold=float(raw.get("completeness_threshold", 0.10)),
         reviewer_name=str(report.get("reviewer_name") or ""),
         firm_name=str(report.get("firm_name") or ""),
+        show_ai_candidates=show_ai,
     )
 
 

@@ -169,7 +169,31 @@ and NO_GST_REG-UDF guards, have been promoted into Gate B (before first real-dat
 
 **Sequencing.** Positioning/capability, NOT a pilot gate. Build in parallel with / after Gate B; do not jump it ahead of Gate B or Gate C, which actually gate first revenue.
 
-**Effort.** ~1 wk for v1. Follow-ons (T2.7.x): ZR/OS export-appropriateness, ES33 exempt-appropriateness candidates.
+**Effort.** ~1 wk for v1. Follow-ons (T2.7.x): ZR/OS export-appropriateness, ES33 exempt-appropriateness candidates; client-business-nature injection (see below).
+
+### T2.7.x — Client Business-Nature Field in ClientConfig (Production Prerequisite)
+
+**Problem.** The v1 reasoning pass assumes a generic general-trading / services SME purchasing
+goods as overhead.  A car dealer's vehicles are claimable trading stock; a clinic's medical
+supplies are direct service inputs; an insurer's staff premiums may be a product input.  Without
+knowing the client's business type, the pass will surface context-claimable lines as false
+positives whenever it is run against a specialist firm.
+
+**What to build.** Add a `business_nature` field to `ClientConfig` (per-client YAML).  At run
+time, `run_reg2627_pass` reads this field and injects a short business-context paragraph into the
+reg2627 system prompt before the KB slice.  The paragraph instructs the model to treat the named
+category of purchases as claimable trading inputs rather than overhead — e.g. "this client is a
+licensed motor-vehicle dealer; treat all vehicle purchase and running-cost invoices as trading
+stock, not overhead, and do not surface them as Reg 26/27 candidates."
+
+**Guard.** Until this field is implemented, `run_reg2627_pass` must not be enabled for clients
+whose primary trade overlaps with any §6.1.6 disallowed category.  A pre-flight assertion in the
+reasoning pass should check that `business_nature` is present and log a warning if it is absent.
+
+**Reference.** `knowledge-base/slices/business-context.md` — full statement of the generic-SME
+assumption, already wired as the labelling-pass context document.
+
+**Effort.** ~0.5 wk (config field + prompt injection + test).
 
 ## Tier 3 — Gated by External Milestones
 

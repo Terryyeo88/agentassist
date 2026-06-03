@@ -343,6 +343,92 @@ def _cross_findings(m: ReportModel, story: list) -> None:
     story.append(_table(cols, hdr, rows))
 
 
+_AI_SUBHEADING_BG = colors.HexColor("#EAF4FB")   # light blue — visually distinct from deterministic
+_AI_DISCLAIMER_FG = colors.HexColor("#1A5276")   # dark blue for disclaimer text
+
+_H3_AI = _style(
+    "AA_H3_AI", "Heading3",
+    fontSize=9, fontName="Helvetica-Bold",
+    spaceAfter=3, spaceBefore=10,
+    textColor=_AI_DISCLAIMER_FG,
+)
+_CELL_AI = _style("AA_CellAI", fontSize=8, fontName="Helvetica", leading=10,
+                   textColor=colors.HexColor("#1B2631"))
+_SMLX_AI = _style("AA_SmXAI", fontSize=7, fontName="Helvetica-Oblique", spaceAfter=2,
+                   textColor=_AI_DISCLAIMER_FG)
+
+
+def _ai_candidates_subsection(m: ReportModel, story: list) -> None:
+    """Render the optional AI-surfaced candidates subsection within Section 5.
+
+    Rendered only when model.ai_candidates.show is True.
+    Candidates are NEVER counted in deterministic finding totals.
+    """
+    ai = m.ai_candidates
+    if ai is None or not ai.show:
+        return
+
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(HRFlowable(width=_UW, thickness=0.5,
+                             color=colors.HexColor("#AED6F1")))
+    story.append(Paragraph(
+        "AI-surfaced candidates (unvalidated) — Reg 26/27 disallowed input tax",
+        _H3_AI,
+    ))
+
+    if ai.status == "errored":
+        story.append(Paragraph("AI candidate pass did not complete.", _BODY))
+        return
+
+    if ai.status == "ok" and ai.candidate_count == 0:
+        story.append(Paragraph("No AI-surfaced candidates.", _BODY))
+    else:
+        # Render candidates table — visually distinct from deterministic findings.
+        ai_cols = [1.8*cm, 1.8*cm, 2.0*cm, 2.8*cm, 2.8*cm, 2.0*cm, 4.0*cm]
+        ai_hdr = [_p(h, _CELLB) for h in
+                  ["Doc #", "Line", "Date", "Counterparty", "Category", "Confidence",
+                   "Reviewer prompt"]]
+        ai_rows = [
+            [
+                _p(str(c.doc_num), _CELL_AI),
+                _p(str(c.line_index), _CELL_AI),
+                _p(c.doc_date, _CELL_AI),
+                _p(c.card_name, _CELL_AI),
+                _p(c.suspected_category.replace("_", " "), _CELL_AI),
+                _p(c.confidence, _CELL_AI),
+                _p(c.phrasing, _CELL_AI),
+            ]
+            for c in ai.candidates
+        ]
+        tbl = Table(
+            [ai_hdr] + ai_rows,
+            colWidths=ai_cols,
+            style=TableStyle([
+                ("BACKGROUND",    (0, 0), (-1, 0),  _AI_SUBHEADING_BG),
+                ("TEXTCOLOR",     (0, 0), (-1, 0),  _AI_DISCLAIMER_FG),
+                ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
+                ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE",      (0, 0), (-1, -1), 8),
+                ("LEADING",       (0, 0), (-1, -1), 10),
+                ("GRID",          (0, 0), (-1, -1), 0.25, colors.HexColor("#AED6F1")),
+                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING",    (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+                ("ROWBACKGROUNDS",(0, 1), (-1, -1),
+                 [colors.white, colors.HexColor("#EBF5FB")]),
+            ]),
+            repeatRows=1,
+        )
+        story.append(tbl)
+
+    # Disclaimer — always shown when the subsection is visible.
+    if ai.disclaimer:
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(Paragraph(ai.disclaimer, _SMLX_AI))
+
+
 def _judgment(m: ReportModel, story: list) -> None:
     story.append(Paragraph("5.  Judgment — Items for Reviewer Decision", _H2))
     story.append(Paragraph(
@@ -360,6 +446,7 @@ def _judgment(m: ReportModel, story: list) -> None:
             + ", ".join(str(d) for d in jg.doc_nums),
             _SMALL,
         ))
+    _ai_candidates_subsection(m, story)
 
 
 def _not_examined(m: ReportModel, story: list) -> None:

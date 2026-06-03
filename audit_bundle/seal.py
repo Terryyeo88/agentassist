@@ -68,15 +68,18 @@ def seal_bundle(
     report_pdf_path: Path,
     run_started_at: str,
     run_completed_at: str,
+    reasoning_artefact: dict | None = None,
 ) -> Path:
     """Write a sealed, tamper-evident audit bundle and return the bundle directory.
 
-    Bundle layout (8 artefacts hashed in manifest.json):
+    Bundle layout (8 core artefacts hashed in manifest.json; 9 when reasoning
+    artefact is supplied):
         audit/<client_id>/<start>_<end>/<run_ts>/
-            manifest.json                    ← written last; covers all others
-            config.json                      ← allow-listed; no credentials
+            manifest.json                         ← written last; covers all others
+            config.json                           ← allow-listed; no credentials
             inputs/fetch-manifest.json
             steps/{calculate,classify,detect}.json
+            steps/judgment-candidates.json        ← only when reasoning_artefact given
             gates.json
             compile-output.json
             report.pdf
@@ -84,6 +87,8 @@ def seal_bundle(
     All JSON written via canonical_json for stable, deterministic hashing.
     run_ts is derived from run_started_at (UTC, YYYYMMDD-HHMMSS) so the
     directory name and engagement.run_ts are always consistent.
+    reasoning_artefact, when provided, is always written (status may be "errored")
+    so the bundle records whether the pass ran and what happened.
     """
     # a. run_ts and bundle_dir
     dt = datetime.fromisoformat(run_started_at).astimezone(timezone.utc)
@@ -92,7 +97,7 @@ def seal_bundle(
     bundle_dir = _AUDIT_ROOT / client_config.client_id / period_tag / run_ts
     bundle_dir.mkdir(parents=True, exist_ok=True)
 
-    # b. Write the 7 JSON artefacts and copy the PDF
+    # b. Write the 7 core JSON artefacts and copy the PDF
     _write_canonical(bundle_dir / "config.json", redact_config(client_config))
     _write_canonical(bundle_dir / "inputs" / "fetch-manifest.json",
                      compile_output["fetch_manifest"])
@@ -105,6 +110,13 @@ def seal_bundle(
     report_dest = bundle_dir / "report.pdf"
     shutil.copy2(report_pdf_path, report_dest)
 
+    # b2. Optional reasoning artefact (always written when supplied — status may be "errored").
+    if reasoning_artefact is not None:
+        _write_canonical(
+            bundle_dir / "steps" / "judgment-candidates.json",
+            reasoning_artefact,
+        )
+
     # c/d. Engagement and provenance
     engagement = {
         "client_id": client_config.client_id,
@@ -116,7 +128,7 @@ def seal_bundle(
     }
     provenance = gather_provenance(compile_output["classify"]["expected_rate"])
 
-    # e. Build manifest over all 8 artefact paths; write it last
+    # e. Build manifest over all artefact paths; write it last.
     artefact_paths = [
         bundle_dir / "compile-output.json",
         bundle_dir / "config.json",
@@ -127,7 +139,24 @@ def seal_bundle(
         bundle_dir / "steps" / "classify.json",
         bundle_dir / "steps" / "detect.json",
     ]
-    manifest = build_manifest(engagement, provenance, artefact_paths, bundle_dir)
+    # Build per-artefact llm metadata for the reasoning artefact entry only.
+    # Deterministic artefacts carry no llm key (absence ≡ false).
+    artefact_llm_meta: dict | None = None
+    if reasoning_artefact is not None:
+        artefact_paths.append(bundle_dir / "steps" / "judgment-candidates.json")
+        ra_prov = reasoning_artefact.get("provenance", {})
+        artefact_llm_meta = {
+            "steps/judgment-candidates.json": {
+                "in_run_path": bool(ra_prov.get("in_run_path", True)),
+                "model_id": str(ra_prov.get("model_id", "")),
+                "prompt_version": str(ra_prov.get("prompt_version", "")),
+                "kb_slice_hash": str(ra_prov.get("kb_slice_hash", "")),
+            }
+        }
+    manifest = build_manifest(
+        engagement, provenance, artefact_paths, bundle_dir,
+        artefact_llm_meta=artefact_llm_meta,
+    )
     (bundle_dir / "manifest.json").write_bytes(canonical_json(manifest))
 
     # f. Advisory read-only marking

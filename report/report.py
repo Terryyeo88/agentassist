@@ -20,6 +20,7 @@ from typing import Any
 from config.loader import ClientConfig
 from report.enrich import EnrichedFinding, enrich
 from report.sections import (
+    AICandidatesSection,
     CoverSection,
     CrossFindingSection,
     F5BoxSection,
@@ -28,6 +29,7 @@ from report.sections import (
     NotExaminedSection,
     ScopeSection,
     SignatureSection,
+    build_ai_candidates_section,
     build_cover_section,
     build_cross_finding_section,
     build_f5_box_section,
@@ -52,6 +54,9 @@ class ReportModel:
     generated_at: str
     period_start: str
     period_end: str
+    # Optional AI-candidates subsection; None only in legacy callers that have
+    # not been updated — the renderer treats None as show=False.
+    ai_candidates: AICandidatesSection | None = None
 
 
 def build_report(
@@ -59,12 +64,18 @@ def build_report(
     client_config: ClientConfig,
     *,
     generated_at: str,
+    judgment_artefact: dict | None = None,
 ) -> ReportModel:
     """
     Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
     generated_at is provided by the caller (typically the chain's fetched_at
     timestamp) — this function never calls datetime.now().
+
+    judgment_artefact: the judgment-candidates artefact dict from the reasoning
+    pass (steps/judgment-candidates.json).  Optional; defaults to None so all
+    existing callers continue to work.  When provided and cfg.show_ai_candidates
+    is True, an AI-candidates subsection is appended to Section 5.
     """
     # Source the exempt routing flag without requiring a T1.3 schema change.
     # See module docstring for how to enable Template 4 routing per client.
@@ -75,6 +86,7 @@ def build_report(
     )
 
     period = compile_output["period"]
+    show_ai: bool = getattr(client_config, "show_ai_candidates", False)
 
     return ReportModel(
         cover=build_cover_section(
@@ -90,4 +102,7 @@ def build_report(
         generated_at=generated_at,
         period_start=period["start"],
         period_end=period["end"],
+        ai_candidates=build_ai_candidates_section(
+            judgment_artefact, show=show_ai
+        ),
     )
