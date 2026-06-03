@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-run_agent.py — AgentAssist CLI launcher (T1.3 + T1.6 + T1.4 + T1.5).
+run_agent.py — AgentAssist CLI launcher (T1.3 + T1.6 + T1.4 + T1.5 + T2.7).
 
 Every successful run produces a sealed audit bundle under audit/<client_id>/.
 No --report flag: the PDF is always generated and included in the bundle.
+The Reg 26/27 reasoning pass (T2.7) always runs beside the chain and its
+artefact is always sealed into the bundle (status may be "errored").
 
 Usage:
     python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30
@@ -11,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +31,8 @@ from audit_bundle import seal_bundle                      # noqa: E402
 from config.loader import ConfigError, load_client_config # noqa: E402
 from orchestrator.chain import run_chain                  # noqa: E402
 from orchestrator.exceptions import GateFailure           # noqa: E402
+from reasoning.reg2627 import run_reg2627_pass            # noqa: E402
+from reasoning.sap_lines import fetch_si_purchase_lines   # noqa: E402
 from report.report import build_report                    # noqa: E402
 from report.render import render_pdf                      # noqa: E402
 
@@ -77,6 +82,21 @@ def main() -> None:
             print(f"  Gate checked values: {exc.checked}", file=sys.stderr)
         sys.exit(1)
 
+    # Reg 26/27 reasoning pass — runs beside the chain, never inside it.
+    # sap_b1_server is already configured by run_chain above.
+    print("Running Reg 26/27 reasoning pass ...")
+
+    line_source = functools.partial(fetch_si_purchase_lines, period["start"], period["end"])
+    reasoning_artefact = run_reg2627_pass(
+        period,
+        line_source=line_source,
+    )
+    r_status = reasoning_artefact.get("status", "unknown")
+    r_count = reasoning_artefact.get("candidate_count", 0)
+    print(f"  Reg 26/27       : status={r_status}, candidates={r_count}")
+    if r_status == "errored":
+        print(f"  (pass error: {reasoning_artefact.get('error', '')[:120]})")
+
     # Summary from CompileOutput
     boxes = compile_output["calculate"]["boxes"]
     box_8 = boxes.get("box_8_net_gst", 0.0)
@@ -125,6 +145,7 @@ def main() -> None:
         report_pdf_path=pdf_path,
         run_started_at=run_started_at,
         run_completed_at=run_completed_at,
+        reasoning_artefact=reasoning_artefact,
     )
 
     print(f"\n=== BUNDLE SEALED ===")

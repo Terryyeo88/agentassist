@@ -1,0 +1,29 @@
+{
+  "run_at": "2026-06-02T08:31:55.516853+00:00",
+  "fixture_path": "tests\\fixtures\\reg2627-labelled-lines.json",
+  "fixture_line_count": 18,
+  "gate": {
+    "recall_threshold": 0.95,
+    "fp_rate_threshold": 0.05
+  },
+  "results": [
+    {
+      "model_id": "claude-sonnet-4-6",
+      "status": "errored",
+      "error": "LLM call failed: Error code: 529 - {'type': 'error', 'error': {'type': 'overloaded_error', 'message': 'Overloaded'}, 'request_id': 'req_011Cbe84CKv3roKmcf8Pz1C6'}",
+      "tp": 0,
+      "fp": 0,
+      "fn": 8,
+      "tn": 10,
+      "recall": 0.0,
+      "fp_rate": 0.0,
+      "category_accuracy": 0.0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "estimated_cost_usd": 0.0,
+      "gate_passed": false,
+      "per_line": [],
+      "out_of_fixture_predictions": 0
+    }
+  ]
+}
