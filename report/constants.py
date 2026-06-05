@@ -1,6 +1,10 @@
 """
 report/constants.py — pure data; no logic, no imports.
 
+Centralises every fixed string used by the report generator so that IRAS wording,
+template labels, scope-boundary text, and the disclaimer can be updated in one
+place without touching rendering or orchestration code.
+
 APPENDIX1_WORDING source: IRAS "GST: Assisted Self-Help Kit (ASK) Annual Review
 Guide", 16th Edition (30 Jan 2026), Appendix 1 "List of Errors and Areas where
 Error may Occur", pp.72-73.
@@ -20,8 +24,17 @@ E2 routing logic: inspect vat_group on the ClassifyIssue or DetectIssue —
   BL              → "E2_BL"
   NR              → "E2_NR"
 E3/E4 routing: inspect the issue's template assignment (sales vs purchase side).
+
+Exports:
+    APPENDIX1_WORDING   — routing-key → verbatim Appendix 1 category string
+    TEMPLATE_INDEX      — ASK template number (1–7) → section heading string
+    NOT_EXAMINED_ITEMS  — ordered list of out-of-scope areas for the report footer
+    DISCLAIMER_TEXT     — verbatim disclaimer rendered in the report footer
 """
 from __future__ import annotations
+
+# from __future__ import annotations enables lowercase generic type hints
+# (dict[str, str], list[str]) on Python < 3.9 without a runtime cost.
 
 
 # ── Appendix 1 wording ────────────────────────────────────────────────────────
@@ -31,6 +44,12 @@ from __future__ import annotations
 # Label rule: verbatim category statement; trailing "(e.g., ...)" dropped;
 # defining "(i.e., ...)" kept; hyphen "-" (not en dash); no ellipses.
 # Keys are finding-routing keys; values are verbatim Appendix 1 category strings.
+#
+# Note: several error codes intentionally share the same Appendix 1 wording
+# (E3_SALES / E3_PURCHASE, E4_SO / E4_SI, COMPLETENESS, F5_BOX_ERROR all map
+# to "Over- / Under-reporting of value in GST return"). The distinct routing
+# keys exist solely to steer each finding to the correct ASK template section —
+# the wording lookup is a secondary step after template placement.
 
 APPENDIX1_WORDING: dict[str, str] = {
     # E1 — FX sale coded as local standard-rated (SO / DS)
@@ -63,6 +82,7 @@ APPENDIX1_WORDING: dict[str, str] = {
 
     # E2 input-side — GST carried on a purchase from a non-GST-registered supplier (NR)
     # Template 6, Step 3D.1.1.h
+    # NO_GST_REG shares this wording — both represent input tax on non-taxable supply.
     "E2_NR": (
         "Input tax to be disallowed - Purchases from non-GST registered suppliers "
         "and/or non-taxable purchases which do not attract GST"
@@ -95,6 +115,7 @@ APPENDIX1_WORDING: dict[str, str] = {
 
     # NO_GST_REG — input tax claimed on purchase from supplier with blank GST reg no.
     # Template 6, Step 3D.1.1.h
+    # Shares wording with E2_NR: both represent non-recoverable input tax.
     "NO_GST_REG": (
         "Input tax to be disallowed - Purchases from non-GST registered suppliers "
         "and/or non-taxable purchases which do not attract GST"
@@ -129,6 +150,8 @@ APPENDIX1_WORDING: dict[str, str] = {
 
 # ── Template index ────────────────────────────────────────────────────────────
 # Maps ASK template number to human label for report section headings.
+# Keys 1–7 correspond to the seven ASK review templates; all must be present
+# for a complete report — a missing key produces a gap in the section structure.
 
 TEMPLATE_INDEX: dict[int, str] = {
     1: "Template 1 — Steps 1, 2 & 4: Declaration Review and Financial-Statement Reconciliation",
@@ -144,6 +167,8 @@ TEMPLATE_INDEX: dict[int, str] = {
 # ── Coverage boundary — items not examined ────────────────────────────────────
 # Ordered per Document 1 coverage gap analysis. These appear verbatim in the
 # report's "Items not examined" section so the reviewer knows the scope boundary.
+# Order is significant: items are rendered in list order, so place higher-risk
+# exclusions (e.g. journal entries, partial exemption) before lower-risk ones.
 
 NOT_EXAMINED_ITEMS: list[str] = [
     "Manual journal entries (Journal Entries entity not examined; GST-relevant "
@@ -181,6 +206,8 @@ NOT_EXAMINED_ITEMS: list[str] = [
 
 
 # ── Disclaimer ────────────────────────────────────────────────────────────────
+# Rendered verbatim in the report footer. Any change to this text should be
+# reviewed against the approved legal language — do not paraphrase or shorten.
 
 DISCLAIMER_TEXT: str = (
     "AgentAssist surfaces candidates based on automated analysis of SAP Business One "
