@@ -1,7 +1,41 @@
 #!/usr/bin/env python3
 """
-SAP Business One MCP Server for Claude Desktop (FastMCP + stdio)
-Uses the recommended FastMCP pattern from the official MCP docs.
+SAP Business One MCP server — exposes Service Layer operations and Singapore GST
+(F5 return) accounting tools to Claude Desktop via the FastMCP stdio transport.
+
+This server bridges an LLM (Claude) and a live SAP B1 Service Layer instance.
+It handles:
+
+  * Session management (login, auto-renew on expiry, logout).
+  * Generic OData CRUD operations (query, create, patch, delete).
+  * Domain-specific accounting tools: GST F5 return calculation, tax-code
+    validation, and a multi-check GST compliance audit (E1–E4 plus supplementary
+    completeness and supplier-registration checks).
+
+Assumptions:
+  * The SAP B1 Service Layer is reachable over HTTPS from the host running
+    this server.
+  * CLIENT_ID is set in the environment (or .env) and matches a YAML file
+    under config/clients/.  The server refuses to start without it.
+  * All monetary amounts in the F5 / audit tools are in their document currency.
+    Only SGD documents contribute to box totals; FX documents are surfaced
+    separately for manual exchange-rate conversion.
+  * The default expected GST rate is 7% (Singapore pre-2024 demo data).
+    Pass expected_rate=0.09 for post-Jan-2024 production invoices.
+
+Dependencies:
+    httpx         -- async-capable HTTP client used here in sync mode
+    python-dotenv -- loads .env at startup before any config is read
+    mcp           -- FastMCP framework (stdio transport)
+    config.loader -- internal; reads per-client YAML configs from config/clients/
+
+Example usage (run as MCP server driven by Claude Desktop):
+    CLIENT_ID=sbodemosg python mcp-servers/custom/sap_b1_server.py
+
+Example usage (import into an orchestrator chain step):
+    from mcp_servers.custom.sap_b1_server import configure_client, calculate_f5_return
+    configure_client(url, db, user, pwd, ssl_verify=False)
+    result = calculate_f5_return("2024-01-01", "2024-03-31")
 """
 
 import os
@@ -43,6 +77,17 @@ class SAPB1Client:
     """SAP Business One Service Layer client with session management."""
 
     def __init__(self, config: ClientConfig):
+        """Initialise the HTTP client and store credentials from a ClientConfig.
+
+        Args:
+            config: A ClientConfig (or duck-typed object with the same attributes)
+                providing service_layer_url, company_db, username, password,
+                ssl_verify, and client_id.
+
+        Note:
+            An httpx.Client is created here and reused across all requests so
+            that SAP's B1SESSION cookie is preserved automatically between calls.
+        """
         self.base_url = config.service_layer_url
         self.company_db = config.company_db
         self.username = config.username
@@ -50,6 +95,7 @@ class SAPB1Client:
         self.ssl_verify = config.ssl_verify
         self.session_id: Optional[str] = None
         self.session_timeout: Optional[datetime] = None
+        # 30-second HTTP timeout; SAP's Service Layer can be slow on large queries
         self.http = httpx.Client(verify=self.ssl_verify, timeout=30.0)
         logger.info(
             f"SAP B1 Client initialised for {self.base_url} "
@@ -57,6 +103,18 @@ class SAPB1Client:
         )
 
     def login(self) -> dict:
+        """Authenticate against the SAP B1 Service Layer and store the session.
+
+        Sends a POST to /Login, extracts the SessionId and SessionTimeout from
+        the response, and merges the returned Set-Cookie header into the shared
+        HTTP client so subsequent requests carry the session automatically.
+
+        Returns:
+            dict: Keys — status, company_db, session_timeout_minutes, version.
+
+        Raises:
+            Exception: If the Service Layer responds with a non-200 status code.
+        """
         url = f"{self.base_url}/Login"
         payload = {
             "CompanyDB": self.company_db,
@@ -68,8 +126,10 @@ class SAPB1Client:
         if resp.status_code == 200:
             data = resp.json()
             self.session_id = data.get("SessionId")
+            # Default 30 min if SAP omits the SessionTimeout field
             timeout_mins = data.get("SessionTimeout", 30)
             self.session_timeout = datetime.now() + timedelta(minutes=timeout_mins)
+            # Merge SAP's B1SESSION cookie into the persistent HTTP client
             self.http.cookies.update(resp.cookies)
             logger.info(f"Login successful. Session timeout: {timeout_mins} min")
             return {
@@ -82,12 +142,40 @@ class SAPB1Client:
             raise Exception(f"Login failed (HTTP {resp.status_code}): {resp.text[:500]}")
 
     def ensure_session(self):
+        """Re-authenticate if the session is missing or has expired.
+
+        Called automatically by ``request`` before every API call.  The local
+        expiry check avoids a wasted round-trip on the majority of calls where
+        the session is still valid — only when it has lapsed does a fresh login
+        occur.
+        """
         if self.session_id and self.session_timeout and datetime.now() < self.session_timeout:
             return
         logger.info("Session expired or missing — re-authenticating")
         self.login()
 
     def request(self, method: str, endpoint: str, **kwargs) -> Any:
+        """Send an authenticated HTTP request to the Service Layer.
+
+        Prepends base_url to the endpoint, ensures the session is valid first,
+        and retries once with a fresh login if a 401 is received.  SAP can
+        reject an apparently valid cookie if the server restarts mid-session;
+        one automatic retry is sufficient to recover transparently.
+
+        Args:
+            method:   HTTP verb string ('GET', 'POST', 'PATCH', 'DELETE').
+            endpoint: OData path starting with '/', e.g. '/Invoices(42)'.
+            **kwargs: Forwarded verbatim to httpx.Client.request
+                      (e.g. params=, json=).
+
+        Returns:
+            Parsed JSON dict for 200/201 responses; a status dict for 204
+            (No Content); or a {'status': 'success', 'raw': ...} dict if JSON
+            decoding fails unexpectedly.
+
+        Raises:
+            Exception: For any HTTP error status other than 200, 201, or 204.
+        """
         self.ensure_session()
         url = f"{self.base_url}{endpoint}"
         logger.info(f"{method} {url}")
@@ -107,18 +195,63 @@ class SAPB1Client:
             raise Exception(f"SAP Error (HTTP {resp.status_code}): {resp.text[:1000]}")
 
     def get(self, endpoint: str, params: dict = None) -> Any:
+        """Send a GET request. params are appended as OData query string options.
+
+        Args:
+            endpoint: OData path, e.g. '/BusinessPartners'.
+            params:   OData query parameters dict, e.g. {'$top': 20, '$filter': ...}.
+
+        Returns:
+            Parsed JSON response from the Service Layer.
+        """
         return self.request("GET", endpoint, params=params)
 
     def post(self, endpoint: str, data: dict = None) -> Any:
+        """Send a POST request with data serialised as JSON.
+
+        Args:
+            endpoint: OData path for the collection to create in, e.g. '/Invoices'.
+            data:     Document payload dict to serialise as the request body.
+
+        Returns:
+            Parsed JSON response, typically the newly created document.
+        """
         return self.request("POST", endpoint, json=data)
 
     def patch(self, endpoint: str, data: dict = None) -> Any:
+        """Send a PATCH request — used for partial updates of existing records.
+
+        Args:
+            endpoint: OData path including the record key, e.g. '/Items(42)'.
+            data:     Dict of fields to update; omitted fields are left unchanged.
+
+        Returns:
+            Parsed JSON response or a 204 status dict if SAP returns no content.
+        """
         return self.request("PATCH", endpoint, json=data)
 
     def delete(self, endpoint: str) -> Any:
+        """Send a DELETE request to remove a record by its OData key.
+
+        Args:
+            endpoint: OData path including the record key, e.g. "/Items('A001')".
+
+        Returns:
+            A 204 status dict; SAP returns no body on successful deletion.
+        """
         return self.request("DELETE", endpoint)
 
     def logout(self) -> dict:
+        """Terminate the current SAP session and clear stored credentials.
+
+        A best-effort POST to /Logout is attempted; failures are logged but do
+        not prevent local session state from being cleared, so subsequent calls
+        will simply re-authenticate.
+
+        Returns:
+            dict: {'status': 'logged out'} or {'status': 'no active session'}
+                  if no login had previously been performed.
+        """
         if not self.session_id:
             return {"status": "no active session"}
         try:
@@ -135,6 +268,17 @@ class SAPB1Client:
 
 
 def _fmt(data: Any) -> str:
+    """Serialise data to a pretty-printed JSON string for MCP tool return values.
+
+    Args:
+        data: Any JSON-serialisable value, or a plain string.
+
+    Returns:
+        str: The original string unchanged, or a pretty-printed JSON string.
+            ``default=str`` ensures non-serialisable types (e.g. Decimal,
+            datetime) are converted to their string representation without
+            raising a TypeError.
+    """
     if isinstance(data, str):
         return data
     return json.dumps(data, indent=2, ensure_ascii=False, default=str)
@@ -143,6 +287,18 @@ def _fmt(data: Any) -> str:
 # --- Shared helpers for accounting tools ---
 
 def _safe_float(val) -> float:
+    """Convert a value to float, returning 0.0 on None or conversion failure.
+
+    SAP B1's Service Layer occasionally returns None or empty string for monetary
+    fields on lines that were not fully configured.  This guard prevents
+    TypeError/ValueError from propagating through accumulator loops.
+
+    Args:
+        val: Any value — typically str, int, float, or None from a JSON field.
+
+    Returns:
+        float: The numeric value, or 0.0 if val is falsy or conversion fails.
+    """
     try:
         return float(val or 0)
     except (TypeError, ValueError):
@@ -150,11 +306,24 @@ def _safe_float(val) -> float:
 
 
 def _is_sgd(doc: dict) -> bool:
+    """Return True if the document's currency is SGD (or blank, which SAP defaults to SGD).
+
+    Only SGD documents are included directly in F5 box totals.  FX documents
+    require manual exchange-rate conversion before they can be filed with IRAS,
+    so they are surfaced separately in the output.
+
+    Args:
+        doc: A SAP B1 document dict containing a 'DocCurrency' key.
+
+    Returns:
+        bool: True when the document is denominated in SGD.
+    """
     currency = (doc.get("DocCurrency") or "SGD").strip().upper()
     return currency in ("SGD", "S$", "")
 
 
 # VatGroup → F5 box routing. lt_box = line total destination, tt_box = tax total destination.
+# None means the amount for this code is excluded from that box entirely (not zero — absent).
 F5_BOX_MAPPING = {
     "SO":     {"lt_box": "box_1_standard_rated_sales", "tt_box": "box_6_output_tax",  "side": "sales"},
     "DS":     {"lt_box": "box_1_standard_rated_sales", "tt_box": "box_6_output_tax",  "side": "sales"},
@@ -181,18 +350,24 @@ F5_BOX_MAPPING = {
 # NR added: non-GST-registered purchase with TaxTotal > 0 is a genuine E2 error
 # (non-taxable supply carrying GST — input tax cannot be claimed per IRAS para 5.11(o)).
 _E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR"}
+# Only SO and DS are standard-rated on the sales side; DS is a domestic service variant.
 _STANDARD_RATE_SALES = {"SO", "DS"}
 
 
 # ── Module-level initialisation ───────────────────────────────────────────────
 
 def _load_sap_config() -> ClientConfig:
-    """
-    Load client config from YAML. CLIENT_ID must be set — no silent fallback.
+    """Load client config from YAML. CLIENT_ID must be set — no silent fallback.
 
     Correction 2: if CLIENT_ID is absent we refuse to guess the target instance.
     A misconfigured MCP server silently pointed at the wrong SAP company database
     is a hard-to-detect, hard-to-undo data integrity risk.
+
+    Returns:
+        ClientConfig: Fully populated config object for the named client.
+
+    Raises:
+        RuntimeError: If CLIENT_ID is missing from the environment.
     """
     client_id = os.environ.get("CLIENT_ID", "").strip()
     if not client_id:
@@ -231,13 +406,28 @@ def configure_client(
     ssl_verify: bool,
     custom_vat_groups: Optional[dict] = None,
 ) -> None:
-    """
-    Override the module-level SAP client for orchestrator chain use.
-    Accepts primitives only — no ClientConfig import; keeps dependency direction one-way.
-    Call once before invoking any step function. Does not affect MCP tool signatures.
+    """Override the module-level SAP client for orchestrator chain use.
+
+    Accepts primitives only — no ClientConfig import; keeps dependency direction
+    one-way.  Call once before invoking any step function.  Does not affect MCP
+    tool signatures.
+
+    Args:
+        service_layer_url: Full HTTPS URL of the SAP B1 Service Layer root,
+            e.g. 'https://sap-server:50000/b1s/v1'.
+        company_db:        SAP company database name (CompanyDB field).
+        username:          SAP B1 login username.
+        password:          SAP B1 login password.
+        ssl_verify:        Whether to verify the server's TLS certificate.
+            Pass False for self-signed certificates on dev/test environments.
+        custom_vat_groups: Optional dict of additional VatGroup → box mappings
+            to merge into F5_BOX_MAPPING (additive; existing codes are not
+            overwritten).
     """
     global sap
 
+    # Lightweight duck-type stand-in for ClientConfig so this module does not
+    # need to import it — attributes are assigned dynamically after construction.
     class _Cfg:
         pass
 
@@ -262,7 +452,21 @@ def configure_client(
 
 
 def _fetch_invoices_paginated(entity: str, period_start: str, period_end: str) -> list:
-    """Fetch all records with DocumentLines for the period, paginating 20 at a time."""
+    """Fetch all documents for a date range, paging through results 20 at a time.
+
+    The SAP B1 Service Layer applies a server-side page-size cap, so a single
+    large $top request may silently truncate results.  This function loops until
+    a partial page is returned, which is the sentinel for the last page.
+
+    Args:
+        entity:       OData entity collection name, e.g. 'Invoices' or
+                      'PurchaseInvoices'.
+        period_start: ISO date string 'YYYY-MM-DD' inclusive start of filter range.
+        period_end:   ISO date string 'YYYY-MM-DD' inclusive end of filter range.
+
+    Returns:
+        list: All matching document dicts, each containing DocumentLines.
+    """
     results = []
     skip = 0
     date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
@@ -274,6 +478,7 @@ def _fetch_invoices_paginated(entity: str, period_start: str, period_end: str) -
         })
         page = data.get("value", [])
         results.extend(page)
+        # A page shorter than the requested size means there are no more records
         if len(page) < 20:
             break
         skip += 20
@@ -282,8 +487,20 @@ def _fetch_invoices_paginated(entity: str, period_start: str, period_end: str) -
 
 def _fetch_credit_notes_paginated(entity_type: str, period_start: str, period_end: str) -> list:
     """Fetch all credit notes with DocumentLines for the period, paginating 20 at a time.
+
     entity_type: 'sales' → CreditNotes, 'purchases' → PurchaseCreditNotes.
     Returned dicts are tagged is_credit_note=True; callers must negate LineTotal/TaxTotal.
+
+    Args:
+        entity_type:  Either 'sales' (maps to CreditNotes) or 'purchases'
+                      (maps to PurchaseCreditNotes).
+        period_start: ISO date string 'YYYY-MM-DD' inclusive start of filter range.
+        period_end:   ISO date string 'YYYY-MM-DD' inclusive end of filter range.
+
+    Returns:
+        list: All matching credit note dicts tagged with is_credit_note=True.
+            Callers are responsible for negating LineTotal and TaxTotal when
+            accumulating box totals.
     """
     entity = "CreditNotes" if entity_type == "sales" else "PurchaseCreditNotes"
     results = []
@@ -299,6 +516,7 @@ def _fetch_credit_notes_paginated(entity_type: str, period_start: str, period_en
         for record in page:
             record["is_credit_note"] = True
         results.extend(page)
+        # A page shorter than the requested size means there are no more records
         if len(page) < 20:
             break
         skip += 20
@@ -306,12 +524,30 @@ def _fetch_credit_notes_paginated(entity_type: str, period_start: str, period_en
 
 
 def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_rate: float = 0.07, credit_note: bool = False) -> list:
-    """Check one document line for E1–E4 issues. Returns a list of issue dicts."""
+    """Check one document line for E1–E4 issues. Returns a list of issue dicts.
+
+    Args:
+        line:          A single DocumentLines entry from a SAP B1 document.
+        doc:           The parent document dict (used for DocNum, DocDate,
+                       CardName, DocCurrency).
+        entity_type:   'sales' or 'purchase' — controls which error checks apply.
+        expected_rate: Expected GST rate as a decimal (e.g. 0.07 or 0.09).
+                       Used only for the E4 rate-deviation check.
+        credit_note:   If True, prepends "Credit note — " to issue descriptions
+                       so callers can distinguish credit note issues from invoice
+                       issues at a glance.
+
+    Returns:
+        list: Zero or more issue dicts.  Each dict contains doc_num, doc_date,
+            doc_currency, card_name, vat_group, line_total, tax_total,
+            error_code ('E1'–'E4'), and a human-readable description.
+    """
     issues = []
     vg = (line.get("VatGroup") or "").strip()
     line_total = _safe_float(line.get("LineTotal"))
     tax_total = _safe_float(line.get("TaxTotal"))
     currency = (doc.get("DocCurrency") or "SGD").strip().upper()
+    # FX detection replicates _is_sgd logic inline to avoid a dict lookup per line
     is_fx = currency not in ("SGD", "S$", "")
     prefix = "Credit note — " if credit_note else ""
 
@@ -331,6 +567,7 @@ def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_r
             "description": f"{prefix}FX invoice ({currency}) with {vg} code — should likely be ZR for overseas sales"})
 
     # E2: GST charged on a non-taxable supply code (includes NR)
+    # 0.01 threshold absorbs floating-point rounding; genuine zero-rate lines carry no tax
     if tax_total > 0.01 and vg in _E2_ZERO_RATE_CODES:
         issues.append({**base, "error_code": "E2",
             "description": f"{prefix}Tax {tax_total:.2f} charged on non-taxable supply (VatGroup={vg})"})
@@ -346,6 +583,7 @@ def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_r
     # E4: GST rate deviates from expected (SO and SI only per spec)
     if vg in {"SO", "SI"} and line_total > 0.01 and tax_total > 0.01:
         ratio = tax_total / line_total
+        # 0.001 tolerance absorbs floating-point rounding, not a business threshold
         if abs(ratio - expected_rate) > 0.001:
             issues.append({**base, "error_code": "E4",
                 "description": f"{prefix}GST rate {ratio * 100:.2f}% deviates from expected {expected_rate * 100:.0f}%"})
@@ -455,6 +693,7 @@ def sap_create_journal_entry(journal_entry: str) -> str:
 @mcp.tool()
 def sap_delete(entity: str, key: str) -> str:
     """Delete a record by entity name and key."""
+    # Integer keys use bare numeric OData syntax (key); string keys require quoting ('key')
     if key.isdigit():
         endpoint = f"/{entity}({key})"
     else:
@@ -465,12 +704,37 @@ def sap_delete(entity: str, key: str) -> str:
 
 @mcp.tool()
 def calculate_f5_return(period_start: str, period_end: str) -> str:
-    """Calculate GST F5 return boxes 1–8 for a period. Dates must be ISO format YYYY-MM-DD. SGD invoices and credit notes contribute to box totals; credit note amounts are subtracted. FX documents are listed separately for manual conversion."""
+    """Calculate GST F5 return boxes 1–8 for a period.
+
+    Fetches all SAP B1 invoices and credit notes within the date range and
+    accumulates SGD amounts into the eight IRAS F5 boxes using F5_BOX_MAPPING.
+    Credit note amounts are subtracted from their respective boxes.
+    FX documents cannot be included without conversion rates and are listed
+    separately for manual handling.
+
+    Args:
+        period_start: ISO date string 'YYYY-MM-DD' for the start of the GST period.
+        period_end:   ISO date string 'YYYY-MM-DD' for the end of the GST period.
+
+    Returns:
+        str: JSON string containing:
+            - period: the requested date range
+            - currency: always 'SGD'
+            - boxes: the eight F5 box values rounded to 2 decimal places
+            - fx_invoices_requiring_conversion: FX docs needing manual conversion
+            - e1_candidates: FX sales lines with standard-rated codes (likely mis-coded)
+            - record_counts: breakdown of SGD vs FX doc counts
+            - credit_note_counts: breakdown of credit note counts
+            - credit_notes_applied: detail of each credit note adjustment
+            - anomalies: lines with VatGroup codes absent from F5_BOX_MAPPING
+    """
+    # --- Fetch ---
     invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
     purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
     sales_credits = _fetch_credit_notes_paginated("sales", period_start, period_end)
     purchase_credits = _fetch_credit_notes_paginated("purchases", period_start, period_end)
 
+    # --- Split SGD vs FX ---
     sgd_sales = [d for d in invoices if _is_sgd(d)]
     fx_sales = [d for d in invoices if not _is_sgd(d)]
     sgd_purchases = [d for d in purchases if _is_sgd(d)]
@@ -480,6 +744,8 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
     sgd_purchase_credits = [d for d in purchase_credits if _is_sgd(d)]
     fx_purchase_credits = [d for d in purchase_credits if not _is_sgd(d)]
 
+    # --- Initialise accumulators ---
+    # All eight IRAS F5 boxes; boxes 4 and 8 are derived at the end
     boxes = {
         "box_1_standard_rated_sales": 0.0,
         "box_2_zero_rated_sales": 0.0,
@@ -491,9 +757,11 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
         "box_8_net_gst": 0.0,
     }
     anomalies = []
+    # Tracks (DocNum, VatGroup) pairs to emit one anomaly per code per document
     seen_unknown: set = set()
     credit_notes_applied = []
 
+    # --- Accumulate sales invoices ---
     for doc in sgd_sales:
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
@@ -515,6 +783,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
             if mapping["tt_box"]:
                 boxes[mapping["tt_box"]] += tt
 
+    # --- Accumulate purchase invoices ---
     for doc in sgd_purchases:
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
@@ -537,6 +806,8 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
                 boxes[mapping["tt_box"]] += tt
 
     # Credit notes are stored with positive amounts in SAP B1 — subtract from boxes.
+
+    # --- Subtract sales credit notes ---
     for doc in sgd_sales_credits:
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
@@ -567,6 +838,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
                 "tax_total_applied": -tt,
             })
 
+    # --- Subtract purchase credit notes ---
     for doc in sgd_purchase_credits:
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
@@ -597,14 +869,19 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
                 "tax_total_applied": -tt,
             })
 
+    # --- Derive boxes 4 and 8 ---
+    # Box 4 = box 1 + box 2 + box 3 per IRAS F5 specification
     boxes["box_4_total_sales"] = (
         boxes["box_1_standard_rated_sales"]
         + boxes["box_2_zero_rated_sales"]
         + boxes["box_3_exempt_sales"]
     )
+    # Box 8 = net GST payable (or refundable if negative)
     boxes["box_8_net_gst"] = boxes["box_6_output_tax"] - boxes["box_7_input_tax"]
+    # IRAS requires amounts rounded to 2 decimal places
     boxes = {k: round(v, 2) for k, v in boxes.items()}
 
+    # --- Build FX document list and flag E1 candidates ---
     fx_list = []
     e1_candidates = []
     for doc in fx_sales:
@@ -678,7 +955,15 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
 
 
 def _vg_category(vg: str) -> str:
-    """Return a human-readable GST category label for a VatGroup code."""
+    """Return a human-readable GST category label for a VatGroup code.
+
+    Args:
+        vg: A VatGroup code string, e.g. 'SO', 'ZR', 'SI'.
+
+    Returns:
+        str: A descriptive label for the code, or a fallback string indicating
+            the code is not in the known mapping.
+    """
     _categories = {
         "SO":     "Standard-rated output (sales)",
         "DS":     "Standard-rated output (sales)",
@@ -704,11 +989,32 @@ def _vg_category(vg: str) -> str:
 
 @mcp.tool()
 def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07) -> str:
-    """Check all invoice and credit note lines in a period for E1–E4 tax code errors. expected_rate defaults to 0.07 (7%); pass 0.09 for post-2024 production data."""
+    """Check all invoice and credit note lines in a period for E1–E4 tax code errors.
+
+    In addition to the per-line error list, builds a vatgroup_inventory that
+    maps every VatGroup code seen in the period to its F5 routing metadata.
+    This gives auditors a complete picture of which codes are in active use.
+
+    Args:
+        period_start:  ISO date string 'YYYY-MM-DD'.
+        period_end:    ISO date string 'YYYY-MM-DD'.
+        expected_rate: Expected GST rate as a decimal; defaults to 0.07 (7%).
+            Pass 0.09 for post-2024 production data.
+
+    Returns:
+        str: JSON string containing:
+            - period: the requested date range
+            - expected_rate: the rate used for E4 checks
+            - vatgroup_inventory: all distinct VatGroup codes seen, with
+              GST category, F5 box routing, and document count
+            - issues: list of E1–E4 issue dicts from _classify_line
+            - summary: per-code and total issue counts
+    """
     invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
     purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
 
     issues = []
+    # Tracks all distinct VatGroup codes seen to help auditors understand active codes
     vg_inventory: dict[str, dict] = {}
 
     for doc in invoices:
@@ -797,7 +1103,28 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
 
 @mcp.tool()
 def detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07) -> str:
-    """Audit GST compliance: E1–E4 line errors on invoices and credit notes, purchase completeness check, and supplier GST registration validation. Issues sorted HIGH → MEDIUM → LOW. expected_rate defaults to 0.07; pass 0.09 for post-2024 production data."""
+    """Audit GST compliance: E1–E4 line errors on invoices and credit notes, purchase completeness check, and supplier GST registration validation.
+
+    Issues sorted HIGH → MEDIUM → LOW. expected_rate defaults to 0.07; pass 0.09
+    for post-2024 production data.
+
+    Args:
+        period_start:  ISO date string 'YYYY-MM-DD'.
+        period_end:    ISO date string 'YYYY-MM-DD'.
+        expected_rate: Expected GST rate as a decimal. Defaults to 0.07 (7%).
+
+    Returns:
+        str: JSON string containing:
+            - period: the requested date range
+            - severity_counts: count of HIGH / MEDIUM / LOW issues
+            - issues: list of enriched issue dicts with severity, error_code,
+              doc_num, doc_date, card_name, description, and recommendation.
+              Additional error codes beyond E1–E4:
+                COMPLETENESS — purchase volume is suspiciously low vs. sales
+                NO_GST_REG   — input tax claimed from a supplier with no GST
+                               registration number on their business partner record
+    """
+    # --- Fetch ---
     invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
     purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
     purchase_credits = _fetch_credit_notes_paginated("purchases", period_start, period_end)
@@ -810,6 +1137,7 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
         "E4": "Review the GST rate — demo data uses 7%, production uses 9% from 1 Jan 2024.",
     }
 
+    # --- Classify all lines ---
     raw_issues = []
     for doc in invoices:
         for line in doc.get("DocumentLines", []):
@@ -840,6 +1168,7 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
     # Completeness check: flag if purchase volume is suspiciously low relative to sales
     sales_count = len(invoices)
     purchase_count = len(purchases)
+    # 10% heuristic — one purchase per ten sales is suspiciously low for most businesses
     if sales_count > 0 and purchase_count / sales_count < 0.1:
         issues.append({
             "severity": "MEDIUM",
@@ -856,7 +1185,9 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
 
     # NO_GST_REG: flag first occurrence per unregistered CardCode with input tax.
     # Covers both purchase invoices and purchase credit notes.
+    # Cache avoids redundant /BusinessPartners API calls for the same CardCode
     bp_cache: dict = {}
+    # Emit only one NO_GST_REG issue per supplier, not one per document
     flagged_suppliers: set = set()
     for doc in list(purchases) + list(purchase_credits):
         card_code = doc.get("CardCode", "")
@@ -886,6 +1217,8 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
                 "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
             })
 
+    # --- Sort and count by severity ---
+    # Maps severity strings to integer sort keys so HIGH appears before MEDIUM/LOW
     _severity_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
     issues.sort(key=lambda x: (
         _severity_order.get(x.get("severity", "LOW"), 2),
@@ -906,6 +1239,17 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
 
 
 def main():
+    """Entry point for the MCP stdio server process.
+
+    Logs the configured SAP connection parameters for diagnostics, then starts
+    the FastMCP event loop which reads JSON-RPC messages from stdin and writes
+    responses to stdout.  This function blocks indefinitely until the process
+    is terminated.
+
+    Note:
+        Do not call this when importing the module into an orchestrator chain.
+        Use configure_client() and call the tool functions directly instead.
+    """
     logger.info("Starting SAP B1 MCP Server (FastMCP stdio)")
     logger.info(f"  SAP_BASE_URL: {sap.base_url}")
     logger.info(f"  SAP_COMPANY_DB: {sap.company_db}")

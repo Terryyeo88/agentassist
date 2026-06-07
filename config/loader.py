@@ -7,6 +7,32 @@ detection, optional SAP connectivity probe), and returns a ClientConfig.
 
 Independence contract: this module has NO dependency on mcp-servers/ or
 scripts/. Both consumers may import it; they must never import each other.
+
+Public API:
+    load_client_config(client_id, *, check_connectivity, config_dir)
+        -> ClientConfig  — primary entry point for all callers.
+    probe_environment(config, b1_session) -> list[dict]
+        — Tier 2 extension point (not yet implemented).
+
+Raises:
+    ConfigError: Any validation failure during load_client_config().
+        Messages are always human-readable with remediation hints.
+    SystemExit:  On import if PyYAML or requests is not installed.
+
+Example:
+    from config.loader import load_client_config, ConfigError
+
+    try:
+        cfg = load_client_config("sbodemosg", check_connectivity=True)
+    except ConfigError as exc:
+        sys.exit(str(exc))
+
+Dependencies:
+    PyYAML    — YAML parsing (pip install pyyaml).
+    requests  — SAP B1 login probe (pip install requests).
+    urllib3   — InsecureRequestWarning suppression when ssl_verify=False.
+    python-dotenv (caller's responsibility) — env vars must be loaded
+        before this module is imported if they live in a .env file.
 """
 
 from __future__ import annotations
@@ -40,6 +66,35 @@ _STANDARD_VAT_GROUPS = frozenset({
 
 @dataclass
 class ClientConfig:
+    """Validated, ready-to-use configuration for a single AgentAssist client.
+
+    All fields are fully resolved at construction time — credential fields
+    contain the actual secret values (not env-var names), the URL has its
+    trailing slash stripped, and every optional section has been defaulted.
+    Callers should treat instances as read-only; nothing mutates them after
+    load_client_config() returns.
+
+    Attributes:
+        client_id:               Unique identifier matching the YAML filename stem.
+        client_name:             Human-readable company name for reports.
+        gst_registration_number: IRAS-issued GST reg number (may be empty string).
+        applicable_gst_rate:     GST rate as a decimal fraction (e.g. 0.09 for 9%).
+        service_layer_url:       SAP B1 Service Layer base URL, trailing slash removed.
+        company_db:              SAP B1 company database name (e.g. "SBODEMOUS").
+        username:                Resolved SAP B1 username (from env var).
+        password:                Resolved SAP B1 password (from env var).
+        ssl_verify:              Whether to verify the Service Layer TLS certificate.
+        fiscal_year_start_month: Month number (1-12) when the fiscal year begins.
+        custom_vat_groups:       Client-specific VatGroup → box mappings; guaranteed
+                                 collision-free with _STANDARD_VAT_GROUPS.
+        completeness_threshold:  Fraction of missing documents tolerated before a
+                                 completeness gate fires (default 0.10 = 10%).
+        reviewer_name:           Name printed on the PDF report signature line.
+        firm_name:               Accounting firm name printed on the PDF report.
+        show_ai_candidates:      Whether the AI-candidate subsection appears in the
+                                 PDF.  Defaults to False — must stay False until the
+                                 recall/precision measurement gate is met.
+    """
     client_id: str
     client_name: str
     gst_registration_number: str
@@ -73,8 +128,7 @@ def load_client_config(
     check_connectivity: bool = True,
     config_dir: Optional[Path] = None,
 ) -> ClientConfig:
-    """
-    Load, validate, and return a ClientConfig.
+    """Load, validate, and return a ClientConfig.
 
     Validation steps (each fails loud with a human-readable message):
       1. Locate config/clients/<client_id>.yaml — names the file if missing.
@@ -88,14 +142,30 @@ def load_client_config(
          failure mode. Skipped by consumers that manage their own sessions.
 
     Args:
-        client_id:           Filename stem in config/clients/ (e.g. "sbodemosg").
-        check_connectivity:  False to skip the SAP login probe.
-        config_dir:          Override config/clients/ path (for testing).
+        client_id:          Filename stem in config/clients/ (e.g. "sbodemosg").
+        check_connectivity: False to skip the SAP B1 login probe.  Pass False
+                            when the caller already holds an active session or
+                            is running in an environment without SAP access.
+        config_dir:         Override the config/clients/ search path.  Primarily
+                            used by tests to point at a fixture directory.
+
+    Returns:
+        ClientConfig: Fully validated and resolved configuration object.
+
+    Raises:
+        ConfigError: On any validation failure — file missing, YAML error,
+            required field absent, client_id mismatch, unset env var, GST
+            rate out of range, VatGroup collision, or SAP login failure.
+
+    Example:
+        cfg = load_client_config("sbodemosg", check_connectivity=False)
+        print(cfg.company_db, cfg.applicable_gst_rate)
     """
     base_dir = config_dir or (_repo_root() / "config" / "clients")
     config_path = base_dir / f"{client_id}.yaml"
 
-    # Step 1 — file existence
+    # --- Step 1: file existence ---
+
     if not config_path.exists():
         available = sorted(p.stem for p in base_dir.glob("*.yaml") if p.stem != "example")
         raise ConfigError(
@@ -105,20 +175,23 @@ def load_client_config(
             f"  config/clients/{client_id}.yaml and fill in the values."
         )
 
-    # Step 2 — YAML parse
+    # --- Step 2: YAML parse ---
+
     try:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as exc:
         raise ConfigError(f"YAML parse error in {config_path}:\n  {exc}") from exc
 
-    # Step 3 — required top-level fields
+    # --- Step 3: required fields ---
+
     for key in ("client_id", "client_name", "applicable_gst_rate", "sap_b1"):
         _require_field(raw, key, config_path)
     sap = raw["sap_b1"]
     for key in ("service_layer_url", "company_db", "username_env_var", "password_env_var"):
         _require_field(sap, key, config_path, parent="sap_b1")
 
-    # Step 4 — client_id must match filename stem
+    # --- Step 4: client_id / filename consistency ---
+
     if raw["client_id"] != client_id:
         raise ConfigError(
             f"client_id mismatch in {config_path}:\n"
@@ -127,9 +200,12 @@ def load_client_config(
             f"  Fix: update client_id in the YAML to '{client_id}'."
         )
 
-    # Step 5 — credential env-var resolution
+    # --- Step 5: credential env-var resolution ---
+
     username_var: str = sap["username_env_var"]
     password_var: str = sap["password_env_var"]
+    # Use .get() rather than direct lookup so we can collect all missing vars
+    # in one pass and report them together instead of failing on the first one.
     missing_vars = [v for v in (username_var, password_var) if not os.environ.get(v)]
     if missing_vars:
         raise ConfigError(
@@ -141,8 +217,11 @@ def load_client_config(
     username: str = os.environ[username_var]
     password: str = os.environ[password_var]
 
-    # Step 6 — GST rate plausibility [0.05, 0.15]
+    # --- Step 6: GST rate plausibility ---
+
     rate = float(raw["applicable_gst_rate"])
+    # [0.05, 0.15] brackets the realistic range for Singapore GST (7 % historic,
+    # 9 % current) while catching common mistakes like entering "9" instead of "0.09".
     if not (0.05 <= rate <= 0.15):
         raise ConfigError(
             f"applicable_gst_rate {rate} is outside the plausible range [0.05, 0.15].\n"
@@ -150,8 +229,11 @@ def load_client_config(
             f"  Update the value in config/clients/{client_id}.yaml if this is a typo."
         )
 
-    # Step 7 — custom_vat_groups collision check
+    # --- Step 7: custom VatGroup collision check ---
+
+    # `or {}` handles both the key being absent and it being explicitly null in YAML.
     custom_vg: dict = dict(raw.get("custom_vat_groups") or {})
+    # Set intersection — any code appearing in both sets is a prohibited override.
     collisions = sorted(set(custom_vg) & _STANDARD_VAT_GROUPS)
     if collisions:
         raise ConfigError(
@@ -161,20 +243,27 @@ def load_client_config(
             f"  Remove or rename the conflicting key(s) in config/clients/{client_id}.yaml."
         )
 
+    # Strip trailing slash so all callers can safely append "/Endpoint" without
+    # producing double-slash URLs regardless of what the YAML author wrote.
     service_layer_url: str = sap["service_layer_url"].rstrip("/")
     company_db: str = sap["company_db"]
     ssl_verify: bool = bool(sap.get("ssl_verify", True))
 
-    # Step 8 — optional SAP connectivity probe
+    # --- Step 8: optional SAP connectivity probe ---
+
     if check_connectivity:
         _probe_sap_login(service_layer_url, company_db, username, password, ssl_verify)
 
+    # `or {}` makes downstream .get() calls safe even when these optional
+    # YAML sections are entirely absent from the file.
     period = raw.get("period_defaults") or {}
     report = raw.get("report") or {}
 
     # show_ai_candidates: default OFF — stays false until the measurement gate is met.
     # Accepts Python-style bool or YAML boolean (true/false/yes/no/on/off).
     _raw_ai = report.get("show_ai_candidates", False)
+    # YAML parsers may return strings for unquoted values; reject anything that
+    # is not already a real bool to prevent silent truthy/falsy surprises.
     if not isinstance(_raw_ai, bool):
         raise ConfigError(
             f"report.show_ai_candidates in '{client_id}.yaml' must be a boolean "
@@ -204,11 +293,30 @@ def load_client_config(
 # ── Private helpers ────────────────────────────────────────────────────────────
 
 def _repo_root() -> Path:
-    """config/loader.py lives at <repo>/config/loader.py; parent.parent = repo root."""
+    """Return the repository root by walking two levels up from this file.
+
+    config/loader.py lives at <repo>/config/loader.py, so .parent.parent
+    resolves to the repo root without needing __file__ manipulation elsewhere.
+
+    Returns:
+        Path: Absolute path to the repository root directory.
+    """
     return Path(__file__).resolve().parent.parent
 
 
 def _require_field(d: dict, key: str, path: Path, parent: str = "") -> None:
+    """Raise ConfigError if a required key is absent or explicitly null.
+
+    Args:
+        d:      The dict to inspect (top-level raw config or a nested section).
+        key:    The field name that must be present and non-null.
+        path:   Path to the YAML file, included in the error message for context.
+        parent: Dotted prefix for nested keys (e.g. "sap_b1") used to build a
+                human-readable location string like "sap_b1.company_db".
+
+    Raises:
+        ConfigError: If the key is missing from d or its value is None.
+    """
     location = f"{parent}.{key}" if parent else key
     if key not in d or d[key] is None:
         raise ConfigError(
@@ -224,8 +332,28 @@ def _probe_sap_login(
     password: str,
     ssl_verify: bool,
 ) -> None:
-    """Lightweight SAP B1 login probe — logs out immediately on success."""
+    """Perform a lightweight SAP B1 login probe and log out immediately on success.
+
+    Sends a single POST to /Login to confirm the Service Layer is reachable and
+    the credentials are valid.  The resulting session is discarded via /Logout so
+    no session slots are consumed.  This is a validation-only probe, not a real
+    session setup.
+
+    Args:
+        service_layer_url: Base URL of the SAP B1 Service Layer (no trailing slash).
+        company_db:        SAP B1 company database name.
+        username:          SAP B1 username (resolved credential value).
+        password:          SAP B1 password (resolved credential value).
+        ssl_verify:        Whether to verify the server's TLS certificate.
+
+    Raises:
+        ConfigError: On ConnectionError (host unreachable), Timeout (10 s exceeded),
+            or a non-200 HTTP response from /Login.  Each case includes the endpoint
+            URL and a remediation hint.
+    """
     if not ssl_verify:
+        # Suppress the per-request InsecureRequestWarning that urllib3 emits when
+        # certificate verification is disabled — the operator opted in via YAML.
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     login_url = f"{service_layer_url}/Login"
@@ -251,6 +379,8 @@ def _probe_sap_login(
         )
 
     if resp.status_code != 200:
+        # SAP B1 Service Layer error responses nest the message at
+        # error.message.value — try that path first, fall back to raw text.
         try:
             detail = resp.json()["error"]["message"]["value"]
         except Exception:
