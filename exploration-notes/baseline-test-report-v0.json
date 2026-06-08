@@ -1,20 +1,22 @@
 {
-  "run_date": "2026-05-28T09:03:53.122553+00:00",
+  "run_date": "2026-06-08T14:27:48.193128+00:00",
   "period": "Q3 2024",
   "database": "SBODEMOSG",
-  "version": "v0-baseline",
+  "version": "v0-baseline-t1.1",
   "invoices_fetched": 50,
-  "purchase_invoices_fetched": 21,
+  "purchase_invoices_fetched": 34,
+  "credit_notes_fetched": 1,
+  "purchase_credit_notes_fetched": 1,
   "test_1_f5_calculation": {
     "boxes": {
-      "box_1": 370589.97,
+      "box_1": 369589.97,
       "box_2": 10000.0,
       "box_3": 6000.0,
-      "box_4": 386589.97,
-      "box_5": 129477.76,
-      "box_6": 25941.32,
-      "box_7": 8860.45,
-      "box_8": 17080.87
+      "box_4": 385589.97,
+      "box_5": 191077.76,
+      "box_6": 25871.32,
+      "box_7": 13207.45,
+      "box_8": 12663.87
     },
     "fx_invoices_flagged": [
       {
@@ -108,9 +110,15 @@
         "issue": "requires FX conversion to SGD before including in F5"
       }
     ],
+    "credit_note_counts": {
+      "sgd_sales": 1,
+      "fx_sales": 0,
+      "sgd_purchases": 1,
+      "fx_purchases": 0
+    },
     "score": 10,
     "max_score": 10,
-    "notes": "Boxes 1-8 calculated from 42 SGD sales and 19 SGD purchase invoices. FX invoices detected and excluded: 10 document(s). BL/OS lines (SGD 1600.00) correctly excluded from Box 5."
+    "notes": "Boxes 1-8 calculated from 42 SGD sales invoices, 32 SGD purchase invoices, 1 SGD sales credit note(s), 1 SGD purchase credit note(s). FX documents detected and excluded: 10. BL/OS lines (SGD 1600.00) correctly excluded from Box 5."
   },
   "test_2_tax_classification": {
     "vatgroups_found": [
@@ -135,7 +143,7 @@
       {
         "code": "NR",
         "description": "Non-GST-registered supplier",
-        "f5_box": "Box 5 only",
+        "f5_box": "Excluded",
         "known": true
       },
       {
@@ -176,7 +184,7 @@
         "CardName": "SG Electronics",
         "DocCurrency": "USD",
         "VatGroup": "SO",
-        "issue": "Foreign currency (USD) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (USD) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 964,
@@ -184,7 +192,7 @@
         "CardName": "Aquent Systems",
         "DocCurrency": "USD",
         "VatGroup": "SO",
-        "issue": "Foreign currency (USD) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (USD) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 965,
@@ -192,7 +200,7 @@
         "CardName": "Aquent Systems",
         "DocCurrency": "USD",
         "VatGroup": "SO",
-        "issue": "Foreign currency (USD) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (USD) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 967,
@@ -200,7 +208,7 @@
         "CardName": "ADA Technologies",
         "DocCurrency": "EUR",
         "VatGroup": "SO",
-        "issue": "Foreign currency (EUR) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (EUR) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 967,
@@ -208,7 +216,7 @@
         "CardName": "ADA Technologies",
         "DocCurrency": "EUR",
         "VatGroup": "SO",
-        "issue": "Foreign currency (EUR) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (EUR) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 971,
@@ -216,7 +224,7 @@
         "CardName": "ADA Technologies",
         "DocCurrency": "EUR",
         "VatGroup": "SO",
-        "issue": "Foreign currency (EUR) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (EUR) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 974,
@@ -224,7 +232,7 @@
         "CardName": "SG Electronics",
         "DocCurrency": "USD",
         "VatGroup": "SO",
-        "issue": "Foreign currency (USD) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (USD) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 974,
@@ -232,7 +240,7 @@
         "CardName": "SG Electronics",
         "DocCurrency": "USD",
         "VatGroup": "SO",
-        "issue": "Foreign currency (USD) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (USD) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 974,
@@ -240,7 +248,7 @@
         "CardName": "SG Electronics",
         "DocCurrency": "USD",
         "VatGroup": "SO",
-        "issue": "Foreign currency (USD) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (USD) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 977,
@@ -248,7 +256,7 @@
         "CardName": "Aquent Systems",
         "DocCurrency": "USD",
         "VatGroup": "SO",
-        "issue": "Foreign currency (USD) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (USD) document uses SO \u2014 should be ZR for overseas sales"
       },
       {
         "DocNum": 982,
@@ -256,7 +264,7 @@
         "CardName": "ADA Technologies",
         "DocCurrency": "EUR",
         "VatGroup": "SO",
-        "issue": "Foreign currency (EUR) sales invoice uses SO \u2014 should be ZR for overseas sales"
+        "issue": "Foreign currency (EUR) document uses SO \u2014 should be ZR for overseas sales"
       }
     ],
     "score": 10,
@@ -266,15 +274,15 @@
   "test_3_error_detection": {
     "period": "2024-07-01 to 2024-09-30",
     "summary": {
-      "total_findings": 20,
+      "total_findings": 21,
       "by_check_type": {
         "NO_GST_REG": 7,
         "E1": 11,
-        "E2": 2
+        "E2": 3
       },
       "by_severity": {
         "HIGH": 18,
-        "MEDIUM": 2,
+        "MEDIUM": 3,
         "LOW": 0
       }
     },
@@ -294,7 +302,7 @@
         "affected_doc_nums": [
           592
         ],
-        "description": "Input tax claimed from supplier V1010 (Far East Imports) without a GST registration number \u2014 1 invoice(s), SGD 622.13 total input tax.",
+        "description": "Input tax claimed from supplier V1010 (Far East Imports) without a GST registration number \u2014 1 document(s), SGD 622.13 total input tax.",
         "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
       },
       {
@@ -315,7 +323,7 @@
           598,
           599
         ],
-        "description": "Input tax claimed from supplier V70000 (SMD Technologies) without a GST registration number \u2014 4 invoice(s), SGD 3154.62 total input tax.",
+        "description": "Input tax claimed from supplier V70000 (SMD Technologies) without a GST registration number \u2014 4 document(s), SGD 3154.62 total input tax.",
         "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
       },
       {
@@ -334,7 +342,7 @@
           595,
           602
         ],
-        "description": "Input tax claimed from supplier V20000 (Lasercom) without a GST registration number \u2014 2 invoice(s), SGD 1250.39 total input tax.",
+        "description": "Input tax claimed from supplier V20000 (Lasercom) without a GST registration number \u2014 2 document(s), SGD 1250.39 total input tax.",
         "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
       },
       {
@@ -353,7 +361,7 @@
           600,
           603
         ],
-        "description": "Input tax claimed from supplier V60000 (CTI Computers) without a GST registration number \u2014 2 invoice(s), SGD 121.25 total input tax.",
+        "description": "Input tax claimed from supplier V60000 (CTI Computers) without a GST registration number \u2014 2 document(s), SGD 121.25 total input tax.",
         "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
       },
       {
@@ -371,7 +379,7 @@
         "affected_doc_nums": [
           601
         ],
-        "description": "Input tax claimed from supplier V30000 (Blockies Corporation) without a GST registration number \u2014 1 invoice(s), SGD 839.00 total input tax.",
+        "description": "Input tax claimed from supplier V30000 (Blockies Corporation) without a GST registration number \u2014 1 document(s), SGD 839.00 total input tax.",
         "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
       },
       {
@@ -389,7 +397,7 @@
         "affected_doc_nums": [
           604
         ],
-        "description": "Input tax claimed from supplier V50000 (Lumarx) without a GST registration number \u2014 1 invoice(s), SGD 601.99 total input tax.",
+        "description": "Input tax claimed from supplier V50000 (Lumarx) without a GST registration number \u2014 1 document(s), SGD 601.99 total input tax.",
         "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
       },
       {
@@ -402,8 +410,8 @@
         "line_num": null,
         "vat_group": null,
         "line_total": null,
-        "tax_total": 955.0,
-        "affected_invoice_count": 7,
+        "tax_total": 990.0,
+        "affected_invoice_count": 8,
         "affected_doc_nums": [
           605,
           606,
@@ -411,9 +419,10 @@
           608,
           609,
           610,
-          611
+          611,
+          11
         ],
-        "description": "Input tax claimed from supplier V10000 (Acme Associates) without a GST registration number \u2014 7 invoice(s), SGD 955.00 total input tax.",
+        "description": "Input tax claimed from supplier V10000 (Acme Associates) without a GST registration number \u2014 8 document(s), SGD 990.00 total input tax.",
         "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
       },
       {
@@ -608,11 +617,25 @@
         "severity": "MEDIUM",
         "description": "Tax 56.00 charged on non-taxable purchase supply (VatGroup=BL)",
         "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code."
+      },
+      {
+        "doc_num": 611,
+        "doc_date": "2024-09-15",
+        "card_code": "V10000",
+        "card_name": "Acme Associates",
+        "line_num": 0,
+        "vat_group": "NR",
+        "line_total": 500.0,
+        "tax_total": 45.0,
+        "check_type": "E2",
+        "severity": "MEDIUM",
+        "description": "Tax 45.00 charged on non-taxable purchase supply (VatGroup=NR)",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code."
       }
     ],
     "score": 10,
     "max_score": 10,
-    "notes": "Checks: E1, E2(sales+purchases,incl.BL), E3, E4, NO_GST_REG, COMPLETENESS. Findings: 20 (HIGH: 18, MEDIUM: 2)."
+    "notes": "Checks: E1, E2(sales+purchases+credit notes, incl.BL+NR), E3, E4, NO_GST_REG, COMPLETENESS. Findings: 21 (HIGH: 18, MEDIUM: 3)."
   },
   "overall_score": 30,
   "overall_max": 30

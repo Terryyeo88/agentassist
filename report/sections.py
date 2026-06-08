@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from report.constants import DISCLAIMER_TEXT, NOT_EXAMINED_ITEMS
 from report.enrich import EnrichedFinding
@@ -275,6 +275,44 @@ class AICandidatesSection:
     candidates: list[AICandidateRow]
     disclaimer: str
     candidate_count: int
+
+
+@dataclass
+class ReviewCandidateRow:
+    """One row in the unified AI-Surfaced Candidates table.
+
+    Adapts both reasoning candidates (basis="description analysis") and document
+    candidates (basis="invoice cross-reference") into a common view, so a single
+    table can present candidates from both mechanisms with a mandatory per-row
+    basis tag.
+    """
+    doc_num: int
+    basis: Literal["description analysis", "invoice cross-reference"]
+    finding: str         # suspected_category for reasoning; check_id for document
+    message: str         # "Consider reviewing whether…" reviewer prompt
+    determinability: str  # "J+" or "D+ (conditional on extraction)"
+    validation_status: str = "unvalidated"
+
+
+@dataclass
+class UnifiedCandidatesSection:
+    """Unified AI-Surfaced Candidates for Review — Section 5 subsection.
+
+    Merges reasoning (description analysis) and document cross-reference candidates
+    into a single table, gated by the show_ai_candidates flag.
+
+    show=False                             → render nothing; rest of report byte-identical.
+    show=True, candidates                  → render unified table.
+    show=True, no candidates               → render "No candidates surfaced."
+    reasoning_status == "not_examined"     → append note for reasoning pass.
+    reasoning_status == "errored"          → append note that reasoning did not complete.
+    documents_status == "not_examined"     → append note for source documents.
+    """
+    show: bool
+    candidates: list[ReviewCandidateRow]
+    reasoning_status: str   # "ok" | "errored" | "not_examined"
+    documents_status: str   # "ok" | "not_examined"
+    disclaimer: str
 
 
 @dataclass
@@ -705,4 +743,80 @@ def build_ai_candidates_section(
         candidates=candidates,
         disclaimer=disclaimer,
         candidate_count=len(candidates),
+    )
+
+
+def build_unified_candidates_section(
+    judgment_artefact: dict | None,
+    document_candidates: list | None,
+    *,
+    show: bool,
+) -> UnifiedCandidatesSection:
+    """Build the unified AI-Surfaced Candidates subsection for Section 5.
+
+    Adapts reasoning candidates (from judgment_artefact) and document candidates
+    (from run_documents_pass()) into ReviewCandidateRow items in one list.  The
+    per-row basis tag is mandatory — it distinguishes Reg 26/27 description
+    analysis from invoice cross-reference, keeping the unified section honest
+    when the two mechanisms have different validation states.
+
+    Args:
+        judgment_artefact:   Reasoning artefact dict, or None if not run.
+        document_candidates: List of DocumentCandidate from run_documents_pass(),
+                             or None if the documents pass did not run.
+                             (Typed as list to avoid importing documents/ here.)
+        show:                Feature flag; keyword-only.
+
+    Returns:
+        UnifiedCandidatesSection: show=False short-circuits with no candidates.
+    """
+    if not show:
+        return UnifiedCandidatesSection(
+            show=False, candidates=[],
+            reasoning_status="not_examined", documents_status="not_examined",
+            disclaimer="",
+        )
+
+    rows: list[ReviewCandidateRow] = []
+
+    # ── Reasoning candidates ──────────────────────────────────────────────────
+    if judgment_artefact is None:
+        reasoning_status = "not_examined"
+    else:
+        status: str = str(judgment_artefact.get("status") or "errored")
+        reasoning_status = status
+        if status == "ok":
+            for c in (judgment_artefact.get("candidates") or []):
+                rows.append(ReviewCandidateRow(
+                    doc_num=int(c.get("doc_num") or 0),
+                    basis="description analysis",
+                    finding=str(c.get("suspected_category") or ""),
+                    message=str(c.get("phrasing") or ""),
+                    determinability="J+",
+                    validation_status="unvalidated",
+                ))
+
+    # ── Document cross-reference candidates ──────────────────────────────────
+    if document_candidates is None:
+        documents_status = "not_examined"
+    else:
+        documents_status = "ok"
+        for cand in document_candidates:
+            rows.append(ReviewCandidateRow(
+                doc_num=cand.doc_num,
+                basis="invoice cross-reference",
+                finding=cand.check_id,
+                message=cand.message,
+                determinability=cand.determinability,
+                validation_status="unvalidated",
+            ))
+
+    disclaimer = str((judgment_artefact or {}).get("disclaimer") or "")
+
+    return UnifiedCandidatesSection(
+        show=True,
+        candidates=rows,
+        reasoning_status=reasoning_status,
+        documents_status=documents_status,
+        disclaimer=disclaimer,
     )

@@ -1,0 +1,239 @@
+{
+  "_meta": {
+    "description": "Controlled fixtures. Labels are author-known injected issues for build/demo only — NOT specialist-validated ground truth (T2.13).",
+    "generator": "tests/fixtures/documents/generate_invoices.py",
+    "seed": 20260608,
+    "gst_period": {
+      "start": "2024-07-01",
+      "end": "2024-09-30"
+    },
+    "line_item_shape": "doc_num, doc_type, doc_date, card_name, line_index, vat_group, line_description, line_total, tax_total",
+    "join_key": "doc_num",
+    "injected_issue_types": [
+      "none",
+      "gst_amount_mismatch",
+      "supplier_gst_reg_absent",
+      "date_outside_period",
+      "total_inconsistency",
+      "combined"
+    ]
+  },
+  "cases": [
+    {
+      "doc_num": 3001,
+      "pdf_filename": "INV-3001.pdf",
+      "injected_issue": "none",
+      "injected_issue_detail": "Clean case. PDF and SAP record agree on all IRAS para 7.1.4 particulars.",
+      "line_item_record": {
+        "doc_num": 3001,
+        "doc_type": "purchase_invoice",
+        "doc_date": "2024-07-15",
+        "card_name": "TechSupply Solutions Pte Ltd",
+        "line_index": 0,
+        "vat_group": "SI",
+        "line_description": "Professional IT Consulting Services - July 2024",
+        "line_total": 5000.0,
+        "tax_total": 350.0
+      },
+      "pdf_values": {
+        "invoice_num": "INV-3001",
+        "date": "2024-07-15",
+        "supplier_gst_reg": "M12345678X",
+        "description": "Professional IT Consulting Services - July 2024",
+        "excl_gst": 5000.0,
+        "gst_rate_label": "7%",
+        "gst_amount": 350.0,
+        "total": 5350.0
+      }
+    },
+    {
+      "doc_num": 3002,
+      "pdf_filename": "INV-3002.pdf",
+      "injected_issue": "none",
+      "injected_issue_detail": "Clean case. PDF and SAP record agree on all IRAS para 7.1.4 particulars.",
+      "line_item_record": {
+        "doc_num": 3002,
+        "doc_type": "purchase_invoice",
+        "doc_date": "2024-08-20",
+        "card_name": "Office Essentials Pte Ltd",
+        "line_index": 0,
+        "vat_group": "SI",
+        "line_description": "Office Supplies - Stationery and Consumables Q3",
+        "line_total": 2800.0,
+        "tax_total": 196.0
+      },
+      "pdf_values": {
+        "invoice_num": "INV-3002",
+        "date": "2024-08-20",
+        "supplier_gst_reg": "M87654321X",
+        "description": "Office Supplies - Stationery and Consumables Q3",
+        "excl_gst": 2800.0,
+        "gst_rate_label": "7%",
+        "gst_amount": 196.0,
+        "total": 2996.0
+      }
+    },
+    {
+      "doc_num": 3003,
+      "pdf_filename": "INV-3003.pdf",
+      "injected_issue": "gst_amount_mismatch",
+      "injected_issue_detail": "PDF shows GST 900.00 but SAP record tax_total=840.00 (PDF overstates by 60.00; correct 7% of 12000 is 840.00).",
+      "line_item_record": {
+        "doc_num": 3003,
+        "doc_type": "purchase_invoice",
+        "doc_date": "2024-07-30",
+        "card_name": "Heavy Equipment Rentals Pte Ltd",
+        "line_index": 0,
+        "vat_group": "SI",
+        "line_description": "Excavator Equipment Rental - Monthly Hire July",
+        "line_total": 12000.0,
+        "tax_total": 840.0
+      },
+      "pdf_values": {
+        "invoice_num": "INV-3003",
+        "date": "2024-07-30",
+        "supplier_gst_reg": "M11223344X",
+        "description": "Excavator Equipment Rental - Monthly Hire July",
+        "excl_gst": 12000.0,
+        "gst_rate_label": "7%",
+        "gst_amount": 900.0,
+        "total": 12900.0
+      }
+    },
+    {
+      "doc_num": 3004,
+      "pdf_filename": "INV-3004.pdf",
+      "injected_issue": "gst_amount_mismatch",
+      "injected_issue_detail": "PDF shows GST rate 6% and GST amount 192.00 but SAP record tax_total=224.00 (correct 7% of 3200). PDF understates GST by 32.00.",
+      "line_item_record": {
+        "doc_num": 3004,
+        "doc_type": "purchase_invoice",
+        "doc_date": "2024-08-05",
+        "card_name": "Premium Catering Services Pte Ltd",
+        "line_index": 0,
+        "vat_group": "SI",
+        "line_description": "Corporate Catering Services - August Board Meeting",
+        "line_total": 3200.0,
+        "tax_total": 224.0
+      },
+      "pdf_values": {
+        "invoice_num": "INV-3004",
+        "date": "2024-08-05",
+        "supplier_gst_reg": "M99887766X",
+        "description": "Corporate Catering Services - August Board Meeting",
+        "excl_gst": 3200.0,
+        "gst_rate_label": "6%",
+        "gst_amount": 192.0,
+        "total": 3392.0
+      }
+    },
+    {
+      "doc_num": 3005,
+      "pdf_filename": "INV-3005.pdf",
+      "injected_issue": "supplier_gst_reg_absent",
+      "injected_issue_detail": "Supplier GST registration number not shown on the invoice face. IRAS para 7.1.4(d) requires the supplier's GST reg number. Input tax claim may be disallowable without this particular.",
+      "line_item_record": {
+        "doc_num": 3005,
+        "doc_type": "purchase_invoice",
+        "doc_date": "2024-09-10",
+        "card_name": "Fresh Food Distributors Pte Ltd",
+        "line_index": 0,
+        "vat_group": "SI",
+        "line_description": "Fresh Produce Supply - September Delivery Batch 3",
+        "line_total": 1500.0,
+        "tax_total": 105.0
+      },
+      "pdf_values": {
+        "invoice_num": "INV-3005",
+        "date": "2024-09-10",
+        "supplier_gst_reg": null,
+        "description": "Fresh Produce Supply - September Delivery Batch 3",
+        "excl_gst": 1500.0,
+        "gst_rate_label": "7%",
+        "gst_amount": 105.0,
+        "total": 1605.0
+      }
+    },
+    {
+      "doc_num": 3006,
+      "pdf_filename": "INV-3006.pdf",
+      "injected_issue": "date_outside_period",
+      "injected_issue_detail": "PDF invoice date 2024-10-05 is outside the audit period 2024-07-01 to 2024-09-30. Document should not appear in the Q3 2024 F5 return.",
+      "line_item_record": {
+        "doc_num": 3006,
+        "doc_type": "purchase_invoice",
+        "doc_date": "2024-10-05",
+        "card_name": "TechSupply Solutions Pte Ltd",
+        "line_index": 0,
+        "vat_group": "SI",
+        "line_description": "Network Infrastructure Maintenance - October Support",
+        "line_total": 7800.0,
+        "tax_total": 546.0
+      },
+      "pdf_values": {
+        "invoice_num": "INV-3006",
+        "date": "2024-10-05",
+        "supplier_gst_reg": "M12345678X",
+        "description": "Network Infrastructure Maintenance - October Support",
+        "excl_gst": 7800.0,
+        "gst_rate_label": "7%",
+        "gst_amount": 546.0,
+        "total": 8346.0
+      }
+    },
+    {
+      "doc_num": 3007,
+      "pdf_filename": "INV-3007.pdf",
+      "injected_issue": "total_inconsistency",
+      "injected_issue_detail": "PDF total 4530.00 does not equal PDF excl_gst 4200.00 + PDF gst_amount 294.00 = 4494.00. Arithmetic error on the invoice face (overstated by 36.00).",
+      "line_item_record": {
+        "doc_num": 3007,
+        "doc_type": "purchase_invoice",
+        "doc_date": "2024-08-22",
+        "card_name": "MarketSG Advertising Pte Ltd",
+        "line_index": 0,
+        "vat_group": "SI",
+        "line_description": "Digital Marketing Campaign Services - Q3 2024",
+        "line_total": 4200.0,
+        "tax_total": 294.0
+      },
+      "pdf_values": {
+        "invoice_num": "INV-3007",
+        "date": "2024-08-22",
+        "supplier_gst_reg": "M44556677X",
+        "description": "Digital Marketing Campaign Services - Q3 2024",
+        "excl_gst": 4200.0,
+        "gst_rate_label": "7%",
+        "gst_amount": 294.0,
+        "total": 4530.0
+      }
+    },
+    {
+      "doc_num": 3008,
+      "pdf_filename": "INV-3008.pdf",
+      "injected_issue": "combined",
+      "injected_issue_detail": "Two issues: (1) PDF shows GST 360.00 but record tax_total=420.00 (PDF applies 6% instead of 7%; understated by 60.00). (2) Supplier GST registration number absent from PDF face.",
+      "line_item_record": {
+        "doc_num": 3008,
+        "doc_type": "purchase_invoice",
+        "doc_date": "2024-09-15",
+        "card_name": "CleanSpace Facilities Pte Ltd",
+        "line_index": 0,
+        "vat_group": "SI",
+        "line_description": "Building Cleaning and Maintenance Services - September",
+        "line_total": 6000.0,
+        "tax_total": 420.0
+      },
+      "pdf_values": {
+        "invoice_num": "INV-3008",
+        "date": "2024-09-15",
+        "supplier_gst_reg": null,
+        "description": "Building Cleaning and Maintenance Services - September",
+        "excl_gst": 6000.0,
+        "gst_rate_label": "7%",
+        "gst_amount": 360.0,
+        "total": 6360.0
+      }
+    }
+  ]
+}
