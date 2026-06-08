@@ -11,11 +11,12 @@ T1.1 update: credit notes (CreditNotes, PurchaseCreditNotes) are fetched and inc
 T1.1 Part B: NR added to E2_ZERO_RATE_CODES — DocNum 611 (VatGroup NR, TaxTotal 45.00)
   now appears in Test 3 E2 output.
 
-Post-seed reference figures: regenerate by running this script against
-the live SBODEMOSG instance after the 608–611 fixture decision is
-finalised with Collin. Current known seeds active: original 605–607,
-second generation 608–611 (NR seed 611 confirmed live with TaxTotal=45.00
-at 9% rate, documented as known E2 fixture — see test_data_registry.json),
+Post-seed reference figures (2026-06-08): includes AGENTASSIST_SEED docs 612–624
+(13 × VatGroup=SI, vendor V21000 Sea Corp FederalTaxID=SK98467789). Seeds added
++62,600.00 to Box 5 and +4,382.00 to Box 7; NO_GST_REG count unchanged at 7.
+J+ document/reasoning candidates are a separate validation track and are NOT
+produced by this script — they appear in the agent audit bundle only.
+Previously active seeds: 605–607, 608–611 (NR seed 611 = known E2 fixture),
 CN A DocNum 10 SO 1000.00/70.00, CN B DocNum 11 SI 500.00/35.00.
 """
 

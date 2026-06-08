@@ -655,16 +655,111 @@ def _ai_candidates_subsection(m: ReportModel, story: list) -> None:
         story.append(Paragraph(ai.disclaimer, _SMLX_AI))
 
 
+def _unified_candidates_subsection(m: ReportModel, story: list) -> None:
+    """Render the unified AI-Surfaced Candidates subsection within Section 5.
+
+    Uses model.unified_candidates when present (Prompt 4+).  Falls back to the
+    legacy _ai_candidates_subsection for ReportModel instances constructed before
+    unified_candidates was added (e.g. manually built in tests).
+
+    Gated by unified_candidates.show — when False the function returns immediately,
+    leaving the rest of the report byte-identical to a pre-Prompt-4 run.
+
+    Args:
+        m:     The ReportModel; unified_candidates may be None for legacy callers.
+        story: Mutable story list; flowables are appended in place.
+    """
+    uc = m.unified_candidates
+    if uc is None:
+        _ai_candidates_subsection(m, story)
+        return
+    if not uc.show:
+        return
+
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(HRFlowable(width=_UW, thickness=0.5,
+                             color=colors.HexColor("#AED6F1")))
+    story.append(Paragraph(
+        "AI-Surfaced Candidates for Review (unvalidated)",
+        _H3_AI,
+    ))
+
+    # ── Status notes for passes that did not run ──────────────────────────────
+    if uc.reasoning_status == "not_examined":
+        story.append(Paragraph(
+            "Reasoning analysis (Reg 26/27 description-based): not examined.",
+            _SMLX_AI,
+        ))
+    elif uc.reasoning_status not in ("ok",):
+        story.append(Paragraph(
+            f"Reasoning analysis (Reg 26/27 description-based): "
+            f"did not complete ({uc.reasoning_status}).",
+            _SMLX_AI,
+        ))
+
+    if uc.documents_status == "not_examined":
+        story.append(Paragraph(
+            "Source document cross-reference: not examined.",
+            _SMLX_AI,
+        ))
+
+    # ── Candidates table or "none surfaced" notice ────────────────────────────
+    if not uc.candidates:
+        if uc.reasoning_status == "ok" or uc.documents_status == "ok":
+            story.append(Paragraph("No candidates surfaced.", _BODY))
+    else:
+        # Columns: Doc # | Basis | Finding | Determinability | Reviewer prompt
+        uc_cols = [1.8*cm, 3.5*cm, 2.5*cm, 2.5*cm, 6.7*cm]
+        uc_hdr = [_p(h, _CELLB) for h in
+                  ["Doc #", "Basis", "Finding", "Determinability",
+                   "Reviewer prompt"]]
+        uc_rows = [
+            [
+                _p(str(r.doc_num), _CELL_AI),
+                _p(r.basis, _CELL_AI),
+                _p(r.finding.replace("_", " "), _CELL_AI),
+                _p(r.determinability, _CELL_AI),
+                _p(r.message, _CELL_AI),
+            ]
+            for r in uc.candidates
+        ]
+        tbl = Table(
+            [uc_hdr] + uc_rows,
+            colWidths=uc_cols,
+            style=TableStyle([
+                ("BACKGROUND",    (0, 0), (-1, 0),  _AI_SUBHEADING_BG),
+                ("TEXTCOLOR",     (0, 0), (-1, 0),  _AI_DISCLAIMER_FG),
+                ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
+                ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE",      (0, 0), (-1, -1), 8),
+                ("LEADING",       (0, 0), (-1, -1), 10),
+                ("GRID",          (0, 0), (-1, -1), 0.25, colors.HexColor("#AED6F1")),
+                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING",    (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+                 [colors.white, colors.HexColor("#EBF5FB")]),
+            ]),
+            repeatRows=1,
+        )
+        story.append(tbl)
+
+    if uc.disclaimer:
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(Paragraph(uc.disclaimer, _SMLX_AI))
+
+
 def _judgment(m: ReportModel, story: list) -> None:
     """Append Section 5 — Judgment items requiring reviewer decision.
 
     Renders one sub-section per judgment group, each with a display title,
     judgment question, and the list of document numbers to review.  The
-    AI candidates subsection is appended at the end of this section when
-    ai_candidates.show is True.
+    unified candidates subsection is appended at the end when show=True.
 
     Args:
-        m:     The ReportModel containing judgment groups and ai_candidates.
+        m:     The ReportModel containing judgment groups and unified_candidates.
         story: Mutable story list; flowables are appended in place.
     """
     story.append(Paragraph("5.  Judgment — Items for Reviewer Decision", _H2))
@@ -683,7 +778,7 @@ def _judgment(m: ReportModel, story: list) -> None:
             + ", ".join(str(d) for d in jg.doc_nums),
             _SMALL,
         ))
-    _ai_candidates_subsection(m, story)
+    _unified_candidates_subsection(m, story)
 
 
 def _not_examined(m: ReportModel, story: list) -> None:

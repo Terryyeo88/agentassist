@@ -19,10 +19,10 @@
 
 ---
 
-## Reference (Known-Correct) Numbers for Q3 2024
+## Reference (Known-Correct) Numbers for Q3 2024 — PRE-SEED (archived)
 
 Source: `scripts/run_baseline_tests.py` automated run 2026-05-25 00:13:33 UTC.
-All manual test scoring below is measured against these figures.
+Pre-seed baseline preserved in git history. All manual test scoring (v0–v3) below uses these figures.
 
 | Box | Value (SGD) |
 |-----|-------------|
@@ -35,10 +35,54 @@ All manual test scoring below is measured against these figures.
 | Box 7 (Input tax claimed) | 8,545.45 |
 | Box 8 (Net GST payable) | 17,395.87 |
 
-Known correct findings:
+Known correct findings (pre-seed):
 - 8 unique VatGroups in period: BL, ES33, IM, OS, SI, SO, ZP, ZR
 - 10 FX invoices that must be excluded from box totals
 - 11 E1 errors (FX+SO miscoding)
+
+---
+
+## Reference (Known-Correct) Numbers for Q3 2024 — POST-SEED (current)
+
+Source: `scripts/run_baseline_tests.py` automated run 2026-06-08 14:27:48 UTC.
+**Includes 13 AGENTASSIST_SEED docs (DocNums 612–624) seeded on 2026-06-08.**
+Agent chain output verified byte-identical against these figures (all 8 boxes matched).
+
+| Box | Value (SGD) | Delta from pre-seed |
+|-----|-------------|---------------------|
+| Box 1 (Standard-rated supplies) | 369,589.97 | — (sales only; not from seeds) |
+| Box 2 (Zero-rated supplies) | 10,000.00 | — (sales only) |
+| Box 3 (Exempt supplies) | 6,000.00 | — (sales only) |
+| Box 4 (Total supplies) | 385,589.97 | — (derived: Box 1+2+3) |
+| Box 5 (Taxable purchases) | **191,077.76** | **+62,600.00** (13 × SI LineTotal) |
+| Box 6 (Output tax) | 25,871.32 | — (sales only) |
+| Box 7 (Input tax claimed) | **13,207.45** | **+4,382.00** (13 × SI TaxTotal) |
+| Box 8 (Net GST payable) | **12,663.87** | **-4,382.00** (Box 6 − Box 7) |
+
+**IRAS basis for Box 5/7 increments:** VatGroup=SI → Box 5 (LineTotal) + Box 7 (TaxTotal).
+Source: sg-tax-code-mappings.md, IRAS e-Tax Guide Eleventh Edition:
+  - Box 5: IRAS para 5.11 — SI is a standard-rated taxable purchase; LineTotal (excl. GST) belongs in Box 5.
+  - Box 7: IRAS para 5.13 — SI TaxTotal is claimable input tax; requires valid tax invoice with supplier GST reg.
+
+**Seed delta (attributable to DocNums 612–624 only):**
+  - 13 SI purchase invoices × VatGroup=SI → Box 5 += 62,600.00 (LineTotals), Box 7 += 4,382.00 (TaxTotals)
+  - Box 8 falls by 4,382.00 as expected (Box 6 unchanged — seeds are purchases, not sales)
+
+**NO_GST_REG count: 7 (unchanged from pre-seed).**
+Vendor V21000 (Sea Corp, FederalTaxID=SK98467789) is GST-registered → seeds added zero new NO_GST_REG findings.
+Pre-existing 7 findings are on unrelated vendors (V1010, V70000, V20000, V60000, V30000, V50000, V10000).
+
+Known correct findings (post-seed):
+- 9 unique VatGroups: BL, ES33, IM, NR, OS, SI, SO, ZP, ZR
+- 10 FX invoices excluded from box totals
+- 11 E1 errors (FX+SO miscoding)
+- 3 E2 errors (2 × BL with tax, 1 × NR with tax on DocNum 611)
+- 7 NO_GST_REG findings (unchanged)
+
+**J+ candidates are a separate validation track — excluded from this deterministic baseline.**
+Document cross-reference candidates (from run_documents_pass) and Reg 26/27 reasoning candidates
+(from run_reg2627_pass) appear in the unified PDF section only; they never enter Layer 1 boxes or
+the five deterministic gates. See audit bundles for the sealed candidate artefacts.
 
 ---
 
@@ -768,6 +812,65 @@ FX+SO mismatches detected: 11
 ### Test 3: Findings
 
 Total findings: 20 (HIGH: 18, MEDIUM: 2)
+- [HIGH] NO_GST_REG DocNum 592: Input tax claimed from supplier V1010 (Far East Imports) without a GST registrat
+- [HIGH] NO_GST_REG DocNum 594: Input tax claimed from supplier V70000 (SMD Technologies) without a GST registra
+- [HIGH] NO_GST_REG DocNum 595: Input tax claimed from supplier V20000 (Lasercom) without a GST registration num
+- [HIGH] NO_GST_REG DocNum 600: Input tax claimed from supplier V60000 (CTI Computers) without a GST registratio
+- [HIGH] NO_GST_REG DocNum 601: Input tax claimed from supplier V30000 (Blockies Corporation) without a GST regi
+- [HIGH] NO_GST_REG DocNum 604: Input tax claimed from supplier V50000 (Lumarx) without a GST registration numbe
+- [HIGH] NO_GST_REG DocNum 605: Input tax claimed from supplier V10000 (Acme Associates) without a GST registrat
+- [HIGH] E1 DocNum 958: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+- [HIGH] E1 DocNum 964: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+- [HIGH] E1 DocNum 965: FX invoice (USD) with VatGroup=SO — overseas sale should use ZR
+
+---
+
+## Automated Baseline Run (T1.1)
+
+*Run date: 2026-06-08 14:27:48 UTC | Script: run_baseline_tests.py*
+
+### Results Summary
+
+| Test | Score | Notes |
+|------|-------|-------|
+| Test 1: F5 Calculation | 10/10 | Boxes 1-8 calculated from 42 SGD sales invoices, 32 SGD purchase invoices, 1 SGD |
+| Test 2: Tax Classification | 10/10 | Found 9 unique VatGroup codes: 9 known, 0 unknown/unmapped. 11 FX+SO mismatch(es |
+| Test 3: Error Detection | 10/10 | Checks: E1, E2(sales+purchases+credit notes, incl.BL+NR), E3, E4, NO_GST_REG, CO |
+| **Overall** | **30/30** | |
+
+### Test 1: F5 Box Values (SGD)
+
+| Box | Value |
+|-----|-------|
+| Box 1 (Standard-rated supplies) | SGD 369,589.97 |
+| Box 2 (Zero-rated supplies) | SGD 10,000.00 |
+| Box 3 (Exempt supplies) | SGD 6,000.00 |
+| Box 4 (Total supplies) | SGD 385,589.97 |
+| Box 5 (Taxable purchases) | SGD 191,077.76 |
+| Box 6 (Output tax) | SGD 25,871.32 |
+| Box 7 (Input tax claimed) | SGD 13,207.45 |
+| Box 8 (Net GST payable) | SGD 12,663.87 |
+
+Credit notes applied: 1 SGD sales, 1 SGD purchase
+FX documents flagged (excluded from boxes): 10
+
+### Test 2: VatGroups Found
+
+- `BL`: Blocked input tax (Reg 26/27) → Excluded
+- `ES33`: Exempt supply (Reg 33) → Box 3
+- `IM`: Import GST → Box 5 + Box 7
+- `NR`: Non-GST-registered supplier → Excluded
+- `OS`: Out of scope → Excluded
+- `SI`: Standard-rated input → Box 5 + Box 7
+- `SO`: Standard-rated output → Box 1 + Box 6
+- `ZP`: Zero-rated purchase → Box 5 only
+- `ZR`: Zero-rated supply → Box 2
+
+FX+SO mismatches detected: 11
+
+### Test 3: Findings
+
+Total findings: 21 (HIGH: 18, MEDIUM: 3)
 - [HIGH] NO_GST_REG DocNum 592: Input tax claimed from supplier V1010 (Far East Imports) without a GST registrat
 - [HIGH] NO_GST_REG DocNum 594: Input tax claimed from supplier V70000 (SMD Technologies) without a GST registra
 - [HIGH] NO_GST_REG DocNum 595: Input tax claimed from supplier V20000 (Lasercom) without a GST registration num

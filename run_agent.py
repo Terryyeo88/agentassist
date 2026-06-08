@@ -93,10 +93,25 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Client config stem in config/clients/ (e.g. sbodemosg)")
     p.add_argument("--period", required=True, nargs=2, metavar=("START", "END"),
                    help="Period as two YYYY-MM-DD dates: --period 2024-07-01 2024-09-30")
+    p.add_argument(
+        "--show-ai-candidates", action="store_true", default=False,
+        help=(
+            "Render the AI-surfaced candidates subsection in the PDF report.  "
+            "Overrides the client YAML show_ai_candidates flag for this run."
+        ),
+    )
+    p.add_argument(
+        "--upload-dir", default=None, metavar="DIR",
+        help=(
+            "Directory containing INV-<docnum>.pdf files.  When provided, wires "
+            "CompositeProvider([B1AttachmentProvider, UploadProvider(DIR)]) so the "
+            "source-document cross-reference pass runs against the seeded PDFs."
+        ),
+    )
     return p
 
 
-def main() -> None:
+def main(*, provider=None) -> None:
     """Entry point — parse CLI args then drive all four audit phases to completion.
 
     Phases:
@@ -104,7 +119,17 @@ def main() -> None:
         2. Chain run     — fetch SAP documents, detect issues, calculate boxes,
                            enforce reconciliation gates.
         3. Reasoning     — Reg 26/27 T2.7 pass against raw SAP line data.
+        3b. Documents    — Source-document cross-reference pass (optional; runs
+                           only when a DocumentProvider is supplied via the
+                           provider kwarg; wired in Prompt 5).
         4. Report + seal — render signed PDF then write tamper-evident bundle.
+
+    Args:
+        provider: Optional DocumentProvider.  When not None, run_documents_pass
+                  is called over the SI line items and the resulting candidates
+                  are forwarded to build_report().  Defaults to None so CLI
+                  invocations and all existing callers are unaffected until
+                  Prompt 5 wires a live provider.
 
     Raises:
         SystemExit(1): On ConfigError (bad/missing client config) or GateFailure
@@ -122,6 +147,24 @@ def main() -> None:
     except ConfigError as exc:
         print(f"CONFIG ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    # --show-ai-candidates overrides the YAML flag for this run only.
+    if args.show_ai_candidates:
+        cfg.show_ai_candidates = True
+
+    # --upload-dir wires CompositeProvider([B1AttachmentProvider, UploadProvider]).
+    # Only applies when no provider was injected via the kwarg (existing callers).
+    if provider is None and args.upload_dir is not None:
+        from documents.provider import (  # noqa: PLC0415
+            B1AttachmentProvider,
+            CompositeProvider,
+            UploadProvider,
+        )
+        provider = CompositeProvider([
+            B1AttachmentProvider(cfg),
+            UploadProvider(Path(args.upload_dir)),
+        ])
+        print(f"  DocumentProvider: CompositeProvider([B1Attachment, Upload({args.upload_dir})])")
 
     print(f"  company_db={cfg.company_db}  gst_rate={cfg.applicable_gst_rate}")
     print(f"Running chain for period {period['start']} → {period['end']} ...")
@@ -162,6 +205,21 @@ def main() -> None:
         # Truncate the error string to avoid flooding the terminal; full
         # detail is preserved inside the sealed bundle artefact.
         print(f"  (pass error: {reasoning_artefact.get('error', '')[:120]})")
+
+    # --- Phase 3b: Source-document cross-reference pass (optional) ---
+
+    # provider=None (default) means the documents pass does not run and the
+    # unified report section will note "source documents: not examined."
+    # Prompt 5 will wire a live B1AttachmentProvider here.
+    doc_candidates: list | None = None
+    if provider is not None:
+        print("Running source-document cross-reference pass ...")
+        from documents.doc_pass import run_documents_pass  # noqa: PLC0415
+        si_lines = line_source()  # fetches SI lines from SAP for document joining
+        doc_candidates = run_documents_pass(
+            si_lines, provider, period["start"], period["end"]
+        )
+        print(f"  Source documents: {len(doc_candidates)} candidate(s)")
 
     # --- Phase 4: Report + seal ---
 
@@ -205,7 +263,8 @@ def main() -> None:
 
     print("Building PDF report ...")
     model = build_report(compile_output, cfg, generated_at=generated_at,
-                         judgment_artefact=reasoning_artefact)
+                         judgment_artefact=reasoning_artefact,
+                         document_candidates=doc_candidates)
     render_pdf(model, pdf_path)
     print(f"  Report PDF     : {pdf_path}")
 

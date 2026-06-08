@@ -50,6 +50,7 @@ from report.sections import (
     NotExaminedSection,
     ScopeSection,
     SignatureSection,
+    UnifiedCandidatesSection,
     build_ai_candidates_section,
     build_cover_section,
     build_cross_finding_section,
@@ -59,6 +60,7 @@ from report.sections import (
     build_not_examined_section,
     build_scope_section,
     build_signature_section,
+    build_unified_candidates_section,
 )
 
 
@@ -102,9 +104,13 @@ class ReportModel:
     generated_at: str
     period_start: str
     period_end: str
-    # Optional AI-candidates subsection; None only in legacy callers that have
-    # not been updated — the renderer treats None as show=False.
+    # Optional AI-candidates subsection; kept for backward compat — existing tests
+    # access model.ai_candidates directly and must continue to pass.
     ai_candidates: AICandidatesSection | None = None
+    # Unified candidates subsection merging reasoning + document candidates.
+    # None only in legacy callers that predate Prompt 4 — renderer falls back to
+    # _ai_candidates_subsection when this is None.
+    unified_candidates: UnifiedCandidatesSection | None = None
 
 
 def build_report(
@@ -113,6 +119,7 @@ def build_report(
     *,
     generated_at: str,
     judgment_artefact: dict | None = None,
+    document_candidates: list | None = None,
 ) -> ReportModel:
     """Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
@@ -137,6 +144,10 @@ def build_report(
                            and client_config.show_ai_candidates is True, an
                            AI-candidates subsection is appended to Section 5.
                            Defaults to None so all existing callers continue to work.
+        document_candidates: Optional list of DocumentCandidate from
+                           run_documents_pass().  None means the documents pass did
+                           not run and the unified section notes "not examined".
+                           Defaults to None so existing callers are unaffected.
 
     Returns:
         ReportModel: A fully populated model ready to be passed to render_pdf().
@@ -169,8 +180,13 @@ def build_report(
         generated_at=generated_at,
         period_start=period["start"],
         period_end=period["end"],
-        # None judgment_artefact + show=False produces ai_candidates=None in the model
+        # Kept for backward compat — existing tests read model.ai_candidates directly.
         ai_candidates=build_ai_candidates_section(
             judgment_artefact, show=show_ai
+        ),
+        # Unified section merges reasoning + document candidates; renderer uses this
+        # when present, falls back to ai_candidates for legacy callers.
+        unified_candidates=build_unified_candidates_section(
+            judgment_artefact, document_candidates, show=show_ai
         ),
     )
