@@ -1,5 +1,7 @@
 mcp
 httpx
+requests
+openpyxl
 python-dotenv
 PyYAML
 reportlab

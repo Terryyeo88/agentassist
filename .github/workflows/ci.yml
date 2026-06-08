@@ -1,0 +1,63 @@
+# CI Workflow for SAP B1 AI Agent
+#
+# This workflow runs automatically whenever code is pushed to key branches or a
+# pull request is opened against master. It installs dependencies, checks the
+# code for syntax errors with flake8, then runs the full pytest test suite.
+#
+# Before this workflow can pass, you must add ANTHROPIC_API_KEY as a secret in:
+# GitHub → Settings → Secrets and variables → Actions → New repository secret
+
+# The name shown in the GitHub Actions UI for this workflow
+name: Python CI
+
+# Defines when this workflow is triggered
+on:
+  push:
+    # Run on every push to these branches so issues are caught during development,
+    # not just at PR time. "t*" covers feature branches like t2.7-reasoning-reg2627.
+    branches: [ "master", "Add-CI", "t*" ]
+  pull_request:
+    # Also run when a pull request is opened or updated against master
+    branches: [ "master" ]
+
+jobs:
+  build:
+    # Run the job on a fresh Ubuntu virtual machine hosted by GitHub
+    runs-on: ubuntu-latest
+
+    steps:
+    # Check out the repository code onto the runner so subsequent steps can access it
+    - uses: actions/checkout@v4
+
+    # Install the specified Python version on the runner
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    # Upgrade pip to the latest version, then install all project dependencies
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # Install flake8 and run two passes:
+    #   Pass 1: fail the build immediately on syntax errors or undefined names (E9, F63, F7, F82)
+    #   Pass 2: report style warnings (complexity, line length) as informational only (exit-zero = never fails)
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    # Run the full pytest test suite.
+    # ANTHROPIC_API_KEY is injected from GitHub Secrets so tests that reference
+    # the Anthropic API do not fail with a "key not set" error.
+    - name: Test with pytest
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # Add the repo root to Python's module search path so imports like
+        # "from audit_bundle.canonical import ..." resolve correctly in CI
+        PYTHONPATH: .
+      run: |
+        pytest
