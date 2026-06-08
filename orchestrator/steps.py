@@ -1,3 +1,33 @@
+"""
+orchestrator/steps.py — The five step functions that form the GST audit chain.
+
+Each step wraps one or more sap_b1_server tool calls, normalises the output
+into a typed schema dict, and returns it to chain.py for gate validation.
+Steps are pure in the sense that they do not mutate shared state beyond the
+module-global SAP session (configured by chain.py before any step runs).
+
+Execution order in chain.py:
+    1. fetch      — pull all four SAP document types; build FetchManifest.
+    2. calculate  — compute F5 box values via calculate_f5_return.
+    3. classify   — validate VatGroup assignments via validate_invoice_tax_codes.
+    4. detect     — find compliance issues via detect_gst_errors.
+    5. compile    — aggregate steps 1–4 into a single CompileOutput.
+
+Also exposes:
+    report_input  — DEPRECATED (T1.4); converts CompileOutput to the legacy
+                    ReportInput flat summary.  Retained for signature stability.
+
+Private helpers:
+    _doc_to_record   — Normalise a raw SAP document dict to InvoiceRecord.
+    _fetch_entity    — Paginate one OData entity and probe for $inlinecount.
+
+Dependencies:
+    sap_b1_server   Custom MCP server (mcp-servers/custom/); must be
+                    configured via sap_b1_server.configure_client() before
+                    any step function is called.
+    config.loader   ClientConfig (applicable_gst_rate).
+    orchestrator.schemas  All TypedDict return types.
+"""
 from __future__ import annotations
 
 import json
@@ -43,6 +73,29 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _doc_to_record(doc: dict, doc_type: str) -> InvoiceRecord:
+    """Normalise a raw SAP B1 OData document dict into an InvoiceRecord.
+
+    Applies defensive coercions for fields that SAP may return as None,
+    missing, or with extra whitespace.  This is the single place where
+    raw OData field names (PascalCase) are mapped to the chain's snake_case
+    schema field names.
+
+    Known simplification: vat_group reflects only the first document line.
+    FetchManifest is header-granular; the SAP tools (calculate_f5_return,
+    validate_invoice_tax_codes, detect_gst_errors) own per-line truth.
+    If a document has multiple distinct line VatGroups this field reflects
+    only the first — known simplification for Gate 4 traceability.
+
+    Args:
+        doc:      Raw OData document dict as returned by the SAP B1 Service
+                  Layer, with keys like "DocNum", "DocDate", "DocumentLines".
+        doc_type: Canonical doc-type string to embed in the record
+                  (e.g. "sales_invoice", "purchase_credit_note").
+
+    Returns:
+        InvoiceRecord: Normalised, typed record ready to be added to
+            FetchManifest.records.
+    """
     lines = doc.get("DocumentLines", [])
     # vat_group = first line's VatGroup. FetchManifest is header-granular; the
     # tools (calculate_f5_return, validate_invoice_tax_codes, detect_gst_errors)
@@ -51,9 +104,13 @@ def _doc_to_record(doc: dict, doc_type: str) -> InvoiceRecord:
     first_vg = (lines[0].get("VatGroup") or "").strip() if lines else ""
     return {
         "doc_num": int(doc.get("DocNum") or 0),
+        # SAP sometimes returns a full datetime string "YYYY-MM-DDTHH:MM:SS";
+        # slice to 10 chars to keep only the date portion.
         "doc_date": str(doc.get("DocDate", ""))[:10],
         "doc_type": doc_type,
+        # Normalise currency to uppercase and default to "SGD" when absent or null.
         "doc_currency": (doc.get("DocCurrency") or "SGD").strip().upper(),
+        # Coerce None → 0.0 so downstream arithmetic never encounters NoneType.
         "doc_total": float(doc.get("DocTotal") or 0),
         "card_name": doc.get("CardName", ""),
         "vat_group": first_vg,
@@ -63,10 +120,24 @@ def _doc_to_record(doc: dict, doc_type: str) -> InvoiceRecord:
 def _fetch_entity(
     entity: str, period_start: str, period_end: str
 ) -> tuple[list[dict], int | None]:
-    """
-    Fetch all records for an OData entity and probe for the SAP inline count.
-    Returns (records, inline_count_or_none).
-    inline_count is None when the Service Layer does not honour $inlinecount.
+    """Fetch all records for one OData entity and probe for the SAP inline count.
+
+    Performs two calls to the Service Layer:
+        1. A count-only probe ($top=0, $inlinecount=allpages) to retrieve
+           the total record count without fetching any document payloads.
+        2. The full paginated fetch via sap_b1_server._fetch_invoices_paginated.
+
+    Args:
+        entity:       OData entity set name (e.g. "Invoices", "CreditNotes").
+        period_start: Inclusive start date as YYYY-MM-DD.
+        period_end:   Inclusive end date as YYYY-MM-DD.
+
+    Returns:
+        tuple[list[dict], int | None]: A two-element tuple:
+            - records: List of raw OData document dicts for the entity.
+            - inline_count: Total record count from SAP's odata.count field,
+              or None if the Service Layer did not return the field.  A None
+              here causes Gate 1 to emit a WARN_PASS rather than failing.
     """
     date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
 
@@ -76,6 +147,9 @@ def _fetch_entity(
     try:
         count_resp = sap_b1_server.sap.get(f"/{entity}", params={
             "$filter": date_filter,
+            # $top=0 returns only the metadata (including the inline count)
+            # without fetching any actual document payloads — an efficient
+            # count-only probe that avoids an extra full-page round trip.
             "$top": 0,
             "$inlinecount": "allpages",
         })
@@ -94,10 +168,28 @@ def _fetch_entity(
 # ---------------------------------------------------------------------------
 
 def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
-    """Step a — pull all four document types and build the fetch manifest."""
+    """Step a — pull all four document types from SAP and build the FetchManifest.
+
+    Fetches Invoices, PurchaseInvoices, CreditNotes, and PurchaseCreditNotes
+    in sequence, normalises each document to InvoiceRecord, and assembles them
+    into a flat FetchManifest.  Also accumulates the per-entity $inlinecount
+    values; if any entity fails to return a count the aggregate is set to None
+    so Gate 1 can signal a WARN_PASS rather than a spurious mismatch.
+
+    Args:
+        client_config: Validated ClientConfig (not used directly here but
+                       required for step-function signature consistency).
+        period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+
+    Returns:
+        FetchManifest: All four document types in a flat list with fetch
+            metadata.  fetched_at is stamped at completion, not start, so
+            it brackets the full SAP round-trip time.
+    """
     period_start = period["start"]
     period_end = period["end"]
 
+    # Pairs of (SAP OData entity name, canonical doc_type string for InvoiceRecord).
     _ENTITIES: list[tuple[str, str]] = [
         ("Invoices",            "sales_invoice"),
         ("PurchaseInvoices",    "purchase_invoice"),
@@ -107,6 +199,8 @@ def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
 
     all_records: list[InvoiceRecord] = []
     total_inline = 0
+    # Track whether every entity returned a count; a single missing count means
+    # we cannot produce a meaningful aggregate and must fall back to None.
     inline_available = True
 
     for entity, doc_type in _ENTITIES:
@@ -119,6 +213,8 @@ def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
             inline_available = False
         log.info(f"fetch: {entity} → {len(docs)} docs (inline_count={count})")
 
+    # Exclude doc_num=0 — _doc_to_record emits 0 when DocNum is missing or null,
+    # and 0 is not a valid SAP document number so it must not populate the lookup set.
     doc_nums = {r["doc_num"] for r in all_records if r["doc_num"]}
 
     return {
@@ -126,12 +222,30 @@ def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "records": all_records,
         "doc_nums": doc_nums,
+        # Expose the aggregate count only when all four entities supplied one;
+        # a partial sum would give Gate 1 a misleadingly small expected total.
         "sap_inline_count": total_inline if inline_available else None,
     }
 
 
 def calculate(client_config: ClientConfig, period: Period) -> F5ReturnOutput:
-    """Step c — invoke calculate_f5_return and return as F5ReturnOutput."""
+    """Step c — invoke calculate_f5_return and return as F5ReturnOutput.
+
+    Delegates entirely to the sap_b1_server tool, which owns all F5 box
+    logic and line-level currency handling.  The JSON string is parsed here
+    and returned as-is; no field remapping is performed.
+
+    Args:
+        client_config: Validated ClientConfig (not used directly; present for
+                       signature consistency across all step functions).
+        period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+
+    Returns:
+        F5ReturnOutput: Parsed result from calculate_f5_return, containing
+            F5 box values, E1 candidates, FX invoices, and anomalies.
+            Box keys are the canonical Gate 2 keys — verified against
+            sap_b1_server.py lines 441-449.  No remapping needed.
+    """
     result_str = sap_b1_server.calculate_f5_return(period["start"], period["end"])
     result: dict = json.loads(result_str)
     # Box keys emitted by calculate_f5_return are the canonical Gate 2 keys —
@@ -140,7 +254,21 @@ def calculate(client_config: ClientConfig, period: Period) -> F5ReturnOutput:
 
 
 def classify(client_config: ClientConfig, period: Period) -> ClassifyOutput:
-    """Step b — invoke validate_invoice_tax_codes and return as ClassifyOutput."""
+    """Step b — invoke validate_invoice_tax_codes and return as ClassifyOutput.
+
+    Passes applicable_gst_rate from the client config so the tool applies the
+    correct expected rate when checking each document's line-level tax codes.
+
+    Args:
+        client_config: Validated ClientConfig; applicable_gst_rate is forwarded
+                       to the SAP tool as the expected GST rate.
+        period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+
+    Returns:
+        ClassifyOutput: Parsed result from validate_invoice_tax_codes, containing
+            the vatgroup_inventory, classification issues (E1–E4), and summary
+            counts.
+    """
     result_str = sap_b1_server.validate_invoice_tax_codes(
         period["start"],
         period["end"],
@@ -150,7 +278,21 @@ def classify(client_config: ClientConfig, period: Period) -> ClassifyOutput:
 
 
 def detect(client_config: ClientConfig, period: Period) -> DetectOutput:
-    """Step d — invoke detect_gst_errors and return as DetectOutput."""
+    """Step d — invoke detect_gst_errors and return as DetectOutput.
+
+    Passes applicable_gst_rate from the client config so the tool can
+    evaluate rate-specific compliance rules (e.g. E2 rate mismatch).
+
+    Args:
+        client_config: Validated ClientConfig; applicable_gst_rate is forwarded
+                       to the SAP tool as the expected GST rate.
+        period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+
+    Returns:
+        DetectOutput: Parsed result from detect_gst_errors, containing
+            severity-bucketed compliance issues (E1–E4, NO_GST_REG,
+            COMPLETENESS) and per-severity counts.
+    """
     result_str = sap_b1_server.detect_gst_errors(
         period["start"],
         period["end"],
@@ -159,6 +301,7 @@ def detect(client_config: ClientConfig, period: Period) -> DetectOutput:
     return json.loads(result_str)  # type: ignore[return-value]
 
 
+# Severity sort order for report_input() issue sorting; lower value = higher priority.
 _SEV_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 
 
@@ -168,8 +311,31 @@ def compile(  # noqa: A001 — shadows builtin; intentional, chain.py does not u
     cls: ClassifyOutput,
     det: DetectOutput,
 ) -> CompileOutput:
-    """Step e — aggregate outputs from b/c/d into a single structured object."""
-    # Deduplicated anomalies: calc anomalies union classify unknowns, deduped on issue string.
+    """Step e — aggregate the four step outputs into a single CompileOutput.
+
+    Performs three synthesis operations on top of a plain aggregation:
+        1. Anomaly deduplication: merges calculate anomalies with classify's
+           unknown-VatGroup entries into a single de-duplicated list.
+        2. E1 reconciliation: records whether calculate and detect agree on
+           the set of E1 doc_nums (Gate 5 enforces this; compile preserves
+           the evidence in the bundle).
+        3. Warning assembly: builds surfaced_warnings deterministically from
+           the step outputs — no log scraping.
+
+    Args:
+        manifest: FetchManifest from the fetch step.
+        calc:     F5ReturnOutput from the calculate step.
+        cls:      ClassifyOutput from the classify step.
+        det:      DetectOutput from the detect step.
+
+    Returns:
+        CompileOutput: Single aggregated dict ready for sealing into the
+            audit bundle and consumption by the PDF report builder.
+    """
+    # --- Anomaly deduplication ---
+
+    # Deduplicate on issue string (not doc_num) so the same textual observation
+    # from two sources appears only once in the report's warnings section.
     seen: set[str] = set()
     deduped: list[Anomaly] = []
     for a in calc["anomalies"]:
@@ -181,7 +347,11 @@ def compile(  # noqa: A001 — shadows builtin; intentional, chain.py does not u
             text = f"unknown VatGroup '{vg}' present in classify inventory"
             if text not in seen:
                 seen.add(text)
+                # doc_num = -1 signals that this anomaly is VatGroup-level (an
+                # inventory observation), not tied to any single document.
                 deduped.append({"doc_num": -1, "issue": text})
+
+    # --- E1 reconciliation ---
 
     # E1 reconciliation across calculate and detect.
     calc_e1: set[int] = {c["doc_num"] for c in calc["e1_candidates"]}
@@ -191,6 +361,8 @@ def compile(  # noqa: A001 — shadows builtin; intentional, chain.py does not u
         "detect_doc_nums": detect_e1,
         "matched": calc_e1 == detect_e1,
     }
+
+    # --- Warning assembly ---
 
     # Surfaced warnings built deterministically — no log scraping.
     warnings: list[str] = []
@@ -229,7 +401,18 @@ def report_input(compiled: CompileOutput) -> ReportInput:
     Note for T1.4 integration: classify issues carry vat_group, line_total, tax_total
     which enable E2-by-VatGroup template routing (Document-2). Join to detect issues
     on (doc_num, error_code) at render time — deferred reconciliation, not done here.
+
+    Args:
+        compiled: CompileOutput from the compile step — the full aggregated result.
+
+    Returns:
+        ReportInput: Flat summary dict with issues sorted by severity then doc_num,
+            a doc-type frequency count in items_examined, and a fresh generated_at
+            timestamp.
     """
+    # Sort by severity priority first (HIGH=0, MEDIUM=1, LOW=2), then by doc_num
+    # ascending.  COMPLETENESS issues have doc_num=None; float("inf") sorts them
+    # to the end so document-level issues always appear before dataset-level ones.
     issues = sorted(
         compiled["detect"]["issues"],
         key=lambda i: (
@@ -237,6 +420,8 @@ def report_input(compiled: CompileOutput) -> ReportInput:
             i["doc_num"] if i["doc_num"] is not None else float("inf"),
         ),
     )
+
+    # Build a frequency count of processed documents by type for the report header.
     items_examined: dict[str, int] = {}
     for r in compiled["fetch_manifest"]["records"]:
         items_examined[r["doc_type"]] = items_examined.get(r["doc_type"], 0) + 1

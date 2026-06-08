@@ -1,9 +1,36 @@
 """
-report/render.py — reportlab Platypus PDF renderer.
+report/render.py — ReportLab Platypus PDF renderer for the GST compliance report.
 
-Consumes ReportModel only; never touches CompileOutput, never calls datetime.now().
-generated_at is taken from model.cover.generated_at.
-A4 page, Helvetica fixed fonts throughout.
+Accepts a fully-built ReportModel and writes a single A4 PDF.  All content is
+derived from the model; this module never reads files, calls SAP, or calls
+datetime.now() — generated_at is taken from model.cover.generated_at so the
+rendered timestamp matches when the chain ran, not when the PDF was built.
+
+Rendering pipeline:
+    1. render_pdf() creates a SimpleDocTemplate and an empty story list.
+    2. Eight section renderers (_cover, _scope, _f5_boxes, _findings,
+       _cross_findings, _judgment, _not_examined, _signature) each append
+       ReportLab Flowable objects (Paragraph, Table, Spacer, etc.) to the story.
+    3. doc.build(story, canvasmaker=_NumberedCanvas) runs the Platypus layout
+       engine, which calls _NumberedCanvas instead of the default Canvas.
+    4. _NumberedCanvas intercepts showPage() calls to buffer page state, then
+       replays all pages in save() — the only point where the total page count
+       is known — to stamp the "Page X of Y" footer on every page.
+
+Design constraints:
+    * Helvetica fixed fonts throughout (no font embedding required; universally
+      available in PDF readers).
+    * All style names are prefixed "AA_" to avoid collision with ReportLab's
+      built-in stylesheet names (Normal, Heading1, etc.).
+    * Column widths in each table are tuned to sum to _UW (≈ 17.0 cm) so tables
+      fill the usable width exactly without overflow.
+
+Dependencies:
+    reportlab     — Platypus layout engine and PDF generation
+    report.report — ReportModel dataclass (the only input to render_pdf)
+
+Exports:
+    render_pdf — build a PDF from a ReportModel and return the output Path
 """
 from __future__ import annotations
 
@@ -30,6 +57,7 @@ from report.report import ReportModel
 
 # ── Page geometry ─────────────────────────────────────────────────────────────
 
+# A4 tuple unpacked once; _W and _H are referenced throughout for right-align math.
 _W, _H = A4
 _MARGIN = 2.0 * cm
 _UW = _W - 2 * _MARGIN   # usable width ≈ 17.0 cm
@@ -41,6 +69,20 @@ _base = getSampleStyleSheet()
 
 
 def _style(name: str, parent: str = "Normal", **kw) -> ParagraphStyle:
+    """Create a named ParagraphStyle inheriting from a base stylesheet entry.
+
+    All styles defined here use the "AA_" prefix to avoid collision with
+    ReportLab's built-in names (Normal, Heading1, etc.) in the shared
+    getSampleStyleSheet() registry.
+
+    Args:
+        name:   Unique style name; must begin with "AA_" by convention.
+        parent: Name of the parent style in the base stylesheet (default 'Normal').
+        **kw:   ParagraphStyle keyword overrides (fontSize, fontName, spaceAfter, etc.).
+
+    Returns:
+        ParagraphStyle: A new style object ready for use in Paragraph() calls.
+    """
     return ParagraphStyle(name, parent=_base[parent], **kw)
 
 
@@ -62,10 +104,11 @@ _CELL_REC  = _style("AA_CellRec",       fontSize=7,  fontName="Helvetica-Oblique
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 
-_HEADER_BG = colors.HexColor("#2C3E50")
-_STRIPE    = colors.HexColor("#F0F3F4")
-_GRID_LINE = colors.HexColor("#BDC3C7")
-_FOOTER_FG = colors.HexColor("#7F8C8D")
+_HEADER_BG = colors.HexColor("#2C3E50")   # dark blue-grey — table header background
+_STRIPE    = colors.HexColor("#F0F3F4")   # very light grey — alternating row fill
+_GRID_LINE = colors.HexColor("#BDC3C7")   # light grey — table cell borders
+_FOOTER_FG = colors.HexColor("#7F8C8D")   # medium grey — footer text
+# Severity badge colours: red/amber/green matching traffic-light convention
 _SEV_HEX   = {"HIGH": "#C0392B", "MEDIUM": "#E67E22", "LOW": "#27AE60"}
 
 # ── Box labels (display order matches the F5 form) ────────────────────────────
@@ -84,7 +127,16 @@ _BOX_LABELS: dict[str, str] = {
 # ── Timestamp formatter (display-only; never calls datetime.now()) ────────────
 
 def _fmt_timestamp(iso: str) -> str:
-    """Parse a stored ISO 8601 string into a reader-friendly UTC display string."""
+    """Parse a stored ISO 8601 string into a reader-friendly UTC display string.
+
+    Args:
+        iso: An ISO 8601 datetime string, e.g. '2024-03-31T10:45:00+08:00'.
+
+    Returns:
+        str: Formatted as '31 Mar 2024, 02:45 UTC'.  Returns the original string
+            verbatim if parsing fails, so a malformed timestamp degrades gracefully
+            rather than raising inside the renderer.
+    """
     try:
         dt = datetime.fromisoformat(iso).astimezone(timezone.utc)
         return dt.strftime("%d %b %Y, %H:%M UTC")
@@ -94,6 +146,17 @@ def _fmt_timestamp(iso: str) -> str:
 # ── Table helpers ─────────────────────────────────────────────────────────────
 
 def _base_table_style() -> TableStyle:
+    """Return the standard zebra-stripe TableStyle used by all data tables.
+
+    Applies a dark header row, alternating white/light-grey row backgrounds
+    starting at row 1, a light grid, top-aligned cells, and uniform padding.
+    ROWBACKGROUNDS cycles through the provided list — two colours produce
+    alternating stripes automatically.
+
+    Returns:
+        TableStyle: A new instance (not a singleton) so callers that need to
+            extend it can append commands without affecting other tables.
+    """
     return TableStyle([
         ("BACKGROUND",     (0, 0), (-1, 0),  _HEADER_BG),
         ("TEXTCOLOR",      (0, 0), (-1, 0),  colors.white),
@@ -112,24 +175,66 @@ def _base_table_style() -> TableStyle:
 
 
 def _table(col_widths: list, header: list, rows: list) -> Table:
+    """Build a Table with a header row prepended and the standard base style.
+
+    Args:
+        col_widths: List of column widths in ReportLab units (e.g. cm values).
+            Should sum to _UW so the table fills the usable page width.
+        header:     List of Paragraph (or string) cells for the header row.
+        rows:       List of data rows; each row is a list of cell values.
+
+    Returns:
+        Table: A ReportLab Table with repeatRows=1 so the header is reprinted
+            at the top of each new page when the table spans a page break.
+    """
     return Table(
         [header] + rows,
         colWidths=col_widths,
         style=_base_table_style(),
+        # repeatRows=1 reprints the header row at the top of each continuation page
         repeatRows=1,
     )
 
 # ── Cell formatters ───────────────────────────────────────────────────────────
 
 def _p(text, style: ParagraphStyle = _CELL) -> Paragraph:
+    """Wrap text in a Paragraph, substituting an em-dash for None values.
+
+    The explicit None check (rather than `text or "—"`) is intentional: numeric
+    zero should render as "0", not "—", but falsy-zero would collapse with a
+    bare `or` short-circuit.
+
+    Args:
+        text:  Any value; converted via str() unless None.
+        style: ParagraphStyle to apply (defaults to _CELL).
+
+    Returns:
+        Paragraph: Ready to embed in a Table cell or story list.
+    """
     return Paragraph(str(text) if text is not None else "—", style)
 
 
 def _sgd(value) -> str:
+    """Format a numeric value as a comma-separated SGD string with 2 decimal places.
+
+    Args:
+        value: Numeric value, or None.
+
+    Returns:
+        str: e.g. '12,345.67', or '—' if value is None.
+    """
     return f"{value:,.2f}" if value is not None else "—"
 
 
 def _sev_cell(sev: str) -> Paragraph:
+    """Render a severity badge as a bold, coloured Paragraph using ReportLab XML markup.
+
+    Args:
+        sev: Severity string — 'HIGH', 'MEDIUM', or 'LOW'.
+
+    Returns:
+        Paragraph: Text coloured per _SEV_HEX; falls back to black for unknown values.
+    """
     hex_c = _SEV_HEX.get(sev, "#000000")
     return Paragraph(f'<font color="{hex_c}"><b>{sev}</b></font>', _CELL)
 
@@ -139,6 +244,15 @@ def _desc_cell(description: str | None, recommendation: str | None) -> list[Para
 
     Recommendation is rendered on its own line in italic grey so it is
     visually distinct from the finding description. No separator glyphs used.
+
+    Args:
+        description:    Main finding description text, or None (renders as '—').
+        recommendation: Optional corrective action text.  Omitted entirely when None
+                        so the cell height is not wasted on a blank line.
+
+    Returns:
+        list[Paragraph]: One element (description only) or two (description + recommendation).
+            ReportLab accepts a list of Flowables as a single cell value and stacks them.
     """
     result = [_p(description or "—")]
     if recommendation:
@@ -148,27 +262,70 @@ def _desc_cell(description: str | None, recommendation: str | None) -> list[Para
 # ── Numbered canvas (Page X of Y footer) ─────────────────────────────────────
 
 def _make_numbered_canvas(client_name: str):
-    """Return a Canvas subclass that draws a footer with page X of Y on every page."""
+    """Return a Canvas subclass that draws a footer with page X of Y on every page.
+
+    ReportLab's normal rendering model flushes each page immediately via showPage(),
+    so the total page count is not known until all pages have been processed.
+    This factory uses the standard two-pass workaround:
+      Pass 1 — showPage() is overridden to buffer each page's canvas state
+               (as a dict snapshot of self.__dict__) instead of flushing it.
+      Pass 2 — save() replays all buffered states, now knowing the total count,
+               stamping the footer before flushing each page via Canvas.showPage().
+
+    Args:
+        client_name: Client name string embedded in the right-side footer text.
+
+    Returns:
+        type: A Canvas subclass (_NumberedCanvas).  Pass as canvasmaker= to
+            SimpleDocTemplate.build().
+    """
 
     class _NumberedCanvas(Canvas):
+        """Canvas subclass that buffers pages to support 'Page X of Y' footers."""
+
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self._saved_page_states: list[dict] = []
 
         def showPage(self):
+            """Buffer the current page state instead of flushing, then start a new page.
+
+            Called by the Platypus layout engine at each page boundary.  Overriding
+            it prevents immediate flushing so that save() can replay all pages once
+            the total count is known.
+            """
             self._saved_page_states.append(dict(self.__dict__))
             self._startPage()
 
         def save(self):
-            states = self._saved_page_states[:]   # capture before __dict__ mutations
+            """Replay all buffered pages with footers, then flush the PDF to disk.
+
+            Two-pass process: all page states were buffered in showPage(); now that
+            the total is known, each state is restored and the footer is drawn before
+            the page is flushed via Canvas.showPage() (the real implementation, not
+            the overridden one).
+            """
+            # Shallow copy taken before the restore loop mutates self.__dict__
+            states = self._saved_page_states[:]
             total = len(states)
             for page_num, state in enumerate(states, 1):
                 self.__dict__.update(state)
                 self._draw_footer(page_num, total)
+                # Call Canvas.showPage directly (not super()) to bypass the
+                # override above and actually flush this page to the PDF stream.
                 Canvas.showPage(self)
             Canvas.save(self)
 
         def _draw_footer(self, page_num: int, total: int) -> None:
+            """Draw the two-part footer bar at the bottom of the current page.
+
+            Left side: working-paper caveat.
+            Right side: client name, report title, and page numbering.
+
+            Args:
+                page_num: 1-based current page number.
+                total:    Total number of pages in the document.
+            """
             self.saveState()
             self.setFont("Helvetica", 7)
             self.setFillColor(_FOOTER_FG)
@@ -186,6 +343,16 @@ def _make_numbered_canvas(client_name: str):
 # ── Section renderers ─────────────────────────────────────────────────────────
 
 def _cover(m: ReportModel, story: list) -> None:
+    """Append the cover page flowables to the story.
+
+    Renders: report title, subtitle, a horizontal rule, and a metadata block
+    (client, GST reg number, period, reviewer, generated timestamp), followed
+    by a PageBreak.
+
+    Args:
+        m:     The ReportModel containing cover data.
+        story: Mutable story list; flowables are appended in place.
+    """
     story.append(Spacer(1, 1.2 * cm))
     story.append(Paragraph("AgentAssist GST Compliance Review", _H1))
     story.append(Paragraph("IRAS ASK Annual Review — Transaction-Level Analysis", _BODY))
@@ -203,9 +370,22 @@ def _cover(m: ReportModel, story: list) -> None:
 
 
 def _scope(m: ReportModel, story: list) -> None:
+    """Append Section 1 — Scope (items examined, FX exclusions, credit notes).
+
+    Three sub-sections:
+      * Items examined table: document-type counts, sorted alphabetically for
+        stable display regardless of dict insertion order.
+      * Foreign currency invoices excluded from box totals.
+      * Credit notes applied (with signed line/tax totals).
+
+    Args:
+        m:     The ReportModel containing scope data.
+        story: Mutable story list; flowables are appended in place.
+    """
     story.append(Paragraph("1.  Scope — Items Examined", _H2))
 
     hdr = [_p("Document type", _CELLB), _p("Count", _CELLB)]
+    # Alphabetical sort gives stable display order regardless of dict insertion order
     rows = [
         [_p(dt.replace("_", " ").title()), _p(str(cnt))]
         for dt, cnt in sorted(m.scope.items_examined.items())
@@ -251,6 +431,16 @@ def _scope(m: ReportModel, story: list) -> None:
 
 
 def _f5_boxes(m: ReportModel, story: list) -> None:
+    """Append Section 2 — GST F5 Return box figures.
+
+    One row per F5 box showing the computed SGD value and the VatGroup codes
+    that contributed to it.  Box labels are looked up from _BOX_LABELS so the
+    display text matches the IRAS F5 form labels exactly.
+
+    Args:
+        m:     The ReportModel containing F5 box attribution data.
+        story: Mutable story list; flowables are appended in place.
+    """
     story.append(Paragraph("2.  GST F5 Return — Box Figures", _H2))
     story.append(Paragraph(
         "SGD. Computed from SAP B1 invoice and credit note lines by calculate_f5_return.",
@@ -262,6 +452,7 @@ def _f5_boxes(m: ReportModel, story: list) -> None:
         [
             _p(_BOX_LABELS.get(a.box_name, a.box_name)),
             _p(_sgd(a.box_value)),
+            # Comma-joined VatGroup codes show the reviewer which codes fed each box
             _p(", ".join(a.vat_groups) if a.vat_groups else "—"),
         ]
         for a in m.f5_boxes.attribution
@@ -270,6 +461,21 @@ def _f5_boxes(m: ReportModel, story: list) -> None:
 
 
 def _findings(m: ReportModel, story: list) -> None:
+    """Append Section 3 — Findings grouped by ASK template.
+
+    Each template group is wrapped in KeepTogether so its heading is never
+    orphaned at the bottom of a page without at least the start of its table.
+
+    Amount column fallback order (most to least precise):
+      1. line_total  — sum of classify line totals (most precise; covers E1–E4)
+      2. doc_total   — full document total from the manifest (approximate;
+                       used for NO_GST_REG where no per-line classify data exists)
+      3. "—"         — neither is available
+
+    Args:
+        m:     The ReportModel containing grouped findings.
+        story: Mutable story list; flowables are appended in place.
+    """
     story.append(Paragraph("3.  Findings by IRAS ASK Template", _H2))
     story.append(Paragraph(
         f"Total: {m.findings.total_findings} finding(s). "
@@ -278,6 +484,7 @@ def _findings(m: ReportModel, story: list) -> None:
     ))
 
     # Column widths: Code column is 2.0 cm — wide enough for NO_GST_REG at 8 pt Helvetica.
+    # Widths sum to 17.0 cm = _UW.
     f_cols = [1.5*cm, 1.4*cm, 2.0*cm, 3.0*cm, 1.2*cm, 1.8*cm, 2.0*cm, 4.1*cm]
     f_hdr  = [_p(h, _CELLB) for h in
               ["Severity", "Doc #", "Date", "Counterparty", "VG", "Amount", "Code", "Description"]]
@@ -317,6 +524,16 @@ def _findings(m: ReportModel, story: list) -> None:
 
 
 def _cross_findings(m: ReportModel, story: list) -> None:
+    """Append Section 4 — Cross-finding analysis (documents with multiple error codes).
+
+    Lists only documents that carry two or more distinct error codes — these
+    are the highest-priority items for manual review because they indicate
+    compound problems.
+
+    Args:
+        m:     The ReportModel containing cross-finding data.
+        story: Mutable story list; flowables are appended in place.
+    """
     story.append(Paragraph("4.  Cross-Finding Analysis", _H2))
     if not m.cross_findings.multi_error_docs:
         story.append(Paragraph(
@@ -336,6 +553,8 @@ def _cross_findings(m: ReportModel, story: list) -> None:
             _p(str(e.doc_num)),
             _p(", ".join(e.error_codes)),
             _p(e.findings[0].card_name if e.findings else "—"),
+            # dict.fromkeys preserves insertion order and silently deduplicates;
+            # multiple findings can share the same Appendix 1 category string.
             _p("; ".join(dict.fromkeys(f.appendix1_category for f in e.findings))),
         ]
         for e in m.cross_findings.multi_error_docs
@@ -343,7 +562,111 @@ def _cross_findings(m: ReportModel, story: list) -> None:
     story.append(_table(cols, hdr, rows))
 
 
+# AI subsection styles — visually distinct (blue palette) from the deterministic
+# grey/dark-blue palette above, signalling these are unvalidated candidates.
+_AI_SUBHEADING_BG = colors.HexColor("#EAF4FB")   # light blue — visually distinct from deterministic
+_AI_DISCLAIMER_FG = colors.HexColor("#1A5276")   # dark blue for disclaimer text
+
+_H3_AI = _style(
+    "AA_H3_AI", "Heading3",
+    fontSize=9, fontName="Helvetica-Bold",
+    spaceAfter=3, spaceBefore=10,
+    textColor=_AI_DISCLAIMER_FG,
+)
+_CELL_AI = _style("AA_CellAI", fontSize=8, fontName="Helvetica", leading=10,
+                   textColor=colors.HexColor("#1B2631"))
+_SMLX_AI = _style("AA_SmXAI", fontSize=7, fontName="Helvetica-Oblique", spaceAfter=2,
+                   textColor=_AI_DISCLAIMER_FG)
+
+
+def _ai_candidates_subsection(m: ReportModel, story: list) -> None:
+    """Render the optional AI-surfaced candidates subsection within Section 5.
+
+    Rendered only when model.ai_candidates.show is True.
+    Candidates are NEVER counted in deterministic finding totals.
+
+    Args:
+        m:     The ReportModel; ai_candidates may be None if the AI pass was
+               not configured for this run.
+        story: Mutable story list; flowables are appended in place.
+    """
+    ai = m.ai_candidates
+    if ai is None or not ai.show:
+        return
+
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(HRFlowable(width=_UW, thickness=0.5,
+                             color=colors.HexColor("#AED6F1")))
+    story.append(Paragraph(
+        "AI-surfaced candidates (unvalidated) — Reg 26/27 disallowed input tax",
+        _H3_AI,
+    ))
+
+    if ai.status == "errored":
+        story.append(Paragraph("AI candidate pass did not complete.", _BODY))
+        return
+
+    if ai.status == "ok" and ai.candidate_count == 0:
+        story.append(Paragraph("No AI-surfaced candidates.", _BODY))
+    else:
+        # Render candidates table — visually distinct from deterministic findings.
+        ai_cols = [1.8*cm, 1.8*cm, 2.0*cm, 2.8*cm, 2.8*cm, 2.0*cm, 4.0*cm]
+        ai_hdr = [_p(h, _CELLB) for h in
+                  ["Doc #", "Line", "Date", "Counterparty", "Category", "Confidence",
+                   "Reviewer prompt"]]
+        ai_rows = [
+            [
+                _p(str(c.doc_num), _CELL_AI),
+                _p(str(c.line_index), _CELL_AI),
+                _p(c.doc_date, _CELL_AI),
+                _p(c.card_name, _CELL_AI),
+                _p(c.suspected_category.replace("_", " "), _CELL_AI),
+                _p(c.confidence, _CELL_AI),
+                _p(c.phrasing, _CELL_AI),
+            ]
+            for c in ai.candidates
+        ]
+        tbl = Table(
+            [ai_hdr] + ai_rows,
+            colWidths=ai_cols,
+            style=TableStyle([
+                ("BACKGROUND",    (0, 0), (-1, 0),  _AI_SUBHEADING_BG),
+                ("TEXTCOLOR",     (0, 0), (-1, 0),  _AI_DISCLAIMER_FG),
+                ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
+                ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE",      (0, 0), (-1, -1), 8),
+                ("LEADING",       (0, 0), (-1, -1), 10),
+                ("GRID",          (0, 0), (-1, -1), 0.25, colors.HexColor("#AED6F1")),
+                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING",    (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+                ("ROWBACKGROUNDS",(0, 1), (-1, -1),
+                 [colors.white, colors.HexColor("#EBF5FB")]),
+            ]),
+            repeatRows=1,
+        )
+        story.append(tbl)
+
+    # Disclaimer — always shown when the subsection is visible.
+    if ai.disclaimer:
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(Paragraph(ai.disclaimer, _SMLX_AI))
+
+
 def _judgment(m: ReportModel, story: list) -> None:
+    """Append Section 5 — Judgment items requiring reviewer decision.
+
+    Renders one sub-section per judgment group, each with a display title,
+    judgment question, and the list of document numbers to review.  The
+    AI candidates subsection is appended at the end of this section when
+    ai_candidates.show is True.
+
+    Args:
+        m:     The ReportModel containing judgment groups and ai_candidates.
+        story: Mutable story list; flowables are appended in place.
+    """
     story.append(Paragraph("5.  Judgment — Items for Reviewer Decision", _H2))
     story.append(Paragraph(
         "AgentAssist surfaces the following candidates. "
@@ -360,9 +683,19 @@ def _judgment(m: ReportModel, story: list) -> None:
             + ", ".join(str(d) for d in jg.doc_nums),
             _SMALL,
         ))
+    _ai_candidates_subsection(m, story)
 
 
 def _not_examined(m: ReportModel, story: list) -> None:
+    """Append Section 6 — Items not examined (coverage boundary).
+
+    Each item is a bulleted paragraph drawn from model.not_examined.items,
+    which in turn comes from constants.NOT_EXAMINED_ITEMS via the report builder.
+
+    Args:
+        m:     The ReportModel containing the not-examined item list.
+        story: Mutable story list; flowables are appended in place.
+    """
     story.append(Paragraph("6.  Items Not Examined", _H2))
     story.append(Paragraph(
         "The following checks are outside the scope of this automated review. "
@@ -374,6 +707,16 @@ def _not_examined(m: ReportModel, story: list) -> None:
 
 
 def _signature(m: ReportModel, story: list) -> None:
+    """Append the declaration and sign-off page.
+
+    Starts on a new page.  Renders reviewer metadata, a ruled signature line
+    (width matches the IRAS Declaration Form convention), a date field, and
+    the disclaimer text.
+
+    Args:
+        m:     The ReportModel containing signature and disclaimer data.
+        story: Mutable story list; flowables are appended in place.
+    """
     story.append(PageBreak())
     story.append(Paragraph("Declaration and Sign-Off", _H2))
     story.append(Paragraph(
@@ -392,9 +735,10 @@ def _signature(m: ReportModel, story: list) -> None:
 
     story.append(Spacer(1, 1.5 * cm))
     # Ruled signature line — mirrors the IRAS Declaration Form on Completing Annual Review
+    # Width at 55% of usable width matches the physical form's signature line proportion.
     story.append(HRFlowable(width=_UW * 0.55, thickness=0.75, color=colors.black))
     story.append(Paragraph(
-        "Signature" + " " * 16 + "Date: _______________",
+        "Signature" + " " * 16 + "Date: _______________",
         _SMALL,
     ))
     story.append(Spacer(1, 1.2 * cm))
@@ -406,12 +750,27 @@ def _signature(m: ReportModel, story: list) -> None:
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
-    """
-    Render a ReportModel to PDF and return the output Path.
+    """Render a ReportModel to a PDF file and return the output Path.
 
-    out_path's parent directory is created if it does not exist.
-    generated_at is taken from model.cover.generated_at; no datetime.now() is called
-    anywhere in this module.
+    Assembles eight section renderers into a Platypus story list, then builds
+    the PDF using SimpleDocTemplate with _NumberedCanvas for page-X-of-Y footers.
+    No datetime.now() is called anywhere in this module — the generated_at
+    timestamp comes from model.cover.generated_at.
+
+    Args:
+        model:    A fully populated ReportModel.  All section data must be set;
+                  no defaults are applied here.
+        out_path: Destination file path (str or Path).  The parent directory is
+                  created if it does not exist.
+
+    Returns:
+        Path: The absolute path to the written PDF file.
+
+    Raises:
+        OSError: If the output directory cannot be created or the file cannot
+            be written (e.g. insufficient permissions).
+        Exception: ReportLab may raise if any Flowable cannot be laid out
+            (e.g. a single cell value wider than its column).
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -422,7 +781,8 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
         leftMargin=_MARGIN,
         rightMargin=_MARGIN,
         topMargin=_MARGIN,
-        bottomMargin=_MARGIN + 0.4 * cm,   # extra clearance for footer
+        # Extra 0.4 cm below the standard margin so content never overlaps the footer text
+        bottomMargin=_MARGIN + 0.4 * cm,
         title=(
             f"AgentAssist GST Review — "
             f"{model.cover.period_start} to {model.cover.period_end}"
@@ -441,5 +801,7 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _signature(model, story)
 
     NC = _make_numbered_canvas(model.cover.client_name)
+    # canvasmaker= injects the numbered canvas subclass so every page receives
+    # the two-pass footer stamp instead of the default bare Canvas.
     doc.build(story, canvasmaker=NC)
     return out_path

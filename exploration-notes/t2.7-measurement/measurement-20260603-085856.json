@@ -1,0 +1,83 @@
+{
+  "run_at": "2026-06-03T08:58:56.444647+00:00",
+  "fixture_path": "tests\\fixtures\\reg2627-labelled-lines.DRAFT.json",
+  "fixture_line_count": 98,
+  "gate": {
+    "recall_threshold": 0.95,
+    "fp_rate_threshold": 0.05
+  },
+  "results": [
+    {
+      "model_id": "claude-haiku-4-5-20251001",
+      "status": "errored",
+      "error": "LLM response invalid: Expecting property name enclosed in double quotes: line 291 column 33 (char 12878) | snippet: ```json\n[\n  {\n    \"doc_num\": 2001,\n    \"doc_type\": \"purchase_invoice\",\n    \"doc_date\": \"2024-07-03\",\n    \"card_name\": \"Singapore Island Country Club\",\n    \"line_index\": 0,\n    \"vat_group\": \"SI\",\n    \"line_description\": \"GOLF MBR RENEWAL\",\n    \"line_total\": 3200.0,\n    \"tax_total\": 288.0,\n    \"suspec",
+      "tp": 0,
+      "fp": 0,
+      "fn": 55,
+      "tn": 55,
+      "recall": null,
+      "fp_rate": null,
+      "category_accuracy": 0.0,
+      "determinable_support": 98,
+      "indeterminate": {
+        "surface_rate": null,
+        "support": 12
+      },
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "estimated_cost_usd": 0.0,
+      "gate_passed": false,
+      "per_line": [],
+      "out_of_fixture_predictions": 0,
+      "per_category": {}
+    },
+    {
+      "model_id": "claude-sonnet-4-6",
+      "status": "errored",
+      "error": "LLM response invalid: Unterminated string starting at: line 249 column 5 (char 13680) | snippet: ```json\n[\n  {\n    \"doc_num\": 2001,\n    \"doc_type\": \"purchase_invoice\",\n    \"doc_date\": \"2024-07-03\",\n    \"card_name\": \"Singapore Island Country Club\",\n    \"line_index\": 0,\n    \"vat_group\": \"SI\",\n    \"line_description\": \"GOLF MBR RENEWAL\",\n    \"line_total\": 3200.0,\n    \"tax_total\": 288.0,\n    \"suspec",
+      "tp": 0,
+      "fp": 0,
+      "fn": 55,
+      "tn": 55,
+      "recall": null,
+      "fp_rate": null,
+      "category_accuracy": 0.0,
+      "determinable_support": 98,
+      "indeterminate": {
+        "surface_rate": null,
+        "support": 12
+      },
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "estimated_cost_usd": 0.0,
+      "gate_passed": false,
+      "per_line": [],
+      "out_of_fixture_predictions": 0,
+      "per_category": {}
+    },
+    {
+      "model_id": "claude-opus-4-8",
+      "status": "errored",
+      "error": "LLM response invalid: Expecting ',' delimiter: line 19 column 231 (char 9364) | snippet: [{\"doc_num\": 2001, \"doc_type\": \"purchase_invoice\", \"doc_date\": \"2024-07-03\", \"card_name\": \"Singapore Island Country Club\", \"line_index\": 0, \"vat_group\": \"SI\", \"line_description\": \"GOLF MBR RENEWAL\", \"line_total\": 3200.0, \"tax_total\": 288.0, \"suspected_category\": \"club_subscriptions\", \"reasoning\": \"G",
+      "tp": 0,
+      "fp": 0,
+      "fn": 55,
+      "tn": 55,
+      "recall": null,
+      "fp_rate": null,
+      "category_accuracy": 0.0,
+      "determinable_support": 98,
+      "indeterminate": {
+        "surface_rate": null,
+        "support": 12
+      },
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "estimated_cost_usd": 0.0,
+      "gate_passed": false,
+      "per_line": [],
+      "out_of_fixture_predictions": 0,
+      "per_category": {}
+    }
+  ]
+}

@@ -1,0 +1,293 @@
+{
+  "run_at": "2026-06-02T10:12:03.147002+00:00",
+  "fixture_path": "tests\\fixtures\\reg2627-labelled-lines.json",
+  "fixture_line_count": 18,
+  "gate": {
+    "recall_threshold": 0.95,
+    "fp_rate_threshold": 0.05
+  },
+  "results": [
+    {
+      "model_id": "claude-haiku-4-5-20251001",
+      "status": "ok",
+      "error": null,
+      "tp": 7,
+      "fp": 0,
+      "fn": 1,
+      "tn": 10,
+      "recall": 0.875,
+      "fp_rate": 0.0,
+      "category_accuracy": 0.857143,
+      "out_of_fixture_predictions": 0,
+      "input_tokens": 4791,
+      "output_tokens": 1897,
+      "estimated_cost_usd": 0.0114208,
+      "gate_passed": false,
+      "per_line": [
+        {
+          "doc_num": 1001,
+          "line_index": 0,
+          "line_description": "Annual golf club membership subscription fee",
+          "expected_candidate": true,
+          "expected_category": "club_subscriptions",
+          "predicted": true,
+          "predicted_category": "club_subscriptions",
+          "disposition": "TP",
+          "category_correct": true
+        },
+        {
+          "doc_num": 1002,
+          "line_index": 0,
+          "line_description": "Voluntary annual health screening programme — 12 staff",
+          "expected_candidate": true,
+          "expected_category": "medical_expenses",
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "FN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1003,
+          "line_index": 1,
+          "line_description": "Private dining — director's spouse anniversary dinner",
+          "expected_candidate": true,
+          "expected_category": "family_benefits",
+          "predicted": true,
+          "predicted_category": "entertainment",
+          "disposition": "TP",
+          "category_correct": false
+        },
+        {
+          "doc_num": 1004,
+          "line_index": 0,
+          "line_description": "Petrol — S-plate company car SBC 1234 A",
+          "expected_candidate": true,
+          "expected_category": "motor_car_s_plate",
+          "predicted": true,
+          "predicted_category": "motor_car_s_plate",
+          "disposition": "TP",
+          "category_correct": true
+        },
+        {
+          "doc_num": 1005,
+          "line_index": 0,
+          "line_description": "Monthly season parking — company S-plate private car",
+          "expected_candidate": true,
+          "expected_category": "motor_car_s_plate",
+          "predicted": true,
+          "predicted_category": "motor_car_s_plate",
+          "disposition": "TP",
+          "category_correct": true
+        },
+        {
+          "doc_num": 1006,
+          "line_index": 0,
+          "line_description": "Yacht charter — client hospitality event (8 external guests)",
+          "expected_candidate": true,
+          "expected_category": "entertainment",
+          "predicted": true,
+          "predicted_category": "entertainment",
+          "disposition": "TP",
+          "category_correct": true
+        },
+        {
+          "doc_num": 1007,
+          "line_index": 0,
+          "line_description": "TOTO system bet — 10 entries (company account)",
+          "expected_candidate": true,
+          "expected_category": "other_disallowed",
+          "predicted": true,
+          "predicted_category": "other_disallowed",
+          "disposition": "TP",
+          "category_correct": true
+        },
+        {
+          "doc_num": 1008,
+          "line_index": 0,
+          "line_description": "Group medical and personal accident insurance — 15 staff (non-statutory)",
+          "expected_candidate": true,
+          "expected_category": "medical_expenses",
+          "predicted": true,
+          "predicted_category": "medical_expenses",
+          "disposition": "TP",
+          "category_correct": true
+        },
+        {
+          "doc_num": 1009,
+          "line_index": 0,
+          "line_description": "3.5-tonne lorry GCB4567U — 30,000 km service and oil change",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1010,
+          "line_index": 0,
+          "line_description": "Diesel — fleet delivery van GKL4567U (goods vehicle)",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1011,
+          "line_index": 0,
+          "line_description": "Pre-employment and periodic medical exam — mandatory under WSH (Medical Examinations) Regulations",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1012,
+          "line_index": 0,
+          "line_description": "A4 80gsm printing paper (10 reams) and ballpoint pens",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1013,
+          "line_index": 0,
+          "line_description": "Hot-rolled steel coil HR3 — 5 tonnes, production input",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1014,
+          "line_index": 0,
+          "line_description": "Xero accounting platform — annual subscription (5 users)",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1015,
+          "line_index": 0,
+          "line_description": "Factory air-handling unit — annual preventive maintenance",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1016,
+          "line_index": 0,
+          "line_description": "Safety helmets, steel-toe boots and high-visibility vests — warehouse staff PPE",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1017,
+          "line_index": 0,
+          "line_description": "Team building dinner — all staff only, no external guests (25 persons)",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        },
+        {
+          "doc_num": 1018,
+          "line_index": 0,
+          "line_description": "Panel van GX8899H — gearbox overhaul and brake service (goods vehicle)",
+          "expected_candidate": false,
+          "expected_category": null,
+          "predicted": false,
+          "predicted_category": null,
+          "disposition": "TN",
+          "category_correct": null
+        }
+      ],
+      "per_category": {
+        "club_subscriptions": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "recall": 1.0,
+          "fp_rate": 0.0,
+          "support_positive": 1,
+          "support_negative": 0
+        },
+        "entertainment": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "recall": 1.0,
+          "fp_rate": 0.0,
+          "support_positive": 1,
+          "support_negative": 0
+        },
+        "family_benefits": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "recall": 1.0,
+          "fp_rate": 0.0,
+          "support_positive": 1,
+          "support_negative": 0
+        },
+        "medical_expenses": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "recall": 0.5,
+          "fp_rate": 0.0,
+          "support_positive": 2,
+          "support_negative": 0
+        },
+        "motor_car_s_plate": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "recall": 1.0,
+          "fp_rate": 0.0,
+          "support_positive": 2,
+          "support_negative": 0
+        },
+        "n/a": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "recall": 0.0,
+          "fp_rate": 0.0,
+          "support_positive": 0,
+          "support_negative": 10
+        },
+        "other_disallowed": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "recall": 1.0,
+          "fp_rate": 0.0,
+          "support_positive": 1,
+          "support_negative": 0
+        }
+      }
+    }
+  ]
+}
