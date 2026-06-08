@@ -28,9 +28,10 @@ Revised from v4. v5 records what the diagnostic/fix runs of 2026-06-08 establish
 - T1.4 signed PDF working paper (`report/`); T1.5 tamper-evident audit bundle.
 - Validated 10/10 on Tests 1–3 at v3 on SBODEMOSG Q3 2024 — clean demo data, not production-proven.
 
-**Built but unvalidated (T2.7 branch `t2.7-reasoning-reg2627`, not merged to master):**
-- Reasoning layer (`reasoning/` package): Reg 26/27 disallowed-input candidate surfacing. `show_ai_candidates` flag wired and working; forwarding bug fixed 2026-06-08. The live re-run surfaced **0 candidates** over SBODEMOSG (no disallowable-looking expenses present) — a real but **unvalidated** result.
-- Provisional measurement (2026-06-03, 110-line Opus-labelled fixture): Sonnet recall 1.000 / FP 0.000, Opus 1.000 / 0.022, Haiku 1.000 / 0.065. **NOT gate results** — the fixture labels are AI-generated, not human-reviewed. `validation_status: unvalidated`; `show_ai_candidates` stays `False` for any deliverable until T2.11 reconciles.
+**Built but unvalidated (branches `t2.7-reasoning-reg2627` and `t2.8-document-ingestion`, not merged to master):**
+- Reasoning layer (`reasoning/` package): Reg 26/27 disallowed-input candidate surfacing. `show_ai_candidates` flag wired and working. Re-run over SBODEMOSG + 13 AGENTASSIST_SEED docs (2026-06-08) surfaced **5 reasoning candidates** (G2 bait DocNums 620–624) and **7 document candidates** (G1 reconciliation DocNums 614–619); both render in the unified `UnifiedCandidatesSection` with mandatory per-row `basis` tag.
+- Provisional measurement (2026-06-03, 110-line Opus-labelled fixture): Sonnet recall 1.000 / FP 0.000, Opus 1.000 / 0.022, Haiku 1.000 / 0.065. **NOT gate results** — fixture labels are AI-generated, not human-reviewed. `validation_status: unvalidated`; `show_ai_candidates` stays `False` for any deliverable until T2.11 reconciles.
+- Source-document cross-reference (`documents/` package, T2.8): ingests PDFs, runs 4 reconciliation checks (gst_amount_mismatch J+, correct_period D+, total_inconsistency J+, reg11_supplier_gst_absent J+). Born-digital path verified on seeded PDFs. **B1 attachment `/$value` byte-download UNVERIFIED** — SBODEMOSG `AttachmentsFolderPath` not configured; upload path (`UploadProvider`) is the working path. 13 AGENTASSIST_SEED docs seeded for end-to-end demo; Box 8 post-seed = 12,663.87 (DB-state-dependent).
 
 **Remaining gates to a paid pilot (none are correctness or delivery-format gaps):** production-data trust, PDPA compliance, security history scrub.
 
@@ -80,16 +81,28 @@ Design constraints (non-negotiable): inform, never auto-bless; surfaces, never a
 
 > Distinction: T2.7 improves candidate quality from the line-item data Layer 2 already sees. It does NOT give Layer 2 new inputs. The document adapter (T2.8) is what gives Layer 2 inputs it is currently blind to. Complementary.
 
-### T2.8 — Source / document-ingestion adapter — PLANNED (highest-leverage coverage unlock)
-Effort PROPOSED 3–4 wk. Owner Terry.
+### T2.8 — Source / document-ingestion adapter — DONE (built, flag-gated, unvalidated; B1 attachment byte-download UNVERIFIED; upload path working)
+Completed 2026-06-08 on branch `t2.8-document-ingestion`. Owner Terry.
 
 Business reason: the entire 👤 → J+ band in coverage-analysis Document 4 is blocked by input availability. Today the system sees SAP line items only. An adapter that ingests source documents (tax-invoice PDFs, transport/export docs, import permits — via `Attachments2` or manual upload) lets Layer 2 surface cross-reference candidates it is currently blind to: listing-vs-source amount agreement (3A.3.1, 3D.3 B5), Reg 11 validity (3D.3 B1), export-evidence presence (3B.3.2), permit-under-business-name (3E), correct-period (3D.3 B6 → firms to D+).
 
-> Note (2026-06-08): SBODEMOSG carries **no** attachments, so document-ingestion work must supply its own invoice PDFs (synthetic for the controlled set; real pilot documents under a DPA). The `Attachments2` path is supported but will be empty on the demo instance.
+**What was built (2026-06-08):**
+- `documents/` package: `ingest.py` (born-digital pdfplumber + multimodal Claude fallback), `reconcile.py` (4 checks: gst_amount_mismatch J+, correct_period D+, total_inconsistency J+, reg11_supplier_gst_absent J+), `doc_pass.py` (SI line iterator), `provider.py` (DocumentProvider protocol + 4 implementations).
+- `UnifiedCandidatesSection` in `report/sections.py` — merges T2.7 reasoning candidates and T2.8 document candidates with mandatory per-row `basis` tag; gated by `show_ai_candidates` (default False).
+- `--upload-dir` and `--show-ai-candidates` CLI flags in `run_agent.py`.
+- 13 AGENTASSIST_SEED docs (DocNums 612–624) on vendor V21000 (Sea Corp) for end-to-end demo; `scripts/seed_manifest.json` as seed identity record.
+- 915 tests passing (4 new T2.8 test files).
 
-Scope: a `documents/` module that (1) accepts PDFs/images; (2) routes born-digital PDFs to deterministic text extraction (`pdfplumber`/`PyMuPDF`) and scans to a multimodal read (no bespoke OCR/CV stack — Claude reads PDFs natively); (3) extracts a structured candidate-field set; (4) hands extracted fields to the reasoning layer to reconcile against the deterministic listing and surface mismatches as candidates.
+**Caveats and open items:**
+- `B1AttachmentProvider` metadata chain verified; `/$value` byte-download UNVERIFIED (SBODEMOSG `AttachmentsFolderPath` not configured). Provider is correct-by-construction, not live-proven. Upload path (`UploadProvider`) is the working path.
+- AGENTASSIST_SEED Remarks marker does not persist on read-back — seed identity depends on `seed_manifest.json`; cleanup must be by DocEntry.
+- Isolation invariant confirmed: box figures and gates are byte-identical with and without `--show-ai-candidates`.
+- Plumbing demonstrated on seeded data only; `validation_status: unvalidated`; `show_ai_candidates` stays False for deliverables pending T2.11.
+- Document legibility/confidence gate not yet built — see T2.14.
 
-Why it caps at J+: extraction is probabilistic — reading raises recall, not authority. The sole exception is invoice-date → correct-period (B6 → D+). Legal characterisations (export, exemption, Reg 26/27) stay J+ regardless. Extracted values never enter Layer 1, boxes, or gates; the deterministic listing stays the authoritative anchor. DoD: byte-identical box figures/gate results with and without the adapter; FP (<5%) and recall (>95%) measured before any claim.
+> Note: SBODEMOSG carries **no** real attachments. The `Attachments2` path is supported by the code but returns None on SBODEMOSG; real pilot testing requires a SAP B1 instance with `AttachmentsFolderPath` configured and at least one purchase invoice with a PDF attachment.
+
+Why it caps at J+: extraction is probabilistic — reading raises recall, not authority. The sole exception is invoice-date → correct-period (B6 → D+). Legal characterisations (export, exemption, Reg 26/27) stay J+ regardless. Extracted values never enter Layer 1, boxes, or gates; the deterministic listing stays the authoritative anchor. DoD achieved: byte-identical box figures/gate results with and without the adapter confirmed on SBODEMOSG Q3 2024 + T2.8 seeds.
 
 ### T2.9 — Filed-F5-return ingestion (declared-vs-computed reconciliation) — PLANNED
 Effort PROPOSED 1 wk. Owner Terry/Collin. Accept the filed F5 (manual entry or IRAS extract); compare declared vs computed per box; flag deltas (Step 1.3b output-tax threshold; Step 1.3d TP/TS > 1.2). Deterministic; surfaces, never auto-corrects. Closes the recurring ◐ across Steps 1, 3A.1.a, 3B.1.a, 3C.1.a, 3D.1.1.a. DoD: per-box declared-vs-computed reconciliation added to the report, replacing the current "Declared-vs-computed F5 comparison" Items-Not-Examined line.
@@ -123,6 +136,12 @@ Scope:
 
 Uses of the labelled set (all evaluation, **not training**): (1) the validation gate / accuracy basket (T2.11); (2) the regression-eval reference re-run on every model/prompt change (T2.3); (3) few-shot exemplars to sharpen the reasoning layer (in-context, not weight updates); (4) the eval substrate that lets a check be packaged as an agent skill with a known accuracy and definition-of-done. The data never trains or fine-tunes a model — Claude is used via API.
 
+### T2.14 — Document legibility/confidence gate — PLANNED (NEW)
+Effort PROPOSED 0.5 wk. Owner Terry. The born-digital extraction path in `documents/ingest.py` produces `fields_present` indicators but no confidence gate. A partial regex match or low-quality scan can produce a field value that is extracted but wrong — which would then surface a false candidate in the reconciliation pass. Required behaviour: when key fields (`gst_amount`, `invoice_date`) are absent, or when the multimodal extraction returns null for more than a threshold number of fields, the document should be routed to "manual review required" rather than fed through reconcile with incomplete/unreliable fields. DoD: zero confident-wrong-field candidates surfaced from illegible PDFs; illegible PDFs flagged explicitly in the unified section as "manual review required." Prerequisite for T2.8 being used on any real (non-seeded) invoices. See open item #28 in `AGENTASSIST_TECHNICAL_STATE.md`.
+
+### T2.15 — Automation-bias override tracking — PLANNED (NEW)
+Effort PROPOSED 0.5 wk engineering + process design. Owner Terry/Collin. The reviewer sign-off model requires genuine adjudication of surfaced candidates. A reviewer who accepts 100% of J+ candidates without override is a red flag for automation bias — professional responsibility is being transferred without oversight. Add per-engagement reviewer override/edit-rate tracking to the engagement workflow. Flag 100% accept rates as anomalous. This is primarily a process control; the code component is adding a reviewer-action field to the candidate adjudication workflow (which belongs in T3.2). DoD: override tracking defined in the engagement workflow specification; 100% accept rate flagged as anomalous in the engagement review; included in the T3.2 PDPA/compliance framework. See open item #29 in `AGENTASSIST_TECHNICAL_STATE.md`.
+
 ---
 
 ## Tier 3 — Required Before Specific External Milestones
@@ -132,6 +151,15 @@ Trigger: enterprise procurement. Effort 4–6 wk docs (audit separate). Mostly d
 
 ### T3.2 — PDPA compliance framework — PLANNED
 Trigger: first paid engagement on real client data, or Anthropic Partner Network application. Effort 2–3 wk with legal input. Purpose limitation, data minimisation, retention (≈7-year for tax workpapers per IRAS, then destruction), client-facing DPA template, Anthropic DPA evaluation. **Prerequisite for any pilot-derived ground truth (T2.13) and for the platform handling real client data (Tier 4).**
+
+**PDPA specifics confirmed 2026-06-08** (document these before the first engagement, not after):
+
+- **AgentAssist is a data intermediary** (PDPA s.26) when processing client financial data. The client is the data controller; AgentAssist processes on their behalf. A data intermediary agreement must be in place before any real client data is processed.
+- **Overseas transfer obligation**: Sending SAP line-item data to the Claude API is an overseas transfer under PDPA s.26. Anthropic's commercial API DPA provides comparable contractual protection; confirm it applies before engaging. Obtain the applicable DPA from Anthropic and present it to the client as part of the engagement DPA.
+- **Residency via Bedrock/Vertex (preferred for regulated pilots)**: AWS Bedrock (Asia-Pacific region) or Google Cloud Vertex AI (asia-southeast1 = Singapore) provide in-region inference and can satisfy the Transfer Limitation Obligation without requiring a DPA transfer mechanism. This is the preferred architecture for a Singapore-regulated pilot.
+- **Commercial API does not train; ZDR available**: The Anthropic commercial API (not free tier) does not use input/output to train or improve models. Default data retention is 7 days; Zero Data Retention (ZDR) eliminates this window and is available on eligible plans. Confirm ZDR eligibility and document it in the engagement DPA.
+- **Private cloud does not stop transmission**: Hosting the orchestrator on a private cloud or on-premises server does NOT prevent data leaving that environment — as long as `reasoning/reg2627.py` or `documents/ingest._extract_multimodal()` call the Anthropic API, line-item data is transmitted externally. The only technical residency mitigation is Bedrock/Vertex in-region; private cloud alone is insufficient.
+- **Automation-bias guard** (see T2.15): reviewer override/edit-rate tracking is a compliance-adjacent process control; include it in the T3.2 framework design alongside the technical controls above.
 
 ### T3.3 — BIG application technical exhibit — PLANNED
 Trigger: BIG submission. Effort 2 wk. Architecture doc, V0→V3 narrative, 30/30 outcomes, commercial roadmap, demo walk-through. Lead with the validated deterministic story (v0-vs-v3 contrast); present the reasoning/document-ingestion layer as emerging, unvalidated, human-gated.
@@ -173,6 +201,9 @@ The canonical doc was reconciled against the repo: reasoning layer documented as
 ### D2 — Document the `reasoning/` layer (T2.7 branch) — PLANNED
 Mirror the deterministic-script docs for the reasoning layer; Document 4 of the coverage analysis is the conceptual basis. Capture what gaps it fills, the J+ ceiling, the two gates, and the validation status.
 
+### D3 — Update canonical docs for T2.8 + re-derived baseline — DONE (2026-06-08, on T2.8 branch)
+`AGENTASSIST_TECHNICAL_STATE.md`: T2.8 section added (`documents/` package, B1 attachment BLOCKER, seed record, `UnifiedCandidatesSection`, CLI flags, isolation invariant, validation status, 4 new test files); Appendix B third table added (post-T2.8-seeds Box 8 = 12,663.87); Box 8 reconciliation note added (authoritative pre-T2.8 = 17,045.87; 17,395.87 = pre-T1.x-seeds; delta explained); Appendix C #25 PDPA expanded with data-intermediary/overseas-transfer/residency/ZDR specifics; #28 legibility gate and #29 automation-bias guard added; exec summary and test count updated; repo tree updated for `documents/`, `scripts/seed*`, and T2.8 test files; footer updated. Roadmap: T2.8 marked DONE with caveats; T2.14 and T2.15 added; T3.2 expanded with confirmed PDPA specifics; build-state snapshot updated; D3 added.
+
 ---
 
 ## Final Architectural Reminders
@@ -193,7 +224,11 @@ Mirror the deterministic-script docs for the reasoning layer; Document 4 of the 
 ## Open integrity / doc-debt flags
 
 - **Reasoning-layer numbers are a smoke test, not validation** — measured against an Opus-labelled (AI-generated) fixture. `show_ai_candidates` stays `False` for deliverables until an independent specialist reconciles ground truth (T2.11 + T2.13).
-- **SBODEMOSG has no document attachments** — any T2.8 document-ingestion demo/build must supply its own invoice PDFs.
-- **Test fixtures are live-seeded into SBODEMOSG and ephemeral** (tied to the SAP CAL instance). Static, repo-resident fixtures (open item #21) still do not exist. Seeding reasoning-bait for a demo will change Box 5/7 and document counts and so invalidate the stored deterministic reference figures — isolate in a separate client/period or re-baseline, and preserve the captured v0-vs-v3 evidence (it cannot be re-run identically once the DB changes).
+- **Document-layer candidates are plumbing-demonstrated on seeded data, not validated** — T2.8 is correct-by-construction and wired end-to-end on 13 AGENTASSIST_SEED docs. No validation against real IRAS-compliant ground truth has occurred. `show_ai_candidates` stays `False` for deliverables pending T2.11.
+- **B1 attachment byte-download (T2.8) is unverified** — `B1AttachmentProvider` Steps 1–2 (metadata chain) verified; Step 3 (`/$value` download) unverified because SBODEMOSG `AttachmentsFolderPath` is not configured. The upload path (`UploadProvider`) is the working path for current testing. Cannot be verified without a SAP B1 instance that has both `AttachmentsFolderPath` configured and at least one purchase invoice with a PDF attachment.
+- **AGENTASSIST_SEED Remarks marker does not persist** — the SAP demo instance does not return the `Remarks` field on read-back; seed identity depends solely on `scripts/seed_manifest.json`. Cleanup of the 13 seeds (DocEntries 615–627) must be by DocEntry, not by Remarks filter.
+- **Box 8 is DB-state-dependent** — post-T2.8-seeds Box 8 = 12,663.87 (current state, run_baseline_tests.py 2026-06-08). Any future seed or cancellation on SBODEMOSG will change this figure. Pre-T2.8 authoritative Box 8 = 17,045.87. The 17,395.87 in v0–v3 test scoring is from the earliest 2026-05-25 run (before T1.x seeds). See Appendix B of `AGENTASSIST_TECHNICAL_STATE.md` for the full reconciliation.
+- **SBODEMOSG has no document attachments** — any T2.8 document-ingestion demo/build must supply its own invoice PDFs (the 13 seeded PDFs in `scripts/seed_uploads/` serve this role for the SBODEMOSG demo).
+- **Test fixtures are live-seeded into SBODEMOSG and ephemeral** (tied to the SAP CAL instance). Static, repo-resident fixtures (open item #21) still do not exist. Preserve the captured v0-vs-v3 evidence (it cannot be re-run identically once the DB changes).
 - **All Singapore tax specifics** (materiality thresholds, Step-4 reconciliation thresholds, paragraph numbers) must be re-verified against the current IRAS e-Tax Guide edition before any customer-facing claim.
 - **Strategy watch:** the platform vision (Tier 4) is a north-star, not a near-term build. Guard against drifting effort into a dashboard before one vertical is validated and sold; the bottleneck remains distribution + trust.
