@@ -204,7 +204,8 @@ def main() -> None:
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     print("Building PDF report ...")
-    model = build_report(compile_output, cfg, generated_at=generated_at)
+    model = build_report(compile_output, cfg, generated_at=generated_at,
+                         judgment_artefact=reasoning_artefact)
     render_pdf(model, pdf_path)
     print(f"  Report PDF     : {pdf_path}")
 
