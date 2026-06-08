@@ -1,0 +1,158 @@
+{
+  "612": {
+    "group": 1,
+    "case_or_category": "clean_1",
+    "injected_issue": "none",
+    "listing_values": {
+      "line_total": 5000.0,
+      "tax_total": 350.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-612.pdf",
+    "doc_entry": 615,
+    "seed_marker": "AGENTASSIST_SEED: group1_clean_1 | none"
+  },
+  "613": {
+    "group": 1,
+    "case_or_category": "clean_2",
+    "injected_issue": "none",
+    "listing_values": {
+      "line_total": 2800.0,
+      "tax_total": 196.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-613.pdf",
+    "doc_entry": 616,
+    "seed_marker": "AGENTASSIST_SEED: group1_clean_2 | none"
+  },
+  "614": {
+    "group": 1,
+    "case_or_category": "gst_mismatch_over",
+    "injected_issue": "gst_amount_mismatch",
+    "listing_values": {
+      "line_total": 12000.0,
+      "tax_total": 840.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-614.pdf",
+    "doc_entry": 617,
+    "seed_marker": "AGENTASSIST_SEED: group1_gst_mismatch_over | gst_amount_mismatch"
+  },
+  "615": {
+    "group": 1,
+    "case_or_category": "gst_mismatch_under",
+    "injected_issue": "gst_amount_mismatch",
+    "listing_values": {
+      "line_total": 3200.0,
+      "tax_total": 224.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-615.pdf",
+    "doc_entry": 618,
+    "seed_marker": "AGENTASSIST_SEED: group1_gst_mismatch_under | gst_amount_mismatch"
+  },
+  "616": {
+    "group": 1,
+    "case_or_category": "no_gst_reg",
+    "injected_issue": "supplier_gst_reg_absent",
+    "listing_values": {
+      "line_total": 1500.0,
+      "tax_total": 105.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-616.pdf",
+    "doc_entry": 619,
+    "seed_marker": "AGENTASSIST_SEED: group1_no_gst_reg | supplier_gst_reg_absent"
+  },
+  "617": {
+    "group": 1,
+    "case_or_category": "date_outside_period",
+    "injected_issue": "date_outside_period",
+    "listing_values": {
+      "line_total": 7800.0,
+      "tax_total": 546.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-617.pdf",
+    "doc_entry": 620,
+    "seed_marker": "AGENTASSIST_SEED: group1_date_outside_period | date_outside_period"
+  },
+  "618": {
+    "group": 1,
+    "case_or_category": "total_inconsistency",
+    "injected_issue": "total_inconsistency",
+    "listing_values": {
+      "line_total": 4200.0,
+      "tax_total": 294.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-618.pdf",
+    "doc_entry": 621,
+    "seed_marker": "AGENTASSIST_SEED: group1_total_inconsistency | total_inconsistency"
+  },
+  "619": {
+    "group": 1,
+    "case_or_category": "combined",
+    "injected_issue": "combined",
+    "listing_values": {
+      "line_total": 6000.0,
+      "tax_total": 420.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-619.pdf",
+    "doc_entry": 622,
+    "seed_marker": "AGENTASSIST_SEED: group1_combined | combined"
+  },
+  "620": {
+    "group": 2,
+    "case_or_category": "club_subscriptions",
+    "injected_issue": "reasoning_bait",
+    "listing_values": {
+      "line_total": 1200.0,
+      "tax_total": 84.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-620.pdf",
+    "doc_entry": 623,
+    "seed_marker": "AGENTASSIST_SEED: group2_club_subscriptions | reasoning_bait"
+  },
+  "621": {
+    "group": 2,
+    "case_or_category": "medical_expenses",
+    "injected_issue": "reasoning_bait",
+    "listing_values": {
+      "line_total": 3500.0,
+      "tax_total": 245.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-621.pdf",
+    "doc_entry": 624,
+    "seed_marker": "AGENTASSIST_SEED: group2_medical_expenses_direct | reasoning_bait"
+  },
+  "622": {
+    "group": 2,
+    "case_or_category": "medical_expenses",
+    "injected_issue": "reasoning_bait",
+    "listing_values": {
+      "line_total": 8400.0,
+      "tax_total": 588.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-622.pdf",
+    "doc_entry": 625,
+    "seed_marker": "AGENTASSIST_SEED: group2_medical_expenses_insurance | reasoning_bait"
+  },
+  "623": {
+    "group": 2,
+    "case_or_category": "family_benefits",
+    "injected_issue": "reasoning_bait",
+    "listing_values": {
+      "line_total": 2200.0,
+      "tax_total": 154.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-623.pdf",
+    "doc_entry": 626,
+    "seed_marker": "AGENTASSIST_SEED: group2_family_benefits | reasoning_bait"
+  },
+  "624": {
+    "group": 2,
+    "case_or_category": "motor_car_s_plate",
+    "injected_issue": "reasoning_bait",
+    "listing_values": {
+      "line_total": 4800.0,
+      "tax_total": 336.0
+    },
+    "pdf_path": "scripts\\seed_uploads\\INV-624.pdf",
+    "doc_entry": 627,
+    "seed_marker": "AGENTASSIST_SEED: group2_motor_car_s_plate | reasoning_bait"
+  }
+}
