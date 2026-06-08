@@ -16,9 +16,9 @@ production readiness gaps, and security and data handling. It surfaces findings 
 including inconsistencies and gaps, regardless of how they reflect on the current state of the
 work.
 
-The repository is at `C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent`. T1.3 and T1.6 are
-on `master` (T1.6 merged 2026-06-01). T1.4 is on branch `t1.4-pdf-report-generation` (ready
-to merge).
+The repository is at `C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent`. T1.1–T1.6 are on
+`master`. T2.7 (Reg 26/27 reasoning pass) is on branch `t2.7-reasoning-reg2627`, not yet
+merged to `master` as of 2026-06-08.
 
 ---
 
@@ -79,12 +79,14 @@ Production-ready: the VatGroup → F5 box mapping logic, the FX exclusion and E1
 logic, the pagination handling, and the system prompt's orchestration rules. These are
 implemented cleanly, tested against reference figures, and produce correct output.
 
-Prototype only: the overall delivery mechanism (Claude Desktop + stdio) and the audit trail
-(none exists). Per-client configuration is resolved (T1.3). The deterministic orchestration
-chain (T1.6) replaces Claude's conversational tool selection and produces structured JSON.
-Report generation is resolved (T1.4, 2026-06-01): the `report/` package consumes
-`CompileOutput` and renders a signed PDF deliverable; `python run_agent.py --report` triggers
-it end-to-end.
+Prototype only: the overall delivery mechanism (Claude Desktop + stdio). Per-client
+configuration is resolved (T1.3). The deterministic orchestration chain (T1.6) replaces
+Claude's conversational tool selection and produces structured JSON. Report generation is
+resolved (T1.4, 2026-06-01): the `report/` package consumes `CompileOutput` and renders a
+signed PDF deliverable; `python run_agent.py --client <id> --period <start> <end>` triggers
+it end-to-end (no `--report` flag; the PDF is always generated as part of the always-seal
+behaviour introduced in T1.5). Audit trail is resolved (T1.5, 2026-06-02): every successful
+run produces a sealed, tamper-evident bundle under `audit/<client_id>/`.
 Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
 
 **The three to five most important gaps before commercial deployment**
@@ -105,7 +107,8 @@ Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024.
    run produces a sealed, tamper-evident bundle under `audit/<client_id>/`; SHA-256 per
    artefact + root-hash construction; `python -m audit_bundle.verify <bundle-dir>` detects
    any post-seal edit; credentials stripped via explicit allow-list; gate results recorded;
-   169 tests passing.
+   169 tests passing at T1.5 completion on `master` (current total on branch
+   `t2.7-reasoning-reg2627`: 603 collected, 602 passed, 1 skipped — see T2.7 section).
 5. RESOLVED (T1.2, 2026-05-27): NR VatGroup corrected to Excluded across tool code, reference
    script, and system prompt. NR is now excluded from Box 5 per IRAS para 5.11(o). DocNum 611
    seeded as a known NR E2 fixture (LineTotal 500.00, TaxTotal 45.00 at 9% — rate anomaly vs
@@ -360,14 +363,28 @@ sap-b1-ai-agent/
 │   └── t1.1-verification.md               ← Read-only verification pass: NR T1.2 completeness, rate check, delta check
 │   ├── t1.6-scope.md                      ← T1.6 scope and design doc; gate pseudocode; chain step schemas
 │   ├── codebase-state-report.md           ← 2026-05-28 frozen audit snapshot (pre-T1.3/T1.6); historical only
-│   ├── t1.6-tool-outputs/                 ← chain-run-<ts>.json outputs (generated; path provisional pending T1.5)
-│   └── t1.4-reports/                      ← Generated PDF reports (generated; gitignored)
+│   ├── t1.6-tool-outputs/                 ← chain-run-<ts>.json outputs (superseded; canonical sink is audit/)
+│   ├── t1.4-reports/                      ← Generated PDF reports (generated; gitignored)
+│   └── t2.7-measurement/                  ← T2.7 (branch t2.7-reasoning-reg2627 only)
+│       ├── gate-decision.md               ← Pre-committed gate thresholds (recall > 95%, FP rate < 20%)
+│       ├── known-limitations.md           ← 8-item limitations register; living document
+│       ├── fixture-review-worksheet.md    ← 110-row human review checklist; unsigned as of 2026-06-08
+│       ├── results-20260603.md            ← Provisional measurement output (UNVALIDATED)
+│       ├── specialist-queue-20260603.md   ← 12-line specialist adjudication queue
+│       ├── labelling-pass-20260603.md     ← Per-line Opus labelling summary with KB hash
+│       ├── labelling-pass-20260603.json   ← Full Opus labelling pass output (machine-generated)
+│       ├── measurement-20260602-*.json    ← Earlier measurement run outputs
+│       ├── measurement-20260603-*.json    ← 2026-06-03 three-model measurement run outputs
+│       ├── specialist-queue-20260603.xlsx ← Specialist adjudication worksheet (binary; unsigned)
+│       └── Reg26-27_GST_Review_Worksheet.xlsx ← Full human review worksheet (binary; at repo root)
 ├── keys/
 │   ├── sap_credentials.json               ← CRITICAL: plaintext credentials; untracked but unprotected
 │   └── sap-b1-poc-sg.pem                  ← SSH PEM key for SAP CAL instance; untracked
 ├── knowledge-base/
-│   └── sg-tax-code-mappings.md            ← Only knowledge base file; appears production-ready
-│                                          ← Note: no IRAS source PDFs loaded at runtime; synthesis is the runtime knowledge
+│   ├── sg-tax-code-mappings.md            ← VatGroup → F5-box routing; appears production-ready
+│   └── slices/                            ← T2.7 (branch t2.7-reasoning-reg2627 only)
+│       ├── reg2627.md                     ← IRAS §6.1.6 KB slice injected into reg2627 reasoning prompt
+│       └── business-context.md            ← Generic-SME assumption statement for reasoning prompt
 ├── mcp-servers/
 │   ├── custom/
 │   │   ├── sap_b1_server.py               ← Primary MCP server; 837 lines; credit notes + NR E2 added (T1.1/T1.2)
@@ -392,34 +409,56 @@ sap-b1-ai-agent/
 │   ├── gates.py                           ← gate_1 … gate_5; pure arithmetic / set-membership; no LLM
 │   ├── schemas.py                         ← TypedDicts for all inter-step data shapes
 │   └── steps.py                           ← fetch, calculate, classify, detect, compile, report_input
+├── reasoning/                             ← T2.7 (branch t2.7-reasoning-reg2627 only)
+│   ├── __init__.py
+│   ├── reg2627.py                         ← run_reg2627_pass(); imports anthropic lazily; reads ANTHROPIC_API_KEY
+│   ├── sap_lines.py                       ← fetch_si_purchase_lines(); SAP line fetcher for T2.7
+│   ├── measurement.py                     ← measure_model(); recall/FP-rate harness against labelled fixture
+│   ├── run_measurement.py                 ← CLI harness for multi-model measurement runs
+│   ├── label_fixture.py                   ← Opus two-pass labelling pipeline; imports anthropic lazily
+│   └── build_specialist_queue.py          ← Builds specialist-review queue from indeterminate/contested lines
+├── Reg26-27_GST_Review_Worksheet.xlsx     ← T2.7 human review worksheet (binary; branch only)
 ├── report/                                ← T1.4: signed PDF report generator
 │   ├── __init__.py                        ← generate_report(compile_output, client_config) → Path
+│   ├── constants.py                       ← T2.7 (branch only): AICandidatesSection, DISCLAIMER_TEXT
 │   ├── contract.py                        ← Input type aliases; CompileOutput is the T1.4 input
 │   ├── enrich.py                          ← Three-source join keyed by (doc_num, error_code)
 │   ├── routing.py                         ← Document-2 IRAS template routing; E2-by-VatGroup; Template 4/5
-│   ├── sections.py                        ← Eight report sections as structured dicts
-│   └── render.py                          ← Section dicts → PDF
-├── run_agent.py                           ← CLI: --client <id> --period <start> <end> [--report]
+│   ├── sections.py                        ← Eight report sections + build_ai_candidates_section (T2.7 branch)
+│   └── render.py                          ← Section dicts → PDF; _ai_candidates_subsection added (T2.7 branch)
+├── run_agent.py                           ← CLI: --client <id> --period <start> <end>
+│                                          ← T2.7 branch adds Phase 3 (Reg 26/27 reasoning pass)
 ├── scripts/
 │   ├── run_baseline_tests.py              ← Reference implementation; T1.1 updated: credit notes + NR E2
 │   ├── seed_test_data.py                  ← Creates synthetic test documents (7 invoices + 2 credit notes)
 │   ├── cleanup_test_data.py               ← Cancels seeded test invoices
 │   ├── test_data_registry.json            ← DocEntry registry; updated with credit notes and DocNum 611 tax_rate_note
+│   ├── smoke_anthropic.py                 ← T2.7 (branch only): one-shot Anthropic API smoke test
 │   └── test-service-layer.sh              ← Basic connectivity test; shell script
 ├── skills/                                ← Directory exists; entirely empty
 ├── tests/
 │   ├── fixtures/
-│   │   └── chain-run-sample.json          ← Static CompileOutput fixture for T1.4 e2e test
+│   │   ├── chain-run-sample.json          ← Static CompileOutput fixture for T1.4 e2e test
+│   │   ├── reg2627-labelled-lines.DRAFT.json ← T2.7 (branch only): Opus-labelled DRAFT fixture; unvalidated
+│   │   └── reg2627-labelled-lines.json    ← T2.7 (branch only): promoted fixture placeholder (currently
+│   │                                         identical to DRAFT; not yet human-reviewed and signed off)
 │   ├── test_audit_canonical.py            ← T1.5: canonical_json, sha256_bytes/file
 │   ├── test_audit_redaction.py            ← T1.5: allow-list credential exclusion
 │   ├── test_audit_seal_verify.py          ← T1.5: seal/verify round-trip, tamper detection
+│   ├── test_build_specialist_queue.py     ← T2.7 (branch only): specialist queue generation
 │   ├── test_chain.py                      ← 11 hermetic acceptance tests (P3: updated for new return type)
 │   ├── test_enrich.py                     ← T1.4: three-source join, (doc_num, error_code) aggregation
+│   ├── test_fixture_draft_structure.py    ← T2.7 (branch only): DRAFT fixture schema validation
 │   ├── test_gate_record.py                ← T1.5: gate_results shaping; GateFailure.checked
 │   ├── test_gates.py                      ← 30 unit tests; all five gates; pure Python
+│   ├── test_label_fixture.py              ← T2.7 (branch only): Opus labelling pipeline tests
+│   ├── test_measurement.py                ← T2.7 (branch only): recall/FP harness unit tests
+│   ├── test_reasoning_reg2627.py          ← T2.7 (branch only): run_reg2627_pass integration tests
 │   ├── test_report_e2e.py                 ← T1.4: full end-to-end from CompileOutput fixture to PDF
+│   ├── test_report_judgment_section.py    ← T2.7 (branch only): build_ai_candidates_section tests
 │   ├── test_routing.py                    ← T1.4: Document-2 template routing, Template 4/5 switching
 │   ├── test_run_agent_e2e.py              ← T1.5: e2e seal from fixture; T7 determinism
+│   ├── test_sap_lines.py                  ← T2.7 (branch only): fetch_si_purchase_lines tests
 │   └── test_sections.py                   ← T1.4: eight sections, HitL language invariants
 └── system-prompts/
     ├── base.md                            ← Primary orchestration prompt; production-ready
@@ -607,7 +646,12 @@ fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect →
 - **`compile` step**: Aggregates four step outputs deterministically. Surfaced warnings are built from data (not scraped from logs): Gate 1 inline-count absence, Gate 2 calc anomalies, Gate 3 unknown-VatGroup entries.
 - **`report_input` step**: RETIRED (P3). `run_chain` now returns `(CompileOutput, gate_results)` directly; `build_report` in `run_agent.py` consumes `CompileOutput` unchanged. The `ReportInput` TypedDict stub is retained in `orchestrator/schemas.py` for reference only.
 
-**Test state**: **169 tests passing** (1 skipped: T8 read-only advisory check, Windows). T1.5 added 45 new tests across five files; `tests/test_chain.py` updated in P3 to match the `(CompileOutput, gate_results)` return type. `tests/test_gates.py` (30 tests) unchanged — the return-value addition does not affect any pass/fail assertion.
+**Test state**: **169 tests passing** at T1.5/T1.6 completion on `master` (1 skipped: T8
+read-only advisory check, Windows). T1.5 added 45 new tests across five files;
+`tests/test_chain.py` updated in P3 to match the `(CompileOutput, gate_results)` return type.
+`tests/test_gates.py` (30 tests) unchanged — the return-value addition does not affect any
+pass/fail assertion. Current total on branch `t2.7-reasoning-reg2627`: 603 collected, 602
+passed, 1 skipped (T2.7 added 7 new test files — see T2.7 section).
 
 **Live validation** (2026-06-01, SBODEMOSG Q3 2024):
 ```
@@ -633,7 +677,9 @@ Exit           : 0
 | `render.py` | Converts section dicts to PDF |
 | `__init__.py` | Public surface: `generate_report(compile_output, client_config) → Path` |
 
-**CLI**: `python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30 --report`
+**CLI**: `python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30`
+(no `--report` flag; the PDF is always generated as part of the always-seal behaviour
+introduced in T1.5 — `run_agent.py` on `master` has no `--report` argument)
 
 ### Input contract decision
 
@@ -765,7 +811,9 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 
 ### Test state
 
-**169 tests passing** (1 skipped: T8 read-only advisory check, Windows):
+**169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
+Windows). Current total on branch `t2.7-reasoning-reg2627`: 603 collected, 602 passed, 1
+skipped — see T2.7 section for the additional test files.
 
 | File | Coverage |
 |------|----------|
@@ -774,6 +822,161 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 | `tests/test_audit_seal_verify.py` | T1–T5 + T8: 8 artefacts present; verify passes on fresh bundle; tamper detected on artefact and manifest; credential scan; read-only flag on POSIX |
 | `tests/test_gate_record.py` | `build_gate_results` unit tests; clean-run 5-gate integration via `run_chain`; `GateFailure.checked` carries box values on corrupted box_4 |
 | `tests/test_run_agent_e2e.py` | Sealed bundle produced + `verify_bundle` passes; T7 `compile-output.json` bytes deterministic across seals from identical inputs; `GateFailure` exits non-zero with no bundle created |
+
+---
+
+## T2.7 — Reg 26/27 reasoning pass (BRANCH ONLY — `t2.7-reasoning-reg2627`, unvalidated as of 2026-06-08)
+
+### Status
+
+All T2.7 work lives on branch `t2.7-reasoning-reg2627`; it has not been merged to `master`.
+`show_ai_candidates` is wired in code but defaults to `False` in all client YAMLs and must
+remain `False` until the measurement gate is met on the promoted fixture.
+`validation_status` is `"unvalidated"` in the fixture files. No flag has been enabled by this
+document update.
+
+### What T2.7 adds
+
+T2.7 adds a Reg 26/27 disallowed-input-tax reasoning pass that runs alongside the deterministic
+chain and surfaces purchase-invoice lines that may be disallowed under GST Regulations 26 and
+27 (§6.1.6 of the IRAS General Guide: club subscriptions, staff medical expenses, staff medical
+and accident insurance, family benefits, motor car costs, and betting/sweepstakes/games of
+chance). The pass runs after `run_chain` completes, reads its own line data directly from SAP,
+and never blocks sealing — a reasoning failure (`status="errored"`) is logged but does not
+prevent the audit bundle from being written. Its output is sealed into the bundle as
+`steps/judgment-candidates.json`.
+
+### Package: `reasoning/` (branch `t2.7-reasoning-reg2627` only)
+
+| File | Role |
+|---|---|
+| `reg2627.py` | `run_reg2627_pass(period, line_source) → dict` — top-level entry; imports `anthropic` lazily; reads `ANTHROPIC_API_KEY` from environment; batches SI/purchase lines (batch_size=20) and calls the model; returns `{status, candidate_count, candidates, disclaimer, provenance, …}` |
+| `sap_lines.py` | `fetch_si_purchase_lines(period_start, period_end) → list[dict]` — fetches purchase-invoice lines from SAP; used as the `line_source` callback |
+| `measurement.py` | `measure_model(fixture_path, model_id, …) → MeasurementResult` — runs the reg2627 pass against a labelled fixture; computes recall, FP rate, per-category breakdowns, and indeterminate surface-rate |
+| `run_measurement.py` | CLI harness for multi-model measurement runs; writes JSON results to `exploration-notes/t2.7-measurement/`; prints a human-checkpoint table |
+| `label_fixture.py` | Opus two-pass labelling pipeline: generates `expected_candidate`/`determinability` labels for a raw fixture via `claude-opus-4-8`; imports `anthropic` lazily |
+| `build_specialist_queue.py` | Builds the specialist-review queue from indeterminate and contested fixture lines; writes the `specialist-queue-<ts>.xlsx` and `.md` artefacts |
+
+**Architectural invariant**: `reasoning/` is the only package that imports `anthropic`.
+`orchestrator/`, `report/`, `config/`, `mcp-servers/`, and `run_agent.py` contain no
+`anthropic` import (confirmed by inspection of all files on the T2.7 branch, 2026-06-08).
+
+### Integration into `run_agent.py` (T2.7 branch)
+
+`run_agent.py` on the T2.7 branch adds a Phase 3 between the chain run and the PDF/seal:
+
+```python
+from reasoning.reg2627 import run_reg2627_pass
+from reasoning.sap_lines import fetch_si_purchase_lines
+…
+line_source = functools.partial(fetch_si_purchase_lines, period["start"], period["end"])
+reasoning_artefact = run_reg2627_pass(period, line_source=line_source)
+```
+
+The `reasoning_artefact` is passed to `seal_bundle(reasoning_artefact=…)`; `seal_bundle` on
+the T2.7 branch writes it as `steps/judgment-candidates.json` when the argument is provided.
+(`run_agent.py` on `master` has no Phase 3 and no `reasoning_artefact` parameter.)
+
+### `show_ai_candidates` flag
+
+`config/loader.py:118` (T2.7 branch) adds `show_ai_candidates: bool = False` to `ClientConfig`.
+The field is read from the optional `report.show_ai_candidates` key in the client YAML,
+defaulting to `False`. `report/report.py:156` gates rendering:
+
+```python
+show_ai: bool = getattr(client_config, "show_ai_candidates", False)
+```
+
+`report/sections.py:638` (`build_ai_candidates_section`) and `report/render.py:582`
+(`_ai_candidates_subsection`) render the AI-candidates subsection inside Section 5 only when
+`show=True`. When `show=False` the subsection is built with `status="disabled"` and the
+renderer skips it. The flag is not set to `True` in any committed client YAML (`sbodemosg.yaml`
+has `report: {reviewer_name: "", firm_name: ""}` only — no `show_ai_candidates` key).
+
+### Knowledge-base slices (T2.7 branch only)
+
+Two KB slices live in `knowledge-base/slices/`:
+
+- **`reg2627.md`** — IRAS §6.1.6 disallowed-category rules, exception carve-outs (WICA/WSH,
+  commercial vehicles, COVID-19), and an explicit entertainment-is-NOT-disallowed correction
+  (§6.1.3). Injected into the reg2627 reasoning prompt at run time; its SHA-256 is recorded
+  in the labelling-pass provenance (`labelling-pass-20260603.json`).
+- **`business-context.md`** — Generic-SME assumption statement: the pass assumes the client is
+  a general-trading or professional-services SME, not a specialist business. See
+  `known-limitations.md §1` for the implication for car dealers and clinics.
+
+### Measurement harness and gate decision
+
+A measurement harness (`reasoning/measurement.py`, `reasoning/run_measurement.py`) was built
+and run on 2026-06-03 against a 110-line Opus-labelled DRAFT fixture
+(`tests/fixtures/reg2627-labelled-lines.DRAFT.json`, period 2024-07-01 → 2024-09-30). Gate
+thresholds are fixed in `exploration-notes/t2.7-measurement/gate-decision.md` (recall > 95%
+hard floor; FP rate < 20% soft ceiling), recorded before any measurement was run.
+
+**Provisional results — UNVALIDATED (run against Opus-labelled DRAFT, not the promoted fixture):**
+
+| Model | Recall | FP rate | Gate (provisional) | Cost/run |
+|---|---|---|---|---|
+| claude-haiku-4-5-20251001 | 1.000 | 0.065 | FAIL | $0.09 |
+| claude-sonnet-4-6 | 1.000 | 0.000 | PASS | $0.34 |
+| claude-opus-4-8 | 1.000 | 0.022 | PASS | $1.66 |
+
+Source: `exploration-notes/t2.7-measurement/measurement-20260603-091632.json` and
+`results-20260603.md`.
+
+These results **do not constitute a gate pass**. The fixture's `validation_status` is
+`"unvalidated"` (`tests/fixtures/reg2627-labelled-lines.DRAFT.json:_meta`). Labels were
+generated by the Opus labelling pass (2026-06-03) and have not been reviewed by a human GST
+specialist against IRAS source documents. The Opus measurement row is also the least
+independent data point (labels are Opus-derived; the measurement model is also Opus). See
+`gate-decision.md §6` and `known-limitations.md` for full caveats.
+
+**Actions required before a real gate result** (from `gate-decision.md §§4–5`):
+
+1. Human GST-specialist adjudication of the 12-line specialist queue
+   (`specialist-queue-20260603.xlsx`): 3 contested, 9 indeterminate, covering
+   club_subscriptions×1, entertainment×2, medical_expenses×6, n/a×3.
+2. Line-by-line review of `fixture-review-worksheet.md` (110 rows; zero rows signed off as of
+   2026-06-08; sign-off block empty).
+3. Reconciliation of the entertainment inconsistency: `fixture-review-worksheet.md` Section 5
+   still lists 11 entertainment lines as proposed positives (pre-§6.1.6 correction), but the
+   DRAFT fixture and measurement results treat all entertainment lines as negatives. The
+   worksheet must be corrected before the fixture can be promoted.
+4. Promote `reg2627-labelled-lines.DRAFT.json` → `reg2627-labelled-lines.json`; update
+   `_meta.ground_truth_set_by`.
+5. Re-run measurement against the promoted fixture. Only a PASS on the promoted fixture
+   constitutes a gate result; only then may `show_ai_candidates: true` be set in a client YAML.
+
+### Test state
+
+**603 collected (602 passed, 1 skipped)** on branch `t2.7-reasoning-reg2627` as of 2026-06-08.
+T2.7 adds 7 new test files (~434 additional tests vs. the 169-test T1.5 state on `master`).
+All new tests are no-live-SAP, no-live-Anthropic-API (LLM calls mocked).
+
+| New test file | Coverage |
+|---|---|
+| `test_reasoning_reg2627.py` | `run_reg2627_pass` — batch processing, status/candidate structure, errored-pass handling |
+| `test_measurement.py` | `measure_model` — recall/FP computation, gate pass/fail logic, per-category breakdown |
+| `test_label_fixture.py` | Opus two-pass labelling pipeline — prompt construction, response parsing, contested/indeterminate detection |
+| `test_build_specialist_queue.py` | Specialist queue generation — queue structure, contested lines, indeterminate surface-rate |
+| `test_sap_lines.py` | `fetch_si_purchase_lines` — SAP line fetch, pagination, field mapping |
+| `test_fixture_draft_structure.py` | DRAFT fixture schema validation — required fields, category floors, `validation_status` |
+| `test_report_judgment_section.py` | `build_ai_candidates_section` and `_ai_candidates_subsection` — show=False/True/errored paths |
+
+### Known limitations (summary — see `known-limitations.md` for full register)
+
+1. **Generic-SME assumption (High for specialist clients)**: Car dealers and clinics will
+   generate false positives on vehicle/medical lines. Resolution: `business_nature` field in
+   `ClientConfig` (roadmap T2.7.x, NOT YET BUILT).
+2. **Entertainment labels inconsistency (High)**: `fixture-review-worksheet.md` Section 5 is
+   inconsistent with the DRAFT fixture's current labels — see action item 3 above.
+3. **Per-batch retry absent (Medium)**: Transient API failure on any of the 6 batches voids
+   the entire run. Documented in `known-limitations.md §7a`. Gate B roadmap item.
+4. **Fixture test floors adjusted post-hoc (Low)**: `_MIN_POSITIVES_PER_CATEGORY` lowered
+   from 10→8 after Opus relabelling; structural tests now describe the Opus-labelled fixture
+   rather than an independent spec.
+5. **`requirements.txt` now includes `anthropic`** (T2.7 branch only): added to support the
+   `reasoning/` package. Not present on `master`.
 
 ---
 
@@ -1591,7 +1794,7 @@ data residency, Anthropic API data usage disclosure).
 4. The NO_GST_REG check triggers false positives for legitimate small suppliers, causing
    the client to question the system's accuracy.
 
-5. RESOLVED (T1.5, 2026-06-02): Audit trail and input immutability delivered. Sealed bundle under `audit/<client_id>/`; SHA-256 per artefact + root hash; `verify_bundle` detects tampering; secrets stripped; gate results recorded; 169 tests passing.
+5. RESOLVED (T1.5, 2026-06-02): Audit trail and input immutability delivered. Sealed bundle under `audit/<client_id>/`; SHA-256 per artefact + root hash; `verify_bundle` detects tampering; secrets stripped; gate results recorded; 169 tests at T1.5 completion.
 
 ### Recommendations on the most leverage-positive next pieces of work
 
@@ -1844,10 +2047,15 @@ strategic or engineering conversation.
     `JournalEntries`. GST-relevant manual journals (e.g., VAT adjustments, F7 corrections) are
     invisible to the system. Impact depends on client's SAP B1 usage patterns.
 
-24. **Reasoning-layer evaluation harness** (OPEN): There is no automated harness to evaluate
-    Claude's reasoning quality on the classify/detect steps against a stored reference. The
-    current evidence base is conversational chat logs. Required for regression testing as Claude
-    model versions change.
+24. **Reasoning-layer evaluation harness** (PARTIALLY RESOLVED on branch
+    `t2.7-reasoning-reg2627`, 2026-06-03): A measurement harness (`reasoning/measurement.py`,
+    `reasoning/run_measurement.py`) was built and run against a 110-line labelled fixture for
+    the Reg 26/27 pass specifically. Provisional results: Sonnet fp=0.000 (PASS), Opus fp=0.022
+    (PASS), Haiku fp=0.065 (FAIL) — all at recall=1.000. However, the fixture is `validation_status:
+    "unvalidated"` (Opus-labelled, not human-reviewed) so these are NOT gate results. The
+    harness for the broader classify/detect steps (E1–E4, NO_GST_REG) against a stored reference
+    is still OPEN — current evidence for those steps remains conversational chat logs.
+    NOT MERGED TO MASTER as of 2026-06-08.
 
 25. **PDPA / Anthropic DPA** (OPEN): All tool output and user messages are sent to the Claude
     API. A data processing agreement with Anthropic is required before accessing real client
@@ -1875,4 +2083,8 @@ NR VatGroup exclusion, T1.1 credit notes, post-seed reference figures); updated 
 on 2026-06-01); updated 2026-06-01 (T1.4 signed PDF report generator); updated 2026-06-02
 (T1.5 audit trail + input immutability — `audit_bundle/` package, sealed bundles, verify CLI,
 gate-result capture in orchestrator, always-seal in run_agent; Tier 1 fully closed; 169 tests).
-All six Tier-1 milestones on `master` (or branch `t1.5-audit-trail`, pending merge).*
+All six Tier-1 milestones on `master`. Updated 2026-06-08 (T2.7 Reg 26/27 reasoning pass —
+documented from branch `t2.7-reasoning-reg2627`; `reasoning/` package, measurement harness,
+`show_ai_candidates` flag, KB slices, 7 new test files; validation_status unvalidated; gate
+not yet met; not merged to master; repo structure tree, test counts, exec summary, Appendix C
+#24, and --report CLI reference corrected to match current code state).*
