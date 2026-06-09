@@ -136,6 +136,36 @@ The `audit/` directory is gitignored. Bundles contain no SAP credentials.
 
 ---
 
+## Fresh worktree or clone setup
+
+After `git clone` or `git worktree add`, the following steps are required before
+running tests. Do **not** copy files from a sibling worktree — regenerate them
+from source.
+
+```bash
+# 1. Create and activate a virtual environment
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Regenerate gitignored document fixtures (*.pdf files)
+python tests/fixtures/documents/generate_invoices.py
+# writes INV-3001.pdf … INV-3008.pdf + fixtures_manifest.json under tests/fixtures/documents/
+```
+
+After these three steps, `python -m pytest` should pass with no failures.
+
+**Why step 3 is needed:** `*.pdf` is gitignored (no binaries in the repo).
+`generate_invoices.py` is tracked and deterministic — it always produces the same
+8 synthetic invoices from the fixture data. Re-running it is safe at any time.
+
+---
+
 ## Repository Layout
 
 ```
