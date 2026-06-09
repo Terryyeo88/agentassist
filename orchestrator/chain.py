@@ -54,6 +54,7 @@ import sap_b1_server  # noqa: E402
 from config.loader import ClientConfig  # noqa: E402
 
 from .exceptions import GateFailure  # noqa: E402
+from .check_declared_f5 import run_declared_f5_checks  # noqa: E402
 from .gates import (  # noqa: E402
     gate_1_record_count,
     gate_2_box_reconciliation,
@@ -76,6 +77,7 @@ log = logging.getLogger(__name__)
 def run_chain(
     client_config: ClientConfig,
     period: Period,
+    declared_f5: dict | None = None,
 ) -> tuple[dict, dict]:
     """Run the full six-step deterministic chain for a client and period.
 
@@ -84,17 +86,27 @@ def run_chain(
     accumulated into `_records` and returned as gate_results whether the
     chain completes or halts on a GateFailure.
 
+    When declared_f5 is supplied (a validated dict from check_declared_f5.
+    load_declared_f5), Check A (declared internal consistency) and Check B
+    (declared-vs-computed divergence) are run after compile and their findings
+    are injected into the returned CompileOutput as "declared_f5_findings".
+    A non-empty findings list is informational — it never halts the chain.
+
     Args:
         client_config: Validated ClientConfig from config.loader.  Provides
                        SAP credentials and behavioural settings.
         period:        Dict with "start" and "end" keys as ISO-8601 date
                        strings (e.g. {"start": "2024-07-01", "end": "2024-09-30"}).
+        declared_f5:   Optional validated declared-F5 dict from
+                       check_declared_f5.load_declared_f5().  When None,
+                       declared_f5_findings in the returned CompileOutput is [].
 
     Returns:
         tuple[dict, dict]: A two-element tuple:
             - CompileOutput: The full aggregated dict from the compile step,
               containing "period", "fetch_manifest", "calculate", "classify",
-              "detect", "surfaced_warnings", and chain metadata.
+              "detect", "surfaced_warnings", "declared_f5_findings", and
+              chain metadata.
             - gate_results: Shaped by audit_bundle.gate_record.build_gate_results —
               {"all_passed": bool, "gates": [{"gate", "name", "after_step",
               "status", "passed", "checked", "message"?}, ...]}.
@@ -214,4 +226,15 @@ def run_chain(
 
     # Shallow-copy compiled into a plain dict so the return type is consistent
     # regardless of whatever mapping subtype compile() returns internally.
-    return dict(compiled), build_gate_results(_records)
+    result = dict(compiled)
+
+    # T2.9: Run declared-vs-computed checks when a declared_f5 input was supplied.
+    # Findings are informational — a non-empty list never halts the chain or
+    # prevents sealing.  The calculate step output (result["calculate"]["boxes"])
+    # is never mutated; run_declared_f5_checks is strictly read-only over it.
+    if declared_f5 is not None:
+        result["declared_f5_findings"] = run_declared_f5_checks(
+            declared_f5, result["calculate"]["boxes"]
+        )
+
+    return result, build_gate_results(_records)
