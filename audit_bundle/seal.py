@@ -128,15 +128,17 @@ def seal_bundle(
     run_started_at: str,
     run_completed_at: str,
     reasoning_artefact: dict | None = None,
+    declared_f5: dict | None = None,
 ) -> Path:
     """Write a sealed, tamper-evident audit bundle and return the bundle directory.
 
     Bundle layout (8 core artefacts hashed in manifest.json; 9 when reasoning
-    artefact is supplied):
+    artefact is supplied; 9 when declared_f5 is supplied):
         audit/<client_id>/<start>_<end>/<run_ts>/
             manifest.json                         ← written last; covers all others
             config.json                           ← allow-listed; no credentials
             inputs/fetch-manifest.json
+            inputs/declared-f5.json               ← only when declared_f5 given (T2.9)
             steps/{calculate,classify,detect}.json
             steps/judgment-candidates.json        ← only when reasoning_artefact given
             gates.json
@@ -170,6 +172,11 @@ def seal_bundle(
                              When provided, written as steps/judgment-candidates.json
                              and included in the manifest with its LLM provenance
                              block.  Pass None for a fully deterministic bundle.
+        declared_f5:         Optional validated declared-F5 dict from
+                             orchestrator.check_declared_f5.load_declared_f5().
+                             When provided, written as inputs/declared-f5.json and
+                             included in the manifest hash as an immutable input
+                             record alongside inputs/fetch-manifest.json.
 
     Returns:
         Path: Absolute path to the sealed bundle directory
@@ -220,6 +227,17 @@ def seal_bundle(
             reasoning_artefact,
         )
 
+    # --- b3. Optional declared-F5 immutable input (T2.9) ---
+
+    # Written alongside inputs/fetch-manifest.json as an immutable input record.
+    # The declared values are the client's manually-filed F5 figures; sealing
+    # them here anchors the declared-vs-computed findings to this specific run.
+    if declared_f5 is not None:
+        _write_canonical(
+            bundle_dir / "inputs" / "declared-f5.json",
+            declared_f5,
+        )
+
     # --- c/d. Engagement and provenance metadata ---
 
     engagement = {
@@ -247,6 +265,10 @@ def seal_bundle(
         bundle_dir / "steps" / "classify.json",
         bundle_dir / "steps" / "detect.json",
     ]
+    # T2.9: declared-f5.json is an input artefact; add it to the manifest hash
+    # when present so the tamper-evidence chain covers the declared figures.
+    if declared_f5 is not None:
+        artefact_paths.append(bundle_dir / "inputs" / "declared-f5.json")
     # Build per-artefact llm metadata for the reasoning artefact entry only.
     # Deterministic artefacts carry no llm key (absence ≡ false).
     artefact_llm_meta: dict | None = None
