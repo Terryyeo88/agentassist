@@ -386,6 +386,9 @@ def compile(  # noqa: A001 — shadows builtin; intentional, chain.py does not u
         "deduplicated_anomalies": deduped,
         "e1_reconciliation": e1_recon,
         "surfaced_warnings": warnings,
+        # T2.9: populated by run_chain() when declared_f5 is supplied;
+        # always present as an empty list so the schema key is always defined.
+        "declared_f5_findings": [],
     }
 
 

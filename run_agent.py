@@ -60,10 +60,11 @@ _REPO_ROOT = Path(__file__).resolve().parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from audit_bundle import seal_bundle                      # noqa: E402
-from config.loader import ConfigError, load_client_config # noqa: E402
-from orchestrator.chain import run_chain                  # noqa: E402
-from orchestrator.exceptions import GateFailure           # noqa: E402
+from audit_bundle import seal_bundle                                      # noqa: E402
+from config.loader import ConfigError, load_client_config                 # noqa: E402
+from orchestrator.chain import run_chain                                  # noqa: E402
+from orchestrator.check_declared_f5 import load_declared_f5               # noqa: E402
+from orchestrator.exceptions import GateFailure                           # noqa: E402
 from reasoning.reg2627 import run_reg2627_pass            # noqa: E402
 from reasoning.sap_lines import fetch_si_purchase_lines   # noqa: E402
 from report.report import build_report                    # noqa: E402
@@ -106,6 +107,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "Directory containing INV-<docnum>.pdf files.  When provided, wires "
             "CompositeProvider([B1AttachmentProvider, UploadProvider(DIR)]) so the "
             "source-document cross-reference pass runs against the seeded PDFs."
+        ),
+    )
+    p.add_argument(
+        "--declared-f5", default=None, metavar="FILE",
+        help=(
+            "Path to a declared-f5.json file containing the client's manually-filed "
+            "F5 box values.  When provided, runs the declared-vs-computed checks "
+            "(T2.9) and seals the declared figures as inputs/declared-f5.json.  "
+            "Divergences surface as findings; the run always seals normally."
         ),
     )
     return p
@@ -167,6 +177,18 @@ def main(*, provider=None) -> None:
         print(f"  DocumentProvider: CompositeProvider([B1Attachment, Upload({args.upload_dir})])")
 
     print(f"  company_db={cfg.company_db}  gst_rate={cfg.applicable_gst_rate}")
+
+    # --- T2.9: Load declared F5 input (optional) ---
+
+    declared_f5 = None
+    if args.declared_f5 is not None:
+        try:
+            declared_f5 = load_declared_f5(Path(args.declared_f5), period)
+            print(f"  Declared F5      : loaded from {args.declared_f5}")
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"DECLARED-F5 ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
+
     print(f"Running chain for period {period['start']} → {period['end']} ...")
 
     # Capture wall-clock start before any chain I/O so the bundle's run window
@@ -176,7 +198,7 @@ def main(*, provider=None) -> None:
     # --- Phase 2: Chain run ---
 
     try:
-        compile_output, gate_results = run_chain(cfg, period)
+        compile_output, gate_results = run_chain(cfg, period, declared_f5=declared_f5)
     except GateFailure as exc:
         # A gate failure means the data did not reconcile — there is no valid
         # review to seal.  Print the gate message and checked values, then halt.
@@ -244,6 +266,14 @@ def main(*, provider=None) -> None:
         print(f"  Warnings       : {len(warnings)}")
         for w in warnings:
             print(f"    • {w}")
+    df5_findings = compile_output.get("declared_f5_findings") or []
+    if df5_findings:
+        print(f"  Decl-F5 findings: {len(df5_findings)}")
+        for f in df5_findings:
+            ftype = f.get("finding_type", "")
+            box = f.get("box", "")
+            delta = f.get("delta", "")
+            print(f"    • [{f.get('check')}] {ftype} box={box} delta={delta}")
 
     # Build PDF using the same T1.4 wiring as before; generated_at comes from
     # the chain's fetch timestamp so the report timestamp is deterministic.
@@ -281,6 +311,7 @@ def main(*, provider=None) -> None:
         run_started_at=run_started_at,
         run_completed_at=run_completed_at,
         reasoning_artefact=reasoning_artefact,
+        declared_f5=declared_f5,
     )
 
     print(f"\n=== BUNDLE SEALED ===")

@@ -380,6 +380,11 @@ class CompileOutput(TypedDict):
         surfaced_warnings:      Human-readable warning strings accumulated from
                                 WARN_PASS gate outcomes; preserved verbatim in
                                 the PDF report's warnings section.
+        declared_f5_findings:   Findings from T2.9 declared-vs-computed checks
+                                (Check A internal consistency + Check B divergence).
+                                Empty list when no declared_f5 input was supplied
+                                or when no divergences were detected.  Findings are
+                                informational — a non-empty list never halts the run.
     """
     period: Period
     fetch_manifest: FetchManifest
@@ -389,6 +394,7 @@ class CompileOutput(TypedDict):
     deduplicated_anomalies: list[Anomaly]  # union of calc anomalies + classify unknowns
     e1_reconciliation: E1Reconciliation
     surfaced_warnings: list[str]           # Gate-level warnings preserved for report
+    declared_f5_findings: list[dict]       # T2.9: declared-vs-computed findings ([] if none)
 
 
 class ReportInput(TypedDict):
