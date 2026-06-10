@@ -92,7 +92,6 @@ _H3      = _style("AA_H3",   "Heading3", fontSize=9,  fontName="Helvetica-Bold",
 _BODY    = _style("AA_Body",             fontSize=9,  fontName="Helvetica",         spaceAfter=3)
 _SMALL   = _style("AA_Sm",              fontSize=8,  fontName="Helvetica",         spaceAfter=2)
 _SMLX    = _style("AA_SmX",             fontSize=7,  fontName="Helvetica-Oblique", spaceAfter=2)
-_META    = _style("AA_Meta",             fontSize=9,  fontName="Helvetica",         spaceAfter=3)
 _CELL    = _style("AA_Cell",             fontSize=8,  fontName="Helvetica",         leading=10)
 _CELLB   = _style("AA_CellB",           fontSize=8,  fontName="Helvetica-Bold",    leading=10)
 # Code column: no intra-word splitting so "NO_GST_REG" always sits on one line
@@ -404,7 +403,7 @@ def _cover(m: ReportModel, story: list) -> None:
         ("Reviewed by",      f"{m.cover.reviewer_name},  {m.cover.firm_name}"),
         ("Generated",        _fmt_timestamp(m.cover.generated_at)),
     ]:
-        story.append(Paragraph(f"<b>{label}:</b>  {value}", _META))
+        story.append(Paragraph(f"<b>{label}:</b>  {value}", _BODY))
     story.append(PageBreak())
 
 
@@ -609,13 +608,31 @@ _AI_DISCLAIMER_FG = colors.HexColor("#1A5276")   # dark blue for disclaimer text
 _H3_AI = _style(
     "AA_H3_AI", "Heading3",
     fontSize=9, fontName="Helvetica-Bold",
-    spaceAfter=3, spaceBefore=10,
+    spaceAfter=3, spaceBefore=8,
     textColor=_AI_DISCLAIMER_FG,
 )
 _CELL_AI = _style("AA_CellAI", fontSize=8, fontName="Helvetica", leading=10,
                    textColor=colors.HexColor("#1B2631"))
 _SMLX_AI = _style("AA_SmXAI", fontSize=7, fontName="Helvetica-Oblique", spaceAfter=2,
                    textColor=_AI_DISCLAIMER_FG)
+
+_AI_GRID  = colors.HexColor("#AED6F1")   # light blue border for AI tables
+_AI_STRIPE = colors.HexColor("#EBF5FB")  # light blue alternating stripe for AI tables
+
+
+def _ai_table_style() -> TableStyle:
+    """Return a TableStyle for AI-candidate tables.
+
+    Extends the standard base structure (_base_table_style layout constants) with
+    the AI blue colour palette — light-blue header background, dark-blue header text,
+    blue grid lines, and blue row stripes — so both AI subsections share one definition.
+    """
+    ts = _base_table_style()
+    ts.add("BACKGROUND",    (0, 0), (-1, 0),  _AI_SUBHEADING_BG)
+    ts.add("TEXTCOLOR",     (0, 0), (-1, 0),  _AI_DISCLAIMER_FG)
+    ts.add("GRID",          (0, 0), (-1, -1), 0.25, _AI_GRID)
+    ts.add("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, _AI_STRIPE])
+    return ts
 
 
 def _ai_candidates_subsection(m: ReportModel, story: list) -> None:
@@ -635,7 +652,7 @@ def _ai_candidates_subsection(m: ReportModel, story: list) -> None:
 
     story.append(Spacer(1, 0.4 * cm))
     story.append(HRFlowable(width=_UW, thickness=0.5,
-                             color=colors.HexColor("#AED6F1")))
+                             color=_AI_GRID))
     story.append(Paragraph(
         "AI-surfaced candidates (unvalidated) — Reg 26/27 disallowed input tax",
         _H3_AI,
@@ -668,22 +685,7 @@ def _ai_candidates_subsection(m: ReportModel, story: list) -> None:
         tbl = Table(
             [ai_hdr] + ai_rows,
             colWidths=ai_cols,
-            style=TableStyle([
-                ("BACKGROUND",    (0, 0), (-1, 0),  _AI_SUBHEADING_BG),
-                ("TEXTCOLOR",     (0, 0), (-1, 0),  _AI_DISCLAIMER_FG),
-                ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
-                ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE",      (0, 0), (-1, -1), 8),
-                ("LEADING",       (0, 0), (-1, -1), 10),
-                ("GRID",          (0, 0), (-1, -1), 0.25, colors.HexColor("#AED6F1")),
-                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING",    (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("LEFTPADDING",   (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
-                ("ROWBACKGROUNDS",(0, 1), (-1, -1),
-                 [colors.white, colors.HexColor("#EBF5FB")]),
-            ]),
+            style=_ai_table_style(),
             repeatRows=1,
         )
         story.append(tbl)
@@ -717,7 +719,7 @@ def _unified_candidates_subsection(m: ReportModel, story: list) -> None:
 
     story.append(Spacer(1, 0.4 * cm))
     story.append(HRFlowable(width=_UW, thickness=0.5,
-                             color=colors.HexColor("#AED6F1")))
+                             color=_AI_GRID))
     story.append(Paragraph(
         "AI-Surfaced Candidates for Review (unvalidated)",
         _H3_AI,
@@ -765,22 +767,7 @@ def _unified_candidates_subsection(m: ReportModel, story: list) -> None:
         tbl = Table(
             [uc_hdr] + uc_rows,
             colWidths=uc_cols,
-            style=TableStyle([
-                ("BACKGROUND",    (0, 0), (-1, 0),  _AI_SUBHEADING_BG),
-                ("TEXTCOLOR",     (0, 0), (-1, 0),  _AI_DISCLAIMER_FG),
-                ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
-                ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE",      (0, 0), (-1, -1), 8),
-                ("LEADING",       (0, 0), (-1, -1), 10),
-                ("GRID",          (0, 0), (-1, -1), 0.25, colors.HexColor("#AED6F1")),
-                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING",    (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("LEFTPADDING",   (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-                 [colors.white, colors.HexColor("#EBF5FB")]),
-            ]),
+            style=_ai_table_style(),
             repeatRows=1,
         )
         story.append(tbl)
@@ -1027,7 +1014,7 @@ def _signature(m: ReportModel, story: list) -> None:
         ("Firm",         m.signature.firm_name),
         ("GST Reg. No.", m.signature.gst_registration_number or "—"),
     ]:
-        story.append(Paragraph(f"<b>{label}:</b>  {value}", _META))
+        story.append(Paragraph(f"<b>{label}:</b>  {value}", _BODY))
 
     story.append(Spacer(1, 1.5 * cm))
     # Ruled signature line — mirrors the IRAS Declaration Form on Completing Annual Review
