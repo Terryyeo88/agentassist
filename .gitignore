@@ -33,6 +33,7 @@ audit/
 exploration-notes/t1.4-reports/
 exploration-notes/t1.6-tool-outputs/*.json
 *.pdf
+!tests/fixtures/documents/*.pdf
 *-specialist.json
 
 # Claude Code per-project memory (local only, not for version control)
