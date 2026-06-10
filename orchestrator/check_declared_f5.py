@@ -50,7 +50,15 @@ Public API:
 from __future__ import annotations
 
 import json
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+
+_CENT = Decimal("0.01")
+
+
+def _quantize_cent(v: float) -> Decimal:
+    """Round a float to the nearest cent using ROUND_HALF_UP."""
+    return Decimal(str(v)).quantize(_CENT, rounding=ROUND_HALF_UP)
 
 # Default per-box tolerance (dollars).  Configurable in the input file.
 # Rationale: absorbs whole-dollar truncation on the filed return.
@@ -225,7 +233,7 @@ def _check_a(declared: dict[str, float]) -> list[dict]:
     findings: list[dict] = []
 
     expected_4 = declared["box_1"] + declared["box_2"] + declared["box_3"]
-    if declared["box_4"] != expected_4:
+    if _quantize_cent(declared["box_4"]) != _quantize_cent(expected_4):
         delta = declared["box_4"] - expected_4
         findings.append({
             "check": "A",
@@ -244,7 +252,7 @@ def _check_a(declared: dict[str, float]) -> list[dict]:
         })
 
     expected_8 = declared["box_6"] - declared["box_7"]
-    if declared["box_8"] != expected_8:
+    if _quantize_cent(declared["box_8"]) != _quantize_cent(expected_8):
         delta = declared["box_8"] - expected_8
         findings.append({
             "check": "A",
