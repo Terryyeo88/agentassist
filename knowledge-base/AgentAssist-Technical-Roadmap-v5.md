@@ -94,7 +94,7 @@ Business reason: the entire 👤 → J+ band in coverage-analysis Document 4 is 
 - `UnifiedCandidatesSection` in `report/sections.py` — merges T2.7 reasoning candidates and T2.8 document candidates with mandatory per-row `basis` tag; gated by `show_ai_candidates` (default False).
 - `--upload-dir` and `--show-ai-candidates` CLI flags in `run_agent.py`.
 - 13 AGENTASSIST_SEED docs (DocNums 612–624) on vendor V21000 (Sea Corp) for end-to-end demo; `scripts/seed_manifest.json` as seed identity record.
-- **1104 passed, 1 skipped** (T2.7 +434 vs T1.5; T2.8 +312; T2.9 +19 in `test_check_declared_f5.py`; T2.13 +92 in `test_t2_13_fixture_schema.py`; T2.10 +61 in `test_check_listing.py`; T2.9-V +17 in `tests/test_declared_f5_section.py`).
+- **1156 passed, 1 skipped** (T2.7 +434 vs T1.5; T2.8 +312; T2.9 +19 in `test_check_declared_f5.py`; T2.13 +92 in `test_t2_13_fixture_schema.py`; T2.10 +61 in `test_check_listing.py`; T2.9-V +17 in `tests/test_declared_f5_section.py`; T2.10-V +52: 31 hermetic in `tests/test_listing_findings_section.py` + 21 crafted-chain in `tests/test_t210_crafted_chain.py`).
 
 **Caveats and open items:**
 - `B1AttachmentProvider` metadata chain verified; `/$value` byte-download UNVERIFIED (SBODEMOSG `AttachmentsFolderPath` not configured). Provider is correct-by-construction, not live-proven. Upload path (`UploadProvider`) is the working path.
@@ -129,7 +129,7 @@ Completed 2026-06-10 on `master` (merge commit `0741dab`). Owner Terry. **NOT th
 
 **DoD achieved (partial):** Scenario test passes (seeded divergences surfaced, zero clean-box false positives); report section renders; 17 new hermetic tests in `tests/test_declared_f5_section.py`. **DoD NOT YET achieved:** rounding convention documented with its source — coverage cells stay ◐, not unconditionally covered.
 
-### T2.10 — Listing checks: SEQ_GAP + DUP_CLAIM + ZP E2 extension — DONE (built, plumbing-demonstrated, UNVALIDATED; merged to master 2026-06-10)
+### T2.10 — Listing checks: SEQ_GAP + DUP_CLAIM + ZP E2 extension — DONE (built, positive-detection validated on synthetic cases via T2.10-V, report-rendered; merged to master 2026-06-10)
 Completed 2026-06-09/10. Owner Terry. Merged to master, commit `4f52b20`, merge commit `9434f00`.
 
 **What was built:**
@@ -141,18 +141,22 @@ Completed 2026-06-09/10. Owner Terry. Merged to master, commit `4f52b20`, merge 
 - **`page_size=20` workaround**: SAP B1 server-side page cap; follow-on is @odata.nextLink cursor pagination.
 - **61 new tests** in `tests/test_check_listing.py` + `tests/conftest.py` (dummy creds for hermetic import).
 
-**Honest qualifier:** DONE = merged to master, deterministic, unit-tested. **PLUMBING-DEMONSTRATED, NOT positive-detection-validated.** Smoke run SEQ_GAP=0, DUP_CLAIM=0 on SBODEMOSG Q3 2024 — correct values, but a genuine gap or genuine duplicate has not been observed surfaced on live SAP. Positive detection validated only by synthetic unit-test fixtures. No PDF report section. Findings not gates; does not affect `validation_status` or `show_ai_candidates`.
+**Honest qualifier:** DONE = merged to master, deterministic, unit-tested. **Positive-detection validated on SYNTHETIC crafted cases (T2.10-V); report-rendered; live zero-FP on SBODEMOSG.** SBODEMOSG is a demo/synthetic DB — NOT real-client validation. DUP_CLAIM inert where `NumAtCard` unpopulated (client-onboarding precondition). Findings not gates; does not affect `validation_status` or `show_ai_candidates`.
 
 **Not built in T2.10 (deferred):** claim-outside-period (3D.1.1.c → D+, needs cross-period history); time-of-supply anomaly (3A.1.b → J+, needs payment-date ingestion); purchase-side SEQ_GAP (separate scope decision); @odata.nextLink pagination.
 
-### T2.10-V — Listing-checks positive-detection validation — PLANNED
-Effort PROPOSED ~0.5 wk. Owner Terry. Resolves the "PLUMBING-DEMONSTRATED, NOT positive-detection-validated" status of T2.10.
+### T2.10-V — Listing-checks positive-detection validation — DONE (positive-detection validated on synthetic cases; live zero-FP on SBODEMOSG; NOT real-client validated)
+Completed 2026-06-10. Owner Terry. Merged to master, commit `bf7f2f3`, merge commit `037c271`.
 
-**(a) SEQ_GAP positive-detection test:** Seed one or more sales invoices with a deliberate DocNum gap in SBODEMOSG (or use a synthetic SAP-fixture mock). Confirm SEQ_GAP surfaces exactly that gap and nothing else. Confirm zero false positives on the clean SBODEMOSG history.
+**(a) SEQ_GAP positive-detection — DONE:** Crafted-input full-chain test (`tests/test_t210_crafted_chain.py`). `fetch_listing_data` patched; real `detect_seq_gaps` exercised. DocNum 8002 (truly absent company-wide within active range [8001,8004]) → **FLAGGED**. DocNum 8003 (within range, present in `all_records` as other-period slot — the period-boundary discriminating case) → **NOT flagged**. Zero false positives confirmed on SBODEMOSG live Q3 2024 FP check (1005 company-wide sales headers).
 
-**(b) DUP_CLAIM positive-detection test:** Populate `NumAtCard` on at least two SBODEMOSG purchase invoices with the same vendor + same reference + same amount. Confirm DUP_CLAIM surfaces exactly those and nothing else. Alternatively, extend the chain's integration test to exercise `fetch_listing_data` against a recorded OData fixture where NumAtCard is populated.
+**(b) DUP_CLAIM positive-detection — DONE:** Crafted-input full-chain test. DocNums 7001+7002 (same CardCode + NumAtCard + DocTotal) → **FLAGGED**. DocNum 7003 (same CardCode + DocTotal, different NumAtCard — near-miss) → **NOT flagged**. Note: live positive detection not possible on SBODEMOSG because `NumAtCard` is 0% populated; positive-detection path exercised via crafted `period_purch_headers` payload.
 
-**DoD:** At least one positive finding surfaced correctly on each check; zero false positives on the clean baseline; coverage cells graduate from "PLUMBING-DEMONSTRATED" to "validated on demo."
+**(c) PDF report section — DONE:** `ListingFindingsSection` dataclass + `render_listing_findings_section` in `report/sections.py`; `_listing_findings` renderer in `report/render.py`; `listing_findings` field in `ReportModel`. Section renders only when findings present; Not-Examined items suppressed independently. Both T2.9 (`declared_f5`) and T2.10 (`listing_findings`) sections coexist in one PDF.
+
+**Honest qualifier:** SBODEMOSG is a demo/synthetic database — NOT real-client validation. SEQ_GAP cannot be seeded live (SAP B1 assigns DocNums sequentially). DUP_CLAIM stays inert where `NumAtCard` is unpopulated (client-onboarding precondition). `page_size=20` pagination confirmed working at scale; @odata.nextLink remains the robustness follow-on. `validation_status` and `show_ai_candidates` unchanged.
+
+**52 new tests.** Master total after T2.10-V merge: **1156 passed, 1 skipped**.
 
 ### T2.11 — Reasoning-layer validation + indeterminate-queue reconciliation — PROVISIONAL → validate (the binding constraint)
 Effort PROPOSED 2–3 wk engineering + specialist review time. Owner Terry (harness) + independent specialist (async reconciliation).
@@ -262,6 +266,9 @@ Mirror the deterministic-script docs for the reasoning layer; Document 4 of the 
 
 ### D5 — Update canonical docs for T2.9-V — DONE (2026-06-10, on master)
 `AGENTASSIST_TECHNICAL_STATE.md`: T2.9 section — "Validation (T2.9-V)" subsection added (3-fixture scenario test, 22 assertions, box-isolation, report section, mandatory rounding-convention caveat); exec summary updated with T2.9-V summary; test count updated to 1104/1; T1.5 test-count line updated. Roadmap: T2.9-V marked DONE (mechanism validated; rounding convention pending cousin); build-state snapshot T2.9 entry updated; test count 1087 → 1104. Coverage analysis (`iras-ask-coverage-analysis.md`): Step 1 declared-vs-computed cells (1.3b, 1.3c) and Step 3 listing-reconciliation cells (3A.1.a, 3B.1.a, 3C.1.a, 3D.1.1.a) graduated from "BUILT, UNVALIDATED — pending T2.9-V" to "mechanism validated on demo; renders when filed F5 supplied; rounding/tolerance convention unconfirmed"; cells stay ◐ (not unconditionally covered); known-limitations note updated.
+
+### D6 — Update canonical docs for T2.10-V — DONE (2026-06-10, on master)
+`AGENTASSIST_TECHNICAL_STATE.md`: T2.10 section — "Validation (T2.10-V)" subsection added (crafted-input full-chain, SEQ_GAP period-boundary discriminating case 8003, DUP_CLAIM pair vs near-miss, 52 new tests, live zero-FP on SBODEMOSG, mandatory caveats); status table updated (plumbing-demonstrated → positive-detection validated on synthetic; report-rendered); honest-qualifier block updated; `listing_findings` note updated; exec summary updated with T2.10-V; test count updated 1104 → 1156; T1.5 master-total line updated. Roadmap: T2.10-V marked DONE; T2.10 entry header updated; honest qualifier updated; build-state snapshot test count 1104 → 1156. Coverage analysis (`iras-ask-coverage-analysis.md`): 3A.1.c, 3B.1.b, 3C-1.b (SEQ_GAP) and 3D.1.1.d (DUP_CLAIM) graduated from "plumbing-demonstrated; positive-detection not validated on live SAP; no PDF report section yet" to "positive-detection validated on synthetic cases; renders when present; live zero-FP on demo; NOT validated on real client data"; known-limitations T2.10 bullet updated.
 
 ---
 

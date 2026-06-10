@@ -87,7 +87,7 @@ signed PDF deliverable; `python run_agent.py --client <id> --period <start> <end
 it end-to-end (no `--report` flag; the PDF is always generated as part of the always-seal
 behaviour introduced in T1.5). Audit trail is resolved (T1.5, 2026-06-02): every successful
 run produces a sealed, tamper-evident bundle under `audit/<client_id>/`.
-Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.9-V (on master, 2026-06-10) validated the declared-vs-computed mechanism end-to-end on SBODEMOSG Q3 2024: three isolated fixtures (Check A isolation, Check B isolation, control), 22 assertions, box-isolation held, report section renders (Check A/B findings in PDF/text when `--declared-f5` supplied with divergences; Section 6 "Not Examined" retains the placeholder when absent — correct behaviour). **$1.00 tolerance remains a materiality floor, NOT a confirmed IRAS F5 rounding convention — rounding-convention confirmation is a pending cousin task; a surfaced divergence is a candidate, not a confirmed discrepancy.** T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. Current test state: 1104 passed, 1 skipped.
+Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.9-V (on master, 2026-06-10) validated the declared-vs-computed mechanism end-to-end on SBODEMOSG Q3 2024: three isolated fixtures (Check A isolation, Check B isolation, control), 22 assertions, box-isolation held, report section renders (Check A/B findings in PDF/text when `--declared-f5` supplied with divergences; Section 6 "Not Examined" retains the placeholder when absent — correct behaviour). **$1.00 tolerance remains a materiality floor, NOT a confirmed IRAS F5 rounding convention — rounding-convention confirmation is a pending cousin task; a surfaced divergence is a candidate, not a confirmed discrepancy.** T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. T2.10-V (on master, 2026-06-10) validated the listing-checks detection path end-to-end via crafted-input full-chain: SEQ_GAP (DocNum 8002 truly-absent FLAGGED; 8003 within-range-but-present-company-wide NOT flagged — the period-boundary discriminating case; 8001/8004 not gaps), DUP_CLAIM (dup pair 7001/7002 flagged; near-miss 7003 different NumAtCard not flagged), both Not-Examined lines suppressed independently when findings present, box-isolation held. Live read-only FP check on SBODEMOSG Q3 2024 (1005 sales / 624 purchase headers company-wide): zero SEQ_GAP, zero DUP_CLAIM. **SBODEMOSG is a demo/synthetic DB — NOT real-client validation.** `validation_status` and `show_ai_candidates` unchanged. Current test state: 1156 passed, 1 skipped.
 
 **The three to five most important gaps before commercial deployment**
 
@@ -839,7 +839,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10 merges): **1104 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10 sections for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V merges): **1156 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V sections for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -1238,8 +1238,8 @@ Three checks, all deterministic, findings-not-gates:
 
 | Check | IRAS basis | Status |
 |---|---|---|
-| **SEQ_GAP** — DocNum sequence-gap detection over sales invoices | ASK Annual Review Guide §10.1(c)(i) — "Invoices not in running sequences" | Implemented + chain-wired + smoke-tested |
-| **DUP_CLAIM** — Duplicate input-tax claim detection over purchases | ASK Annual Review Guide §10.1(d)(i) — "Processing the same invoice more than once" | Implemented + chain-wired; **INERT on SBODEMOSG** (NumAtCard 0% populated — see below) |
+| **SEQ_GAP** — DocNum sequence-gap detection over sales invoices | ASK Annual Review Guide §10.1(c)(i) — "Invoices not in running sequences" | Implemented + chain-wired + positive-detection validated on synthetic cases (T2.10-V); report-rendered |
+| **DUP_CLAIM** — Duplicate input-tax claim detection over purchases | ASK Annual Review Guide §10.1(d)(i) — "Processing the same invoice more than once" | Implemented + chain-wired + positive-detection validated on synthetic cases (T2.10-V); report-rendered; **INERT on SBODEMOSG** (NumAtCard 0% populated — client-onboarding precondition) |
 | **ZP E2 extension** — `"ZP"` added to both `_E2_ZERO_RATE_CODES` sets | ASK Annual Review Guide §10.1(d)(iv) — "tax coded as zero-rated/exempt/out-of-scope but reflects GST" | Implemented; DocNum 610 (LineTotal=800, TaxTotal=56, DocTotal=856) confirmed fixture |
 
 ### Files changed
@@ -1282,7 +1282,7 @@ fetch_listing_data → detect_seq_gaps(period_sales, all_sales) + detect_dup_cla
 
 **BOX-ISOLATION invariant**: `result["calculate"]["boxes"]` is snapshotted before the listing checks and asserted equal after. Any mutation raises `RuntimeError`. Smoke run confirmed no mutation. F5 box values and all gate results are byte-identical with and without the listing checks.
 
-**`listing_findings`** is in `CompileOutput` schema (`orchestrator/schemas.py`). No PDF report section has been added — report integration is downstream scope.
+**`listing_findings`** is in `CompileOutput` schema (`orchestrator/schemas.py`). PDF report section added in T2.10-V (`report/sections.py` → `ListingFindingsSection` + `render_listing_findings_section`; `report/render.py` → `_listing_findings` renderer between `_findings` and `_cross_findings`). Section renders only when findings are present; when empty, the corresponding Not-Examined items stay in Section 6.
 
 ### Smoke run results (SBODEMOSG, Q3 2024, 2026-06-09)
 
@@ -1296,17 +1296,45 @@ fetch_listing_data → detect_seq_gaps(period_sales, all_sales) + detect_dup_cla
 
 ### Honest qualifier (mandatory)
 
-DONE = merged to master, deterministic, unit-tested. **PLUMBING-DEMONSTRATED, NOT positive-detection-validated.**
+DONE = merged to master, deterministic, unit-tested. **Positive-detection validated on SYNTHETIC crafted cases (T2.10-V); live zero-FP on SBODEMOSG; report-rendered.**
 
-- Smoke run confirmed SEQ_GAP=0 and DUP_CLAIM=0 on SBODEMOSG Q3 2024. These are correct values (company-wide existence check eliminates false positives; NumAtCard unpopulated). A zero-finding result does NOT validate the positive detection path — a genuine gap or genuine duplicate has not been observed surfaced on live SAP. Positive detection is validated only by unit tests on synthetic fixtures.
+- **SBODEMOSG is a demo/synthetic database** — this is NOT real-client validation. Positive detection was exercised on crafted-input fixtures, not live SAP gaps or live duplicate invoices.
 - **DUP_CLAIM is inert** on any company where AP operators do not populate `NumAtCard`. This is a client-onboarding data-quality precondition that must be confirmed before the check has diagnostic value.
-- **No report rendering**: SEQ_GAP / DUP_CLAIM findings populate `listing_findings` in `CompileOutput` but are NOT rendered in the signed PDF working paper.
+- **SEQ_GAP cannot be seeded live** on SAP B1 — the system assigns DocNums sequentially and will not skip a number. Positive-detection validation used crafted `fetch_listing_data` payloads via monkeypatch.
+- **`page_size=20` workaround** confirmed working at scale: all 1005 sales headers and 624 purchase headers pulled correctly. @odata.nextLink cursor pagination remains the robustness follow-on.
+- **Section renders only when findings present.** When `listing_findings` is empty, the "sequence gap detection" and "duplicate input-tax claims" items remain in Section 6 (Not Examined). Both suppressions are independent.
 - **`page_size=20` is a workaround** for the SAP B1 server-side page cap. The correct long-term solution is @odata.nextLink cursor pagination.
 - Findings, never verdicts; does not affect F5 boxes, gates, `validation_status`, or `show_ai_candidates`.
 
 ### Test state
 
 **61 new tests** in `tests/test_check_listing.py`: `TestSeqGapProduction` (15), `TestSeqGapReference` (4), `TestSeqGapAgreement` (6), `TestDupClaimProduction` (11), `TestDupClaimReference` (4), `TestDupClaimAgreement` (5), `TestZpE2Production` (8), `TestZpE2Reference` (4), `TestZpE2Agreement` (4). All no-live-SAP. Master total after T2.10 merge: **1087 passed, 1 skipped**.
+
+### Validation (T2.10-V) — merged to master 2026-06-10, commit bf7f2f3, merge commit 037c271
+
+**Positive-detection validated on SYNTHETIC crafted cases via crafted-input full-chain (branch `t2.10-validation`). NOT real-client validated.**
+
+**Crafted-input full-chain test** (`tests/test_t210_crafted_chain.py`, 21 tests): `fetch_listing_data` patched via monkeypatch; all other chain steps (fetch/calculate/classify/detect) also patched; real `detect_seq_gaps` + `detect_dup_claims` + post-gate_5 wiring + BOX-ISOLATION assertion + real report render exercised.
+
+SEQ_GAP crafted population (Series=1 sales):
+- `period_sales_headers = [8001, 8004]` → active range `[8001, 8004]`
+- `all_sales_headers = [8001, 8003, 8004]` — 8002 absent company-wide → **FLAGGED**; 8003 within range but present in all_records (other-period slot) → **NOT flagged** (the period-boundary discriminating case — exercises the company-wide existence semantics); 8001/8004 in period → not gaps
+- Exactly 1 SEQ_GAP finding; finding schema correct (series=1, series_min=8001, series_max=8004, basis §10.1(c)(i), candidate language)
+
+DUP_CLAIM crafted population (Series=6 purchases):
+- DocNums 7001 + 7002: same CardCode (`V-DUP-A`) + NumAtCard (`INV-VENDOR-001`) + DocTotal (1500.00) → **FLAGGED** (dup pair)
+- DocNum 7003: same CardCode + DocTotal, different NumAtCard (`INV-VENDOR-002`) → **NOT flagged** (near-miss)
+- Exactly 1 DUP_CLAIM finding; finding schema correct (card_code, num_at_card, doc_total, basis §10.1(d)(i), candidate language)
+
+Additional assertions verified: PDF renders without error; `listing_findings` key present; both Not-Examined items suppressed independently when findings present; other Not-Examined items intact; F5 boxes match crafted calc values; chain `all_passed=True`; BOX-ISOLATION RuntimeError did NOT fire.
+
+**Hermetic section tests** (`tests/test_listing_findings_section.py`, 31 tests): all four present/absent combinations (neither/SEQ/DUP/both) verified for partitioning, suppression independence, PDF render, box-isolation, backward-compat (no listing_section arg).
+
+**Live read-only FP check** (SBODEMOSG Q3 2024, 2026-06-10): `fetch_listing_data` fetched 50 period sales headers, 34 period purchase headers, 1005 company-wide sales headers, 624 company-wide purchase headers via `page_size=20` pagination. Result: SEQ_GAP=0, DUP_CLAIM=0 — zero false positives. Gates 1–5 all passed (Gate 1 WARN_PASS: SAP `$inlinecount` unavailable — normal).
+
+**Report section (T2.10-V added):** `ListingFindingsSection` dataclass + `render_listing_findings_section` in `report/sections.py`; `_listing_findings` renderer in `report/render.py` (between `_findings` and `_cross_findings`); `listing_findings` field in `ReportModel`. Both T2.9 (`declared_f5`) and T2.10 (`listing_findings`) sections coexist in one PDF — verified post-rebase with crafted compile-output carrying both. Not-Examined suppression extended to carry both `declared_f5_findings` and `listing_section` kwargs independently.
+
+**52 new tests** (31 hermetic + 21 crafted-chain). Master total after T2.10-V merge: **1156 passed, 1 skipped**.
 
 ---
 
