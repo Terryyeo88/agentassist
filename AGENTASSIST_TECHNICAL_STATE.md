@@ -1201,6 +1201,90 @@ Any doc language that lets "T2.13 done" read as "the reasoning layer is validate
 
 ---
 
+## T2.10 — Listing checks: SEQ_GAP + DUP_CLAIM + ZP E2 extension (merged to master, commit 4f52b20, merge commit 9434f00)
+
+### Status
+
+T2.10 is merged to `master` (2026-06-10, commit `4f52b20`, merge commit `9434f00`, from branch `t2.10-listing-checks`). `validation_status` is unaffected. No change to `show_ai_candidates`.
+
+### What T2.10 adds
+
+Three checks, all deterministic, findings-not-gates:
+
+| Check | IRAS basis | Status |
+|---|---|---|
+| **SEQ_GAP** — DocNum sequence-gap detection over sales invoices | ASK Annual Review Guide §10.1(c)(i) — "Invoices not in running sequences" | Implemented + chain-wired + smoke-tested |
+| **DUP_CLAIM** — Duplicate input-tax claim detection over purchases | ASK Annual Review Guide §10.1(d)(i) — "Processing the same invoice more than once" | Implemented + chain-wired; **INERT on SBODEMOSG** (NumAtCard 0% populated — see below) |
+| **ZP E2 extension** — `"ZP"` added to both `_E2_ZERO_RATE_CODES` sets | ASK Annual Review Guide §10.1(d)(iv) — "tax coded as zero-rated/exempt/out-of-scope but reflects GST" | Implemented; DocNum 610 (LineTotal=800, TaxTotal=56, DocTotal=856) confirmed fixture |
+
+### Files changed
+
+| Component | File | Change |
+|---|---|---|
+| SEQ_GAP + DUP_CLAIM production | `orchestrator/check_listing.py` | New file |
+| SEQ_GAP + DUP_CLAIM reference | `scripts/check_listing_reference.py` | New file — no shared helpers with production (AUDIT-NOT-PARTNER) |
+| ZP E2 production | `mcp-servers/custom/sap_b1_server.py` | Added `"ZP"` to `_E2_ZERO_RATE_CODES` |
+| ZP E2 reference | `scripts/run_baseline_tests.py` | Added `"ZP"` to `E2_ZERO_RATE_CODES` |
+| `listing_findings` schema field | `orchestrator/schemas.py` | Added to `CompileOutput` TypedDict |
+| `fetch_listing_data` step | `orchestrator/steps.py` | New step: header-only OData fetches with `$select` (DocNum, Series, Cancelled, CardCode, NumAtCard, DocTotal) |
+| `_fetch_headers_paginated` helper | `orchestrator/steps.py` | Private helper; `page_size=20` to match SAP B1 server-side page cap |
+| Chain wiring + BOX-ISOLATION | `orchestrator/chain.py` | T2.10 block after gate_5; BOX-ISOLATION runtime assertion |
+| Tests | `tests/test_check_listing.py` | New file — 61 tests |
+| Test conftest | `tests/conftest.py` | New file — dummy SAP creds for hermetic test import |
+| Field verification + session notes | `exploration-notes/t2.10/` | FIELD-VERIFICATION.md, SESSION-REPORT.md, PLAN.md, probe_fields.py, smoke_run.py |
+
+### SEQ_GAP: two-argument API + period-boundary fix
+
+**Algorithm**: `detect_seq_gaps(period_records, all_records)` — two-argument API. Groups by `Series` integer. Within each series, the active range `[min, max]` is defined by non-cancelled period documents. A DocNum is a gap candidate only when absent from `all_records` (company-wide, all periods, all statuses). DocNums present in any period are NOT flagged, regardless of whether they appear in the reviewed period.
+
+**Period-boundary fix (critical)**: The initial autonomous algorithm range-filled within the period's `[min, max]` and would have flagged ~617 DocNums (357–956) as gaps on SBODEMOSG Q3 2024, because those DocNums exist in earlier periods but not in Q3 2024. The corrected two-argument algorithm fetches the company-wide document population and uses it as the existence check. A DocNum is a genuine gap candidate only when absent from ALL company records.
+
+**`page_size=20` workaround**: SAP B1 Service Layer enforces a server-side page cap of ~20 records per OData response page. `_fetch_headers_paginated` uses `page_size=20` to correctly detect the last page (returned < requested). Using `page_size=100` caused premature termination. Follow-on: @odata.nextLink cursor pagination.
+
+### DUP_CLAIM: INERT on SBODEMOSG
+
+**Algorithm**: Key = `(CardCode.strip(), NumAtCard.strip(), round(DocTotal, 2))`. Records with blank/None `NumAtCard` excluded. Different `NumAtCard` values (recurring charges from same vendor at same amount) are not flagged.
+
+**INERT on SBODEMOSG**: All `NumAtCard` fields are null in SBODEMOSG (confirmed in Phase 1 field verification, 2026-06-09). DUP_CLAIM is built, unit-tested, and chain-wired. It returns `[]` on SBODEMOSG and will remain `[]` on any company where AP operators do not populate the vendor invoice reference field. This is a **client-onboarding data-quality precondition** — the check requires AP staff to enter the supplier's own invoice number in SAP when posting purchase invoices.
+
+### Chain wiring and BOX-ISOLATION invariant
+
+T2.10 block runs after gate_5 (non-halting — wrapped in try/except):
+
+```
+fetch_listing_data → detect_seq_gaps(period_sales, all_sales) + detect_dup_claims(period_purch) → result["listing_findings"]
+```
+
+**BOX-ISOLATION invariant**: `result["calculate"]["boxes"]` is snapshotted before the listing checks and asserted equal after. Any mutation raises `RuntimeError`. Smoke run confirmed no mutation. F5 box values and all gate results are byte-identical with and without the listing checks.
+
+**`listing_findings`** is in `CompileOutput` schema (`orchestrator/schemas.py`). No PDF report section has been added — report integration is downstream scope.
+
+### Smoke run results (SBODEMOSG, Q3 2024, 2026-06-09)
+
+| Check | Findings | Expected |
+|---|---|---|
+| SEQ_GAP (sales invoices) | 0 | 0 — DocNums 357–956 exist in earlier periods; period-boundary fix confirmed working |
+| DUP_CLAIM (purchase invoices) | 0 | 0 — NumAtCard 0% populated in SBODEMOSG |
+| BOX-ISOLATION | PASS | Boxes identical before/after listing checks |
+| Gates 1–5 | PASS / WARN_PASS | Gate 1 WARN_PASS: SAP $inlinecount unavailable (normal for this instance) |
+| `listing_findings` key present | YES | — |
+
+### Honest qualifier (mandatory)
+
+DONE = merged to master, deterministic, unit-tested. **PLUMBING-DEMONSTRATED, NOT positive-detection-validated.**
+
+- Smoke run confirmed SEQ_GAP=0 and DUP_CLAIM=0 on SBODEMOSG Q3 2024. These are correct values (company-wide existence check eliminates false positives; NumAtCard unpopulated). A zero-finding result does NOT validate the positive detection path — a genuine gap or genuine duplicate has not been observed surfaced on live SAP. Positive detection is validated only by unit tests on synthetic fixtures.
+- **DUP_CLAIM is inert** on any company where AP operators do not populate `NumAtCard`. This is a client-onboarding data-quality precondition that must be confirmed before the check has diagnostic value.
+- **No report rendering**: SEQ_GAP / DUP_CLAIM findings populate `listing_findings` in `CompileOutput` but are NOT rendered in the signed PDF working paper.
+- **`page_size=20` is a workaround** for the SAP B1 server-side page cap. The correct long-term solution is @odata.nextLink cursor pagination.
+- Findings, never verdicts; does not affect F5 boxes, gates, `validation_status`, or `show_ai_candidates`.
+
+### Test state
+
+**61 new tests** in `tests/test_check_listing.py`: `TestSeqGapProduction` (15), `TestSeqGapReference` (4), `TestSeqGapAgreement` (6), `TestDupClaimProduction` (11), `TestDupClaimReference` (4), `TestDupClaimAgreement` (5), `TestZpE2Production` (8), `TestZpE2Reference` (4), `TestZpE2Agreement` (4). All no-live-SAP. Master total after T2.10 merge: **1087 passed, 1 skipped**.
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools

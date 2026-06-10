@@ -34,6 +34,7 @@ Revised from v4. v5 records what the diagnostic/fix runs of 2026-06-08 establish
 - **T2.8** — Source-document cross-reference (`documents/` package): ingests PDFs, runs 4 reconciliation checks (gst_amount_mismatch J+, correct_period D+, total_inconsistency J+, reg11_supplier_gst_absent J+). Born-digital path verified on seeded PDFs. **B1 attachment `/$value` byte-download UNVERIFIED** — SBODEMOSG `AttachmentsFolderPath` not configured; upload path (`UploadProvider`) is the working path. 13 AGENTASSIST_SEED docs seeded for end-to-end demo; Box 8 post-seed = 12,663.87 (DB-state-dependent).
 - **T2.9** — Declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency: Box 4==1+2+3, Box 8==6−7) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default). Default $1.00 per-box tolerance is a **materiality floor grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33** — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source). Findings, never verdicts; does not affect F5 boxes or gates. 19 new tests.
 - **T2.13** — Reg 26/27 validation dataset built + blank-labelled: `tests/fixtures/reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`. `expected_candidate` fields are present but **empty** — labels assigned only after independent specialist review. `validation_status: unvalidated`; `show_ai_candidates` stays `False`; **T2.11 remains the binding constraint**. 92 new tests.
+- **T2.10** — Listing checks (`orchestrator/check_listing.py`): SEQ_GAP (DocNum sequence-gap over sales invoices, §10.1(c)(i)) + DUP_CLAIM (duplicate input-tax claim over purchases, §10.1(d)(i)) + ZP added to `_E2_ZERO_RATE_CODES` (§10.1(d)(iv)). Two-argument company-wide SEQ_GAP semantics (period-boundary false-positive fix applied). Chain-wired after gate_5; BOX-ISOLATION invariant; findings not gates. Smoke run: SEQ_GAP=0 (sane — period-boundary fix confirmed), DUP_CLAIM=0 (NumAtCard unpopulated — INERT on SBODEMOSG). **PLUMBING-DEMONSTRATED, not positive-detection-validated**; not rendered in PDF report. 61 new tests. Merged to master (commit `4f52b20`, merge commit `9434f00`).
 
 **Remaining gates to a paid pilot (none are correctness or delivery-format gaps):** production-data trust, PDPA compliance, security history scrub.
 
@@ -93,7 +94,7 @@ Business reason: the entire 👤 → J+ band in coverage-analysis Document 4 is 
 - `UnifiedCandidatesSection` in `report/sections.py` — merges T2.7 reasoning candidates and T2.8 document candidates with mandatory per-row `basis` tag; gated by `show_ai_candidates` (default False).
 - `--upload-dir` and `--show-ai-candidates` CLI flags in `run_agent.py`.
 - 13 AGENTASSIST_SEED docs (DocNums 612–624) on vendor V21000 (Sea Corp) for end-to-end demo; `scripts/seed_manifest.json` as seed identity record.
-- 1026 tests passing, 1 skipped (T2.7 +434 vs T1.5; T2.8 +312; T2.9 +19 in `test_check_declared_f5.py`; T2.13 +92 in `test_t2_13_fixture_schema.py`).
+- 1087 passed, 1 skipped (T2.7 +434 vs T1.5; T2.8 +312; T2.9 +19 in `test_check_declared_f5.py`; T2.13 +92 in `test_t2_13_fixture_schema.py`; T2.10 +61 in `test_check_listing.py`).
 
 **Caveats and open items:**
 - `B1AttachmentProvider` metadata chain verified; `/$value` byte-download UNVERIFIED (SBODEMOSG `AttachmentsFolderPath` not configured). Provider is correct-by-construction, not live-proven. Upload path (`UploadProvider`) is the working path.
@@ -130,8 +131,30 @@ Optional two-birds: capture the computed boxes once as a static fixture so the s
 
 **DoD:** Scenario test passes (seeded divergences surfaced, zero clean-box false positives); rounding convention documented with its source; declared-vs-computed coverage cells graduate from "BUILT, UNVALIDATED" to "validated on demo."
 
-### T2.10 — Mechanical gap-fills (deterministic checks currently ✗) — PLANNED
-Effort PROPOSED 1.5–2 wk total. Owner Collin (audit-not-partner — implement in both tool and reference script). Invoice-sequence-gap over `DocNum` (3A.1.c/3B.1.b/3C.1.b → D); duplicate input-tax claims (3D.1.1.d → D); claim-outside-period (3D.1.1.c → D+, needs cross-period history); time-of-supply anomaly (3A.1.b → J+, needs payment-date ingestion); ZP+TaxTotal>0 E2 extension (open item #22, DocNum 610 → D, low effort).
+### T2.10 — Listing checks: SEQ_GAP + DUP_CLAIM + ZP E2 extension — DONE (built, plumbing-demonstrated, UNVALIDATED; merged to master 2026-06-10)
+Completed 2026-06-09/10. Owner Terry. Merged to master, commit `4f52b20`, merge commit `9434f00`.
+
+**What was built:**
+- **SEQ_GAP** (`orchestrator/check_listing.py` → `detect_seq_gaps(period_records, all_records)`): DocNum sequence-gap detection over sales invoices. Two-argument API with company-wide existence semantics — a DocNum is a gap only if absent from ALL company records (all periods, all statuses) AND within the reviewed-period active range. Period-boundary false-positive fix: the initial algorithm would have flagged ~617 DocNums (357–956) on SBODEMOSG Q3 2024 that exist in earlier periods; corrected by fetching the full company-wide document set. Groups by SAP `Series` integer. IRAS basis: §10.1(c)(i).
+- **DUP_CLAIM** (`orchestrator/check_listing.py` → `detect_dup_claims(records)`): Duplicate input-tax claim detection over purchase invoices. Key = `(CardCode, NumAtCard, DocTotal)`; blank `NumAtCard` excluded. **INERT on SBODEMOSG** — `NumAtCard` is 0% populated (all null). Built + unit-tested; requires client AP operators to populate vendor invoice reference. **Client-onboarding data-quality precondition.** IRAS basis: §10.1(d)(i).
+- **ZP E2 extension**: `"ZP"` added to `_E2_ZERO_RATE_CODES` in `mcp-servers/custom/sap_b1_server.py` and `E2_ZERO_RATE_CODES` in `scripts/run_baseline_tests.py`. DocNum 610 (LineTotal=800, TaxTotal=56 at 7%, DocTotal=856) is the confirmed SBODEMOSG fixture — now correctly flagged as E2. IRAS basis: §10.1(d)(iv). Resolves open item #22 from Appendix C.
+- **Chain wiring**: `fetch_listing_data` + `detect_seq_gaps` + `detect_dup_claims` after gate_5 in `orchestrator/chain.py`. Results in `CompileOutput.listing_findings`. BOX-ISOLATION runtime assertion (snapshots boxes before, asserts equal after; RuntimeError on mutation). Non-halting — exceptions suppress findings.
+- **AUDIT-NOT-PARTNER**: `orchestrator/check_listing.py` and `scripts/check_listing_reference.py` share zero functions; agreement verified by agreement test classes.
+- **`page_size=20` workaround**: SAP B1 server-side page cap; follow-on is @odata.nextLink cursor pagination.
+- **61 new tests** in `tests/test_check_listing.py` + `tests/conftest.py` (dummy creds for hermetic import).
+
+**Honest qualifier:** DONE = merged to master, deterministic, unit-tested. **PLUMBING-DEMONSTRATED, NOT positive-detection-validated.** Smoke run SEQ_GAP=0, DUP_CLAIM=0 on SBODEMOSG Q3 2024 — correct values, but a genuine gap or genuine duplicate has not been observed surfaced on live SAP. Positive detection validated only by synthetic unit-test fixtures. No PDF report section. Findings not gates; does not affect `validation_status` or `show_ai_candidates`.
+
+**Not built in T2.10 (deferred):** claim-outside-period (3D.1.1.c → D+, needs cross-period history); time-of-supply anomaly (3A.1.b → J+, needs payment-date ingestion); purchase-side SEQ_GAP (separate scope decision); @odata.nextLink pagination.
+
+### T2.10-V — Listing-checks positive-detection validation — PLANNED
+Effort PROPOSED ~0.5 wk. Owner Terry. Resolves the "PLUMBING-DEMONSTRATED, NOT positive-detection-validated" status of T2.10.
+
+**(a) SEQ_GAP positive-detection test:** Seed one or more sales invoices with a deliberate DocNum gap in SBODEMOSG (or use a synthetic SAP-fixture mock). Confirm SEQ_GAP surfaces exactly that gap and nothing else. Confirm zero false positives on the clean SBODEMOSG history.
+
+**(b) DUP_CLAIM positive-detection test:** Populate `NumAtCard` on at least two SBODEMOSG purchase invoices with the same vendor + same reference + same amount. Confirm DUP_CLAIM surfaces exactly those and nothing else. Alternatively, extend the chain's integration test to exercise `fetch_listing_data` against a recorded OData fixture where NumAtCard is populated.
+
+**DoD:** At least one positive finding surfaced correctly on each check; zero false positives on the clean baseline; coverage cells graduate from "PLUMBING-DEMONSTRATED" to "validated on demo."
 
 ### T2.11 — Reasoning-layer validation + indeterminate-queue reconciliation — PROVISIONAL → validate (the binding constraint)
 Effort PROPOSED 2–3 wk engineering + specialist review time. Owner Terry (harness) + independent specialist (async reconciliation).
@@ -233,6 +256,11 @@ Mirror the deterministic-script docs for the reasoning layer; Document 4 of the 
 
 ### D3 — Update canonical docs for T2.8 + re-derived baseline — DONE (2026-06-08, on T2.8 branch)
 `AGENTASSIST_TECHNICAL_STATE.md`: T2.8 section added (`documents/` package, B1 attachment BLOCKER, seed record, `UnifiedCandidatesSection`, CLI flags, isolation invariant, validation status, 4 new test files); Appendix B third table added (post-T2.8-seeds Box 8 = 12,663.87); Box 8 reconciliation note added (authoritative pre-T2.8 = 17,045.87; 17,395.87 = pre-T1.x-seeds; delta explained); Appendix C #25 PDPA expanded with data-intermediary/overseas-transfer/residency/ZDR specifics; #28 legibility gate and #29 automation-bias guard added; exec summary and test count updated; repo tree updated for `documents/`, `scripts/seed*`, and T2.8 test files; footer updated. Roadmap: T2.8 marked DONE with caveats; T2.14 and T2.15 added; T3.2 expanded with confirmed PDPA specifics; build-state snapshot updated; D3 added.
+
+### D4 — Update canonical docs for T2.10 — DONE (2026-06-10, on master post-merge)
+`AGENTASSIST_TECHNICAL_STATE.md`: T2.10 section added (SEQ_GAP + DUP_CLAIM + ZP E2, chain wiring, BOX-ISOLATION, smoke run, honest-status block, 61 new tests; test count updated to 1087/1). Roadmap: T2.10 entry updated from PLANNED to DONE; build-state snapshot and test count updated; T2.10-V (positive-detection validation) added as PLANNED. Coverage analysis (`iras-ask-coverage-analysis.md`): 3A.1.c, 3B.1.b, 3C-1.b (SEQ_GAP) and 3D.1.1.d (DUP_CLAIM) updated from "not built" to plumbing-demonstrated; known-limitations T2.10 bullet added.
+
+**Pre-merge gate protocol** for all future branches is codified in `docs/merge-gates.md` (gates a–d: no-anthropic-import regex, full-suite green, isolation invariant, clean tree). Gate-a uses import-only regex to avoid false positives on docstrings. Run all four gates from `docs/merge-gates.md` before any merge to master — do not re-describe them here.
 
 ---
 

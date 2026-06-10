@@ -167,7 +167,7 @@ Classifies each substantive check in the ASK Annual Review's transaction-testing
 |---|---|---|
 | 3A.1.a Listing reconciles to Box 1/6 | D | Pure summation; `calculate_f5_return` |
 | 3A.1.b Time-of-supply (earlier of invoice/payment) | J+ | Deterministic only if payment dates are ingested; otherwise documentary. AgentAssist could flag invoice-date anomalies if fed payment data |
-| 3A.1.c Missing invoice numbers | D | Sequence-gap analysis over DocNum — feasible, not yet built |
+| 3A.1.c Missing invoice numbers | D | SEQ_GAP over `DocNum` built in T2.10 (`orchestrator/check_listing.py`). Two-argument API with company-wide existence semantics (period-boundary fix applied). Plumbing-demonstrated on SBODEMOSG Q3 2024: 0 findings (correct — DocNums 357–956 exist in earlier periods). Positive-detection NOT validated on live SAP; no PDF report section yet. |
 | 3A.1.d Sales reductions via valid credit/debit notes | D+ | Deterministic once CN/DN linkage is modelled; single-use rule needs cross-document state |
 | 3A.1.k FX/standard-rate correct treatment (→ E1) | D | FX + SO/DS detection is fully deterministic |
 | 3A.3.1.i GST at correct rate (→ E3/E4) | D+ | Deterministic given the correct `expected_rate` (per-period config) |
@@ -179,7 +179,7 @@ Classifies each substantive check in the ASK Annual Review's transaction-testing
 | Check (¶) | Class | Rationale / AgentAssist contribution |
 |---|---|---|
 | 3B.1.a Listing reconciles to Box 2 | D | `calculate_f5_return` |
-| 3B.1.b Missing invoice numbers | D | Sequence analysis (not built) |
+| 3B.1.b Missing invoice numbers | D | SEQ_GAP over `DocNum` built in T2.10 (sales-side only; see 3A.1.c). Plumbing-demonstrated; positive-detection not validated on live SAP. |
 | 3B.3.1 No GST on ZR invoice (→ E2 inverse) | D | GST-on-ZR is deterministically detectable |
 | 3B.3.2.1 Export evidence proves goods exported | J | Transport documents; documentary verification |
 | 3B.3.2.2 Services qualify as international services | J | Legal characterisation |
@@ -190,7 +190,7 @@ Classifies each substantive check in the ASK Annual Review's transaction-testing
 | Check (¶) | Class | Rationale / AgentAssist contribution |
 |---|---|---|
 | 3C.a Listing reconciles to Box 3 | D | `calculate_f5_return` (ES33/ESN33) |
-| 3C-1.b Missing invoice numbers | D | Sequence analysis (not built) |
+| 3C-1.b Missing invoice numbers | D | SEQ_GAP over `DocNum` built in T2.10 (sales-side only; see 3A.1.c). Plumbing-demonstrated; positive-detection not validated on live SAP. |
 | Exempt value reported correctly (Reg 33 valuation) | J | Per-transaction-type valuation; out of POC scope |
 | Supply genuinely qualifies as exempt | J+ | AgentAssist flags ES33/ESN33 lines carrying GST (→ E2); qualification is judgment |
 
@@ -201,7 +201,7 @@ Classifies each substantive check in the ASK Annual Review's transaction-testing
 | 3D.1.1.a Listing reconciles to Box 5/7 | D | `calculate_f5_return` |
 | 3D.1.1.b "ME"/"MC" permit misuse | D+ | Deterministic given import-permit feed + scheme-status config |
 | 3D.1.1.c Claim outside accounting period | D+ | Deterministic with cross-period claim history |
-| 3D.1.1.d Duplicate claims | D | Deterministic dedup (not built) |
+| 3D.1.1.d Duplicate claims | D | DUP_CLAIM built in T2.10 (`orchestrator/check_listing.py`). Key = (CardCode, NumAtCard, DocTotal); blank NumAtCard excluded. **INERT on SBODEMOSG** — NumAtCard 0% populated (client AP data-quality precondition). Plumbing-demonstrated; positive-detection not validated on live SAP; no PDF report section yet. |
 | 3D.1.1.f Purchase reductions via CN/DN | D+ | CN subtraction handled; matching needs document state |
 | 3D.1.1.h GST on disallowed (BL) expense (→ E2) | D | BL + GST is deterministically detectable |
 | 3D.1.1.h Expense category disallowable under Reg 26/27 | J+ | Classifying an SI expense as disallowable from its description is judgment; AgentAssist can surface keyword candidates |
@@ -255,6 +255,7 @@ Documents 1–3 describe **validated, deterministic** coverage — what the Pyth
 
 - **Validated only on SBODEMOSG.** Coverage symbols describe designed/validated behaviour on clean demo data. Production data may include custom VatGroup codes (silently excluded today), partial-exemption scenarios, manual journals, and scheme-specific imports — none yet tested.
 - **"Declared vs computed" gap (partially addressed by T2.9).** Several Step 1 checks are marked ◐ because AgentAssist computes box figures from SAP transactions but did not previously ingest the *filed* F5 return. T2.9 adds declared-vs-computed Check B via `--declared-f5` flag — **BUILT, UNVALIDATED** (rounding/tolerance convention unverified vs IRAS source: $1.00 tolerance is a materiality floor per ASK Guide s10.1(d)(iii) fn33, not a confirmed IRAS convention; flag-gated, off by default; findings not gates). Coverage cells stay ◐ pending T2.9-V validation (deterministic scenario test + rounding-convention confirmation).
+- **Sequence-gap and duplicate-claim checks (T2.10, merged to master 2026-06-10).** 3A.1.c, 3B.1.b, 3C-1.b (SEQ_GAP) and 3D.1.1.d (DUP_CLAIM) are now implemented in `orchestrator/check_listing.py` (commit `4f52b20`, merge `9434f00`). Coverage matrix updated. **PLUMBING-DEMONSTRATED, NOT positive-detection-validated on live SAP.** Smoke run confirms SEQ_GAP=0 and DUP_CLAIM=0 on SBODEMOSG Q3 2024 (correct values, not a validation of positive detection). DUP_CLAIM is inert on any company where AP operators do not populate `NumAtCard`. Neither check renders findings in the signed PDF report yet. Positive-detection validation is tracked as T2.10-V in the roadmap.
 - **Citation scheme.** References use the ASK Annual Review Guide's step/paragraph numbering and Appendix 1 wording as loaded in Project Knowledge. Confirm the guide edition on its cover (expected: Sixteenth Edition, 30 Jan 2026) and re-verify paragraph numbers if a later edition is substituted.
 - **Pre-Filing Checklist not used.** Per the agreed approach, Document 3 maps to the Annual Review Steps 3A–3E (post-submission substantive testing), which matches AgentAssist's workflow, rather than the separate Section 2 Pre-Filing Checklists.
 - **Not legal advice.** This is an engineering coverage analysis, not a determination of ASK compliance. Final ASK certification rests with an SCTP-accredited ATA (GST) / ATP (GST).
