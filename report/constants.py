@@ -196,9 +196,15 @@ NOT_EXAMINED_ITEMS: list[str] = [
     "reconciliation of SAP-computed box figures against submitted declared values "
     "requires the filed return as a second input — ASK Steps 1.3b / 1.3c)",
 
-    "Duplicate input-tax claims, time-of-supply compliance, and invoice-sequence "
-    "gap detection (cross-transaction deduplication and payment-date ingestion "
-    "not implemented)",
+    "Invoice sequence gap detection (running-sequence continuity not verified against "
+    "company-wide DocNum history — ASK Annual Review Guide §10.1(c)(i))",
+
+    "Duplicate input-tax claims (cross-vendor deduplication using supplier invoice "
+    "reference not performed; requires NumAtCard population in SAP B1 — "
+    "ASK Annual Review Guide §10.1(d)(i))",
+
+    "Time-of-supply compliance (transaction payment-date ingestion not implemented; "
+    "time-of-supply verification not performed)",
 
     "Reverse charge on imported services and Overseas Vendor Registration (OVR) "
     "output tax (Boxes 14–17 and reverse-charge accounting not implemented)",

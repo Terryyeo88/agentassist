@@ -48,6 +48,7 @@ from report.sections import (
     F5BoxSection,
     FindingsSection,
     JudgmentSection,
+    ListingFindingsSection,
     NotExaminedSection,
     ScopeSection,
     SignatureSection,
@@ -63,6 +64,7 @@ from report.sections import (
     build_scope_section,
     build_signature_section,
     build_unified_candidates_section,
+    render_listing_findings_section,
 )
 
 
@@ -117,6 +119,9 @@ class ReportModel:
     # supplied; renderer is a no-op in that case.  Kept as an optional field so
     # existing callers (tests, seal round-trips) remain unaffected.
     declared_f5: DeclaredF5Section | None = None
+    # T2.10: listing-level findings (SEQ_GAP + DUP_CLAIM).  None only in legacy
+    # callers that predate T2.10 — renderer skips the section when None.
+    listing_findings: ListingFindingsSection | None = None
 
 
 def build_report(
@@ -175,6 +180,9 @@ def build_report(
     # T2.9: extract declared_f5_findings so both build_not_examined_section
     # (suppression) and build_declared_f5_section (section data) see the same list.
     df5_findings: list[dict] = list(compile_output.get("declared_f5_findings") or [])
+    # T2.10: build listing findings section once so the same object can be
+    # passed to both ReportModel and build_not_examined_section for suppression.
+    listing_sec = render_listing_findings_section(compile_output)
 
     return ReportModel(
         cover=build_cover_section(
@@ -186,7 +194,9 @@ def build_report(
         cross_findings=build_cross_finding_section(enriched),
         judgment=build_judgment_section(compile_output, enriched),
         not_examined=build_not_examined_section(
-            compile_output, client_config, declared_f5_findings=df5_findings
+            compile_output, client_config,
+            declared_f5_findings=df5_findings,
+            listing_section=listing_sec,
         ),
         signature=build_signature_section(client_config),
         generated_at=generated_at,
@@ -203,4 +213,6 @@ def build_report(
         ),
         # T2.9: declared-vs-computed section; no-op when df5_findings is empty.
         declared_f5=build_declared_f5_section(compile_output),
+        # T2.10: listing findings section (SEQ_GAP + DUP_CLAIM).
+        listing_findings=listing_sec,
     )
