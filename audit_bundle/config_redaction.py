@@ -39,6 +39,8 @@ _ALLOW_LIST: frozenset[str] = frozenset({
     "completeness_threshold",
     "reviewer_name",
     "firm_name",
+    "source_system",
+    "tax_code_mappings",
 })
 
 # Fields that must never enter the bundle even if inadvertently added to the allow-list.
