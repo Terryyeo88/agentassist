@@ -44,6 +44,7 @@ from report.sections import (
     AICandidatesSection,
     CoverSection,
     CrossFindingSection,
+    DeclaredF5Section,
     F5BoxSection,
     FindingsSection,
     JudgmentSection,
@@ -54,6 +55,7 @@ from report.sections import (
     build_ai_candidates_section,
     build_cover_section,
     build_cross_finding_section,
+    build_declared_f5_section,
     build_f5_box_section,
     build_findings_section,
     build_judgment_section,
@@ -111,6 +113,10 @@ class ReportModel:
     # None only in legacy callers that predate Prompt 4 — renderer falls back to
     # _ai_candidates_subsection when this is None.
     unified_candidates: UnifiedCandidatesSection | None = None
+    # T2.9: declared-vs-computed F5 section.  None when --declared-f5 was not
+    # supplied; renderer is a no-op in that case.  Kept as an optional field so
+    # existing callers (tests, seal round-trips) remain unaffected.
+    declared_f5: DeclaredF5Section | None = None
 
 
 def build_report(
@@ -166,6 +172,10 @@ def build_report(
     # Same getattr forward-compat pattern as actively_makes_exempt_supplies above
     show_ai: bool = getattr(client_config, "show_ai_candidates", False)
 
+    # T2.9: extract declared_f5_findings so both build_not_examined_section
+    # (suppression) and build_declared_f5_section (section data) see the same list.
+    df5_findings: list[dict] = list(compile_output.get("declared_f5_findings") or [])
+
     return ReportModel(
         cover=build_cover_section(
             compile_output, client_config, generated_at=generated_at
@@ -175,7 +185,9 @@ def build_report(
         findings=build_findings_section(enriched),
         cross_findings=build_cross_finding_section(enriched),
         judgment=build_judgment_section(compile_output, enriched),
-        not_examined=build_not_examined_section(compile_output, client_config),
+        not_examined=build_not_examined_section(
+            compile_output, client_config, declared_f5_findings=df5_findings
+        ),
         signature=build_signature_section(client_config),
         generated_at=generated_at,
         period_start=period["start"],
@@ -189,4 +201,6 @@ def build_report(
         unified_candidates=build_unified_candidates_section(
             judgment_artefact, document_candidates, show=show_ai
         ),
+        # T2.9: declared-vs-computed section; no-op when df5_findings is empty.
+        declared_f5=build_declared_f5_section(compile_output),
     )
