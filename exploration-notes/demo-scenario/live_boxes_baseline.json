@@ -1,0 +1,10 @@
+{
+  "box_1_standard_rated_sales": 369589.97,
+  "box_2_zero_rated_sales": 10000.0,
+  "box_3_exempt_sales": 6000.0,
+  "box_4_total_sales": 385589.97,
+  "box_5_taxable_purchases": 191077.76,
+  "box_6_output_tax": 25871.32,
+  "box_7_input_tax": 13207.45,
+  "box_8_net_gst": 12663.87
+}
