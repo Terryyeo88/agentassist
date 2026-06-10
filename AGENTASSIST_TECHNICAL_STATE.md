@@ -87,7 +87,7 @@ signed PDF deliverable; `python run_agent.py --client <id> --period <start> <end
 it end-to-end (no `--report` flag; the PDF is always generated as part of the always-seal
 behaviour introduced in T1.5). Audit trail is resolved (T1.5, 2026-06-02): every successful
 run produces a sealed, tamper-evident bundle under `audit/<client_id>/`.
-Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.9-V (on master, 2026-06-10) validated the declared-vs-computed mechanism end-to-end on SBODEMOSG Q3 2024: three isolated fixtures (Check A isolation, Check B isolation, control), 22 assertions, box-isolation held, report section renders (Check A/B findings in PDF/text when `--declared-f5` supplied with divergences; Section 6 "Not Examined" retains the placeholder when absent — correct behaviour). **$1.00 tolerance remains a materiality floor, NOT a confirmed IRAS F5 rounding convention — rounding-convention confirmation is a pending cousin task; a surfaced divergence is a candidate, not a confirmed discrepancy.** T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. T2.10-V (on master, 2026-06-10) validated the listing-checks detection path end-to-end via crafted-input full-chain: SEQ_GAP (DocNum 8002 truly-absent FLAGGED; 8003 within-range-but-present-company-wide NOT flagged — the period-boundary discriminating case; 8001/8004 not gaps), DUP_CLAIM (dup pair 7001/7002 flagged; near-miss 7003 different NumAtCard not flagged), both Not-Examined lines suppressed independently when findings present, box-isolation held. Live read-only FP check on SBODEMOSG Q3 2024 (1005 sales / 624 purchase headers company-wide): zero SEQ_GAP, zero DUP_CLAIM. **SBODEMOSG is a demo/synthetic DB — NOT real-client validation.** `validation_status` and `show_ai_candidates` unchanged. Current test state: 1156 passed, 1 skipped.
+Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.9-V (on master, 2026-06-10) validated the declared-vs-computed mechanism end-to-end on SBODEMOSG Q3 2024: three isolated fixtures (Check A isolation, Check B isolation, control), 22 assertions, box-isolation held, report section renders (Check A/B findings in PDF/text when `--declared-f5` supplied with divergences; Section 6 "Not Examined" retains the placeholder when absent — correct behaviour). **$1.00 tolerance remains a materiality floor, NOT a confirmed IRAS F5 rounding convention — rounding-convention confirmation is a pending cousin task; a surfaced divergence is a candidate, not a confirmed discrepancy.** T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. T2.10-V (on master, 2026-06-10) validated the listing-checks detection path end-to-end via crafted-input full-chain: SEQ_GAP (DocNum 8002 truly-absent FLAGGED; 8003 within-range-but-present-company-wide NOT flagged — the period-boundary discriminating case; 8001/8004 not gaps), DUP_CLAIM (dup pair 7001/7002 flagged; near-miss 7003 different NumAtCard not flagged), both Not-Examined lines suppressed independently when findings present, box-isolation held. Live read-only FP check on SBODEMOSG Q3 2024 (1005 sales / 624 purchase headers company-wide): zero SEQ_GAP, zero DUP_CLAIM. **SBODEMOSG is a demo/synthetic DB — NOT real-client validation.** `validation_status` and `show_ai_candidates` unchanged. CI/test-infra self-provisioning (commit 40112ca, 2026-06-10): session-scoped autouse conftest fixture auto-generates gitignored PDF fixtures via `generate_invoices.py` (loaded by file path); `pdfplumber` added to `requirements.txt`; suite verified green on clean checkouts (no API key needed); diagnosis archived at `exploration-notes/infra/ci-fixture-diagnosis-20260610.md`. Report section header renamed to "Invoice Listing Completeness Checks" (commit 958ed3d — internal task ID removed from client-facing PDF; no functional change). Synthetic demo scenario committed at `exploration-notes/demo-scenario/` (commit 8b60d87): crafted SEQ_GAP/DUP_CLAIM/declared-F5 injections over a live SBODEMOSG Q3 2024 run, 10 self-verification assertions, disclosure README. **SYNTHETIC showcase — NOT real-client validation.** Check A float-robustness (commit 40c9024): declared-F5 internal-consistency comparisons (Box 4 == Box 1+Box 2+Box 3; Box 8 == Box 6−Box 7) now use cent-quantized `Decimal` comparison (`ROUND_HALF_UP`) instead of exact float equality — eliminates IEEE-754 sub-cent false positives; off-by-one-cent still flags; Check B and its $1.00 tolerance unchanged; 5 new `[A-FP]` tests. Report styling normalized (commit ae76578, merged via PR #4 as `d9c670c`): shared style palette in `report/render.py` — redundant `_META` removed, AI heading rhythm normalized, duplicated AI `TableStyle` blocks replaced by `_ai_table_style()` helper; content invariant (byte-identical text extraction); client-visible change: minor spacing only. Current test state: **1161 passed, 1 skipped**.
 
 **The three to five most important gaps before commercial deployment**
 
@@ -379,6 +379,14 @@ sap-b1-ai-agent/
 │   │   └── Reg26-27_GST_Review_Worksheet.xlsx ← Full human review worksheet (binary; at repo root)
 │   ├── t2.13/                             ← T2.13 (on master)
 │   │   └── labelling-protocol.md          ← Labelling protocol for independent specialist review (300 lines)
+│   ├── infra/                             ← Infrastructure notes
+│   │   └── ci-fixture-diagnosis-20260610.md ← CI self-provisioning fix diagnosis (2026-06-10)
+│   ├── demo-scenario/                     ← SYNTHETIC demo scenario (2026-06-10); NOT real-client validation
+│   │   ├── README.md                      ← Disclosure README: real vs crafted; SYNTHETIC showcase
+│   │   ├── SESSION-REPORT.md              ← Demo run report
+│   │   ├── declared-f5-demo.json          ← Crafted declared-F5 input
+│   │   ├── live_boxes_baseline.json       ← Live SBODEMOSG Q3 2024 baseline boxes
+│   │   └── run_demo.py                    ← Demo runner (monkey-patches listing data onto live run; 10 self-verification assertions)
 │   └── doc-audit/                         ← Documentation staleness audit (2026-06-09)
 │       └── DOC-STALENESS-REPORT.md        ← Post T2.9+T2.13 staleness inventory; provenance record for this doc update
 ├── keys/
@@ -839,7 +847,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V merges): **1156 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V sections for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette merges): **1161 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V sections and D7 footer entry for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -1191,6 +1199,21 @@ Three isolated `declared-f5.json` fixtures were run against the live chain:
 
 **17 new hermetic tests** in `tests/test_declared_f5_section.py` (`TestWithFindings` 10 tests, `TestWithoutFindings` 7 tests); no SAP calls, no live chain, no PDF rendering. Master total after T2.9-V merge: **1104 passed, 1 skipped** (+17 over 1087).
 
+### Check A float-robustness (commit 40c9024, 2026-06-10)
+
+The original Check A equality comparisons (Box 4 == Box 1+Box 2+Box 3; Box 8 == Box 6−Box 7) used exact Python float equality. IEEE-754 artefacts — e.g. `0.1+0.2 == 0.30000000000000004` in float, or large-magnitude sums differing by ~1e-10 — could produce false positives when values were to-the-cent consistent but not bit-identical.
+
+**Fix:** `_quantize_cent()` converts each operand via `str()` then `Decimal.quantize(Decimal('0.01'), ROUND_HALF_UP)` before comparison. Two values are now equal iff they agree at the cent. An off-by-one-cent difference still flags. **Check B and its $1.00 per-box tolerance are completely untouched.**
+
+**5 new `[A-FP]` tests** added to `tests/test_check_declared_f5.py`:
+- 3 float-artefact reproduction tests (values that triggered a false positive before the fix)
+- 1 exact-match guard (genuinely equal values still pass)
+- 1 off-by-one-cent must-flag (cent-rounding does not swallow a real discrepancy)
+
+**Important framing (mandatory):** Cent-quantization corrects our arithmetic when comparing declared values with themselves (the Box 4 / Box 8 internal-consistency identities). It does **NOT** resolve whether IRAS F5 boxes are filed whole-dollar or to the cent — that question governs Check B's tolerance, is the pending cousin task, and remains open. Coverage cells stay ◐.
+
+Suite total after 40c9024: **1161 passed, 1 skipped**.
+
 ---
 
 ## T2.13 — Reg 26/27 validation dataset construction (on master; dataset BUILT, BLANK-LABELLED; NOT validated)
@@ -1332,9 +1355,25 @@ Additional assertions verified: PDF renders without error; `listing_findings` ke
 
 **Live read-only FP check** (SBODEMOSG Q3 2024, 2026-06-10): `fetch_listing_data` fetched 50 period sales headers, 34 period purchase headers, 1005 company-wide sales headers, 624 company-wide purchase headers via `page_size=20` pagination. Result: SEQ_GAP=0, DUP_CLAIM=0 — zero false positives. Gates 1–5 all passed (Gate 1 WARN_PASS: SAP `$inlinecount` unavailable — normal).
 
-**Report section (T2.10-V added):** `ListingFindingsSection` dataclass + `render_listing_findings_section` in `report/sections.py`; `_listing_findings` renderer in `report/render.py` (between `_findings` and `_cross_findings`); `listing_findings` field in `ReportModel`. Both T2.9 (`declared_f5`) and T2.10 (`listing_findings`) sections coexist in one PDF — verified post-rebase with crafted compile-output carrying both. Not-Examined suppression extended to carry both `declared_f5_findings` and `listing_section` kwargs independently.
+**Report section (T2.10-V added):** `ListingFindingsSection` dataclass + `render_listing_findings_section` in `report/sections.py`; `_listing_findings` renderer in `report/render.py` (between `_findings` and `_cross_findings`); `listing_findings` field in `ReportModel`. Both T2.9 (`declared_f5`) and T2.10 (`listing_findings`) sections coexist in one PDF — verified post-rebase with crafted compile-output carrying both. Not-Examined suppression extended to carry both `declared_f5_findings` and `listing_section` kwargs independently. **PDF section heading renamed to "Invoice Listing Completeness Checks"** (commit 958ed3d — original heading "Listing-Level Checks - T2.10" exposed an internal task ID in the client-facing PDF; no functional change).
 
 **52 new tests** (31 hermetic + 21 crafted-chain). Master total after T2.10-V merge: **1156 passed, 1 skipped**.
+
+---
+
+## Report styling normalization (commit ae76578, merged to master 2026-06-10, PR #4 `d9c670c`)
+
+Shared style palette in `report/render.py`:
+
+| Change | Detail |
+|---|---|
+| `_META` removed | Redundant module-level dict; constants inlined at point of use |
+| AI heading rhythm normalized | Consistent font/size/spacing for AI-section headings across the report |
+| `_ai_table_style()` helper | Single function replaces duplicated `TableStyle(...)` blocks for all AI-candidate tables |
+
+**Content invariant confirmed:** pdfplumber text extraction before and after the change is byte-identical — the styling normalization does not alter any report content, findings, box values, or section text. Client-visible effect is limited to minor spacing adjustments.
+
+No functional change to any check, gate, box, or test semantics. The full 1161-test suite passes with the styled render.
 
 ---
 
@@ -2477,4 +2516,4 @@ empty, T2.11 remains binding constraint, validation_status unchanged, show_ai_ca
 False, 92 new tests in `test_t2_13_fixture_schema.py`, `export_specialist_copy.py` strip
 guard; T2.9 + T2.13 sections added; repo tree updated; Appendix C #21 partial resolution
 noted; #24 updated to on-master; T2.7/T2.8 BRANCH ONLY → on master throughout; pre-merge
-gate definition corrected to import-only regex (see `docs/merge-gates.md`); 1026 tests).*
+gate definition corrected to import-only regex (see `docs/merge-gates.md`); 1026 tests). Updated 2026-06-10 (D6 doc-sync for T2.10-V — T2.10 validation subsection, crafted-chain test, live FP check, section renders, test count 1104 → 1156; see D6 roadmap entry). Updated 2026-06-10 (D7: CI self-provisioning — conftest auto-generates gitignored PDF fixtures via `generate_invoices.py`, `pdfplumber` added to `requirements.txt`, suite green on clean checkouts, diagnosis at `exploration-notes/infra/ci-fixture-diagnosis-20260610.md`; report section heading renamed to "Invoice Listing Completeness Checks" (internal task ID removed, commit 958ed3d); synthetic demo scenario at `exploration-notes/demo-scenario/` (SYNTHETIC — NOT real-client validation, commit 8b60d87, 10 self-verification assertions, disclosure README); Check A float-robustness — cent-quantized `Decimal` comparison eliminates IEEE-754 sub-cent false positives, off-by-one-cent still flags, Check B/$1.00 tolerance unchanged, 5 new `[A-FP]` tests (commit 40c9024); report styling normalized — shared `_ai_table_style()` helper, redundant `_META` removed, content invariant (commit ae76578, merged PR #4); test count 1156 → 1161; repo tree updated with `infra/` and `demo-scenario/`; T1.5 master total updated; Check A float-robustness subsection added to T2.9; report styling section added).*
