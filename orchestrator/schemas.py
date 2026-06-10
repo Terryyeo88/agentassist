@@ -395,6 +395,7 @@ class CompileOutput(TypedDict):
     e1_reconciliation: E1Reconciliation
     surfaced_warnings: list[str]           # Gate-level warnings preserved for report
     declared_f5_findings: list[dict]       # T2.9: declared-vs-computed findings ([] if none)
+    listing_findings: list[dict]           # T2.10: SEQ_GAP + DUP_CLAIM findings ([] if none)
 
 
 class ReportInput(TypedDict):

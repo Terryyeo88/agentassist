@@ -349,7 +349,10 @@ F5_BOX_MAPPING = {
 
 # NR added: non-GST-registered purchase with TaxTotal > 0 is a genuine E2 error
 # (non-taxable supply carrying GST — input tax cannot be claimed per IRAS para 5.11(o)).
-_E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR"}
+# ZP added (T2.10): zero-rated purchase with TaxTotal > 0 is an E2 error per
+# IRAS ASK Annual Review Guide §10.1(d)(iv) — tax coded as zero-rated but reflects GST.
+# DocNum 610 (LineTotal=1200, TaxTotal=84 at 7%) is the known live fixture for this case.
+_E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR", "ZP"}
 # Only SO and DS are standard-rated on the sales side; DS is a domestic service variant.
 _STANDARD_RATE_SALES = {"SO", "DS"}
 

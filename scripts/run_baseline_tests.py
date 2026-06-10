@@ -85,7 +85,10 @@ STANDARD_RATE_CODES = {"SO", "SI"}
 # NR with TaxTotal > 0 is a genuine E2: non-taxable purchase carrying GST.
 # DocNum 611 (VatGroup NR, LineTotal 500.00, TaxTotal 45.00 at 9% rate) is a
 # confirmed E2 fixture. Detection is expected and correct — see test_data_registry.json.
-E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR"}
+# ZP added (T2.10): zero-rated purchase with TaxTotal > 0 is an E2 error per
+# IRAS ASK Annual Review Guide §10.1(d)(iv). DocNum 610 (LineTotal=1200, TaxTotal=84)
+# is the known live fixture for this case.
+E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR", "ZP"}
 
 _SEVERITY = {
     "E1": "HIGH", "E2": "MEDIUM", "E3": "HIGH", "E4": "MEDIUM",

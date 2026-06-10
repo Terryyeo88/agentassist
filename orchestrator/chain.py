@@ -55,6 +55,7 @@ from config.loader import ClientConfig  # noqa: E402
 
 from .exceptions import GateFailure  # noqa: E402
 from .check_declared_f5 import run_declared_f5_checks  # noqa: E402
+from .check_listing import detect_seq_gaps, detect_dup_claims  # noqa: E402
 from .gates import (  # noqa: E402
     gate_1_record_count,
     gate_2_box_reconciliation,
@@ -69,6 +70,7 @@ from .steps import (  # noqa: E402
     compile,  # noqa: A004 — shadows builtin; this file does not use builtin compile
     detect,
     fetch,
+    fetch_listing_data,
 )
 
 log = logging.getLogger(__name__)
@@ -235,6 +237,32 @@ def run_chain(
     if declared_f5 is not None:
         result["declared_f5_findings"] = run_declared_f5_checks(
             declared_f5, result["calculate"]["boxes"]
+        )
+
+    # T2.10: SEQ_GAP and DUP_CLAIM listing checks — findings, never gates.
+    # BOX-ISOLATION INVARIANT: the F5 boxes and gate results must be byte-identical
+    # with or without the listing checks.  Snapshot the box values before and assert
+    # equality after to catch any accidental mutation.
+    _boxes_before = dict(result["calculate"]["boxes"])
+    try:
+        listing_data = fetch_listing_data(client_config, period)
+        seq_gap = detect_seq_gaps(
+            listing_data["period_sales_headers"],
+            listing_data["all_sales_headers"],
+        )
+        dup_claim = detect_dup_claims(listing_data["period_purch_headers"])
+        result["listing_findings"] = seq_gap + dup_claim
+        log.info(
+            f"listing checks: SEQ_GAP={len(seq_gap)} DUP_CLAIM={len(dup_claim)} findings"
+        )
+    except Exception as exc:
+        log.warning(f"listing checks failed (non-fatal, findings suppressed): {exc}")
+        result["listing_findings"] = []
+
+    # BOX-ISOLATION assertion: boxes must not have been touched.
+    if result["calculate"]["boxes"] != _boxes_before:
+        raise RuntimeError(
+            "BOX-ISOLATION VIOLATION: listing checks corrupted F5 box values"
         )
 
     return result, build_gate_results(_records)
