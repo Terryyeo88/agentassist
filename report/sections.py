@@ -316,6 +316,25 @@ class UnifiedCandidatesSection:
 
 
 @dataclass
+class DeclaredF5Section:
+    """Data for the optional Declared-vs-Computed F5 section.
+
+    findings is empty when the chain ran without --declared-f5; in that case
+    the renderer is a no-op and Section 6 retains its "not examined" placeholder.
+    When findings are present the renderer shows the Check A / Check B findings
+    and Section 6 suppresses the placeholder line.
+
+    Attributes:
+        findings: Raw finding dicts from compile_output["declared_f5_findings"].
+                  Each dict carries at minimum "check" ("A" or "B"), "box",
+                  "delta", and "finding_type".  Check A dicts also carry "rule"
+                  and "description"; Check B primary dicts carry "declared",
+                  "computed", "direction", and "hypothesis".
+    """
+    findings: list[dict]
+
+
+@dataclass
 class SignatureSection:
     """Data for the declaration and sign-off page.
 
@@ -610,9 +629,34 @@ def build_judgment_section(
     return JudgmentSection(groups=groups)
 
 
+def build_declared_f5_section(compile_output: dict[str, Any]) -> DeclaredF5Section:
+    """Build the DeclaredF5Section from chain compile output.
+
+    Reads declared_f5_findings from compile_output, defaulting to an empty list
+    when the key is absent (older chain runs or runs without --declared-f5).
+
+    Args:
+        compile_output: CompileOutput dict; reads 'declared_f5_findings' if
+                        present (absent when --declared-f5 was not supplied).
+
+    Returns:
+        DeclaredF5Section: Populated with findings (may be empty).
+    """
+    findings = list(compile_output.get("declared_f5_findings") or [])
+    return DeclaredF5Section(findings=findings)
+
+
+# Prefix of the NOT_EXAMINED_ITEMS entry that is suppressed when
+# declared-vs-computed checks ran.  Matched via startswith() so that
+# minor wording edits in constants.py do not silently break suppression.
+_DECL_F5_NOT_EXAMINED_PREFIX: str = "Declared-vs-computed F5 comparison"
+
+
 def build_not_examined_section(
     compile_output: dict[str, Any],
     client_config: Any,
+    *,
+    declared_f5_findings: list[dict] | None = None,
 ) -> NotExaminedSection:
     """Build Section 6 — coverage boundary from constants plus run-specific additions.
 
@@ -621,17 +665,33 @@ def build_not_examined_section(
       * Deduplicated anomalies from the chain run (unknown VatGroup codes).
       * A note about client-specific VatGroup codes if any are configured.
 
+    When declared_f5_findings is non-empty the "Declared-vs-computed F5
+    comparison" placeholder is suppressed — the checks ran, so the item is no
+    longer out of scope.  The match uses startswith(_DECL_F5_NOT_EXAMINED_PREFIX)
+    so minor wording edits in constants.py do not silently reintroduce the item.
+
     Args:
-        compile_output: CompileOutput dict; reads 'deduplicated_anomalies' if
-                        present (absent in older chain runs; defaults to []).
-        client_config:  ClientConfig; reads 'custom_vat_groups' via getattr.
+        compile_output:       CompileOutput dict; reads 'deduplicated_anomalies'
+                              if present (absent in older chain runs; defaults []).
+        client_config:        ClientConfig; reads 'custom_vat_groups' via getattr.
+        declared_f5_findings: Optional list of findings from run_declared_f5_checks.
+                              Keyword-only to prevent accidental positional errors.
+                              When non-empty the "Declared-vs-computed" item is
+                              removed from Section 6.  Defaults to None (no
+                              suppression — backward-compatible with callers that
+                              do not supply the argument).
 
     Returns:
         NotExaminedSection: Items list in display order (standard items first,
             run-specific additions appended).
     """
-    # Copy to avoid mutating the module-level constant across calls
-    items: list[str] = list(NOT_EXAMINED_ITEMS)
+    suppress_decl_f5: bool = bool(declared_f5_findings)
+
+    items: list[str] = []
+    for item in NOT_EXAMINED_ITEMS:
+        if suppress_decl_f5 and item.startswith(_DECL_F5_NOT_EXAMINED_PREFIX):
+            continue
+        items.append(item)
 
     # Surface any deduplicated anomalies (unknown VatGroups).
     # .get() with default guards against older chain runs that lack this key.
