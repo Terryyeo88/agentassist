@@ -340,6 +340,45 @@ def _make_numbered_canvas(client_name: str):
 
     return _NumberedCanvas
 
+# ── Declared-vs-computed F5 text renderer (public) ───────────────────────────
+
+def render_declared_f5_section(section) -> str:
+    """Render declared_f5_findings to a plain-text summary for validation and logging.
+
+    Accepts any object with a .findings attribute (duck-typed so tests can pass a
+    DeclaredF5Section directly without an explicit import dependency here).
+
+    Returns an empty string when section.findings is empty, so callers can test
+    for truthiness before printing.
+
+    Args:
+        section: DeclaredF5Section (or duck-typed equivalent); must expose
+                 .findings as a list of finding dicts.
+
+    Returns:
+        str: Multi-line text table of all findings; empty string if no findings.
+    """
+    findings = getattr(section, "findings", None) or []
+    if not findings:
+        return ""
+
+    lines: list[str] = [
+        "Declared-vs-Computed F5 Comparison",
+        "=" * 50,
+    ]
+    for f in findings:
+        check = f.get("check", "?")
+        ftype = f.get("finding_type", "?")
+        box = f.get("box", "?")
+        delta = f.get("delta")
+        delta_str = f"{delta:+.6g}" if isinstance(delta, (int, float)) else str(delta)
+        lines.append(f"  [{check}] {ftype}  box={box}  delta={delta_str}")
+        desc = f.get("description") or f.get("note") or f.get("hypothesis", "")
+        if desc:
+            lines.append(f"       {desc}")
+    return "\n".join(lines)
+
+
 # ── Section renderers ─────────────────────────────────────────────────────────
 
 def _cover(m: ReportModel, story: list) -> None:
@@ -781,6 +820,95 @@ def _judgment(m: ReportModel, story: list) -> None:
     _unified_candidates_subsection(m, story)
 
 
+def _declared_f5(m: ReportModel, story: list) -> None:
+    """Append the Declared-vs-Computed F5 section when findings are present.
+
+    No-op when model.declared_f5 is None or has no findings, so the rest of
+    the report is byte-identical to a run without --declared-f5.
+
+    Check A findings (internal consistency violations) and Check B findings
+    (declared-vs-computed divergence) are rendered in separate sub-tables so
+    the reviewer can distinguish rule violations from materiality divergences.
+
+    Args:
+        m:     The ReportModel; declared_f5 may be None for legacy callers.
+        story: Mutable story list; flowables are appended in place.
+    """
+    df5 = getattr(m, "declared_f5", None)
+    if df5 is None or not df5.findings:
+        return
+
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph("Declared-vs-Computed F5 Comparison", _H2))
+    story.append(Paragraph(
+        "Divergences detected between the client's filed F5 figures and the "
+        "SAP-computed values.  These are observations for reviewer attention — "
+        "the audit chain seals normally regardless of findings.",
+        _SMLX,
+    ))
+    story.append(Spacer(1, 0.2 * cm))
+
+    check_a = [f for f in df5.findings if f.get("check") == "A"]
+    check_b = [f for f in df5.findings if f.get("check") == "B"]
+
+    if check_a:
+        story.append(Paragraph("Check A — Declared Internal Consistency", _H3))
+        story.append(Paragraph(
+            "The client's own filed figures violate an F5 accounting identity.",
+            _SMLX,
+        ))
+        a_cols = [4.0*cm, 2.0*cm, 10.0*cm, 1.0*cm]
+        a_hdr = [_p(h, _CELLB) for h in ["Rule", "Box", "Description", "Delta"]]
+        a_rows = [
+            [
+                _p(f.get("rule", ""), _CELL),
+                _p(f.get("box", ""), _CELL),
+                _p(f.get("description", ""), _CELL),
+                _p(
+                    f"{f['delta']:+.2f}" if isinstance(f.get("delta"), (int, float)) else "?",
+                    _CELL,
+                ),
+            ]
+            for f in check_a
+        ]
+        story.append(_table(a_cols, a_hdr, a_rows))
+        story.append(Spacer(1, 0.2 * cm))
+
+    if check_b:
+        story.append(Paragraph("Check B — Declared-vs-Computed Divergence", _H3))
+        story.append(Paragraph(
+            "Tolerance: SGD 1.00 per independent box "
+            "(IRAS ASK Annual Review Guide s10.1(d)(iii) fn33).  "
+            "Derived boxes (Box 4, Box 8) shown as consequence notes only.",
+            _SMLX,
+        ))
+        b_cols = [3.0*cm, 2.5*cm, 2.5*cm, 2.0*cm, 3.0*cm, 4.0*cm]
+        b_hdr = [_p(h, _CELLB) for h in
+                 ["Box", "Declared", "Computed", "Delta", "Direction", "Observation"]]
+        b_rows = [
+            [
+                _p(f.get("box", ""), _CELL),
+                _p(
+                    _sgd(f["declared"]) if isinstance(f.get("declared"), (int, float)) else "—",
+                    _CELL,
+                ),
+                _p(
+                    _sgd(f["computed"]) if isinstance(f.get("computed"), (int, float)) else "—",
+                    _CELL,
+                ),
+                _p(
+                    f"{f['delta']:+.2f}" if isinstance(f.get("delta"), (int, float)) else "?",
+                    _CELL,
+                ),
+                _p(f.get("direction", ""), _CELL),
+                # Primary findings have hypothesis; derived findings have note.
+                _p(f.get("hypothesis") or f.get("note", ""), _CELL),
+            ]
+            for f in check_b
+        ]
+        story.append(_table(b_cols, b_hdr, b_rows))
+
+
 def _not_examined(m: ReportModel, story: list) -> None:
     """Append Section 6 — Items not examined (coverage boundary).
 
@@ -889,6 +1017,7 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _cover(model, story)
     _scope(model, story)
     _f5_boxes(model, story)
+    _declared_f5(model, story)
     _findings(model, story)
     _cross_findings(model, story)
     _judgment(model, story)
