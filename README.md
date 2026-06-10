@@ -54,6 +54,10 @@ localisation) Q3 2024.
 | T1.6 | Deterministic six-step chain with five gates; `run_agent.py` CLI | COMPLETE 2026-06-01 |
 | T1.4 | Signed PDF report generator (`report/` package) | COMPLETE 2026-06-01 |
 | T1.5 | Sealed audit bundle (`audit_bundle/`); SHA-256 tamper-evident; verify CLI | COMPLETE 2026-06-02 |
+| T2.7 | Reg 26/27 reasoning pass (`reasoning/`); `show_ai_candidates` flag | DONE — on master; UNVALIDATED pending T2.11 |
+| T2.8 | Source-document cross-reference pass (`documents/`); `UnifiedCandidatesSection` | DONE — on master; UNVALIDATED; B1 byte-download UNVERIFIED |
+| T2.9 | Declared-vs-computed F5 checks (`check_declared_f5.py`); `--declared-f5` flag | DONE — on master; UNVALIDATED; tolerance floor, not confirmed IRAS convention |
+| T2.13 | Reg 26/27 validation dataset built + blank-labelled; specialist labels pending | DONE — on master; dataset BLANK-LABELLED; T2.11 is binding constraint |
 
 **Live validation figures (SBODEMOSG Q3 2024):**
 ```
@@ -62,20 +66,24 @@ box_8 (net GST): 17,045.87
 Issues (detect): 21
 ```
 
-**Test suite: 169 tests passing** (1 skipped: read-only advisory, Windows; no live SAP required).
+**Test suite: 1026 tests passing** (1 skipped: read-only advisory, Windows; no live SAP required).
 
 ```
-tests/test_gates.py              30 unit tests — all five gates
-tests/test_chain.py              11 acceptance tests — chain + gate-failure paths
-tests/test_routing.py            T1.4 — Document-2 template routing, E2-by-VatGroup
-tests/test_enrich.py             T1.4 — three-source join, (doc_num, error_code) aggregation
-tests/test_sections.py           T1.4 — eight sections, HitL language invariants
-tests/test_report_e2e.py         T1.4 — full e2e from CompileOutput fixture to PDF
-tests/test_audit_canonical.py    T1.5 — canonical_json, sha256_bytes/file
-tests/test_audit_redaction.py    T1.5 — allow-list credential exclusion
-tests/test_audit_seal_verify.py  T1.5 — seal/verify round-trip, tamper detection
-tests/test_gate_record.py        T1.5 — gate_results shaping; GateFailure.checked
-tests/test_run_agent_e2e.py      T1.5 — e2e seal from fixture; T7 determinism
+tests/test_gates.py                   30 unit tests — all five gates
+tests/test_chain.py                   11 acceptance tests — chain + gate-failure paths
+tests/test_routing.py                 T1.4 — Document-2 template routing, E2-by-VatGroup
+tests/test_enrich.py                  T1.4 — three-source join, (doc_num, error_code) aggregation
+tests/test_sections.py                T1.4 — eight sections, HitL language invariants
+tests/test_report_e2e.py              T1.4 — full e2e from CompileOutput fixture to PDF
+tests/test_audit_canonical.py         T1.5 — canonical_json, sha256_bytes/file
+tests/test_audit_redaction.py         T1.5 — allow-list credential exclusion
+tests/test_audit_seal_verify.py       T1.5 — seal/verify round-trip, tamper detection
+tests/test_gate_record.py             T1.5 — gate_results shaping; GateFailure.checked
+tests/test_run_agent_e2e.py           T1.5 — e2e seal from fixture; T7 determinism
+(7 T2.7 test files)                   T2.7 — reg2627 reasoning pass, measurement harness, specialist queue
+(4 T2.8 test files)                   T2.8 — document ingest, reconcile, unified report section
+tests/test_check_declared_f5.py       T2.9 — declared-vs-computed Check A/B, tolerance, isolation
+tests/test_t2_13_fixture_schema.py    T2.13 — fixture schema invariants, specialist-export strip guard
 ```
 
 **Validated on demo data only.** All results are against SBODEMOSG, an SAP-maintained demo
@@ -178,6 +186,7 @@ sap-b1-ai-agent/
 │   └── env.example               ← Env-var template
 ├── orchestrator/
 │   ├── chain.py                  ← run_chain() — six steps + five gates
+│   ├── check_declared_f5.py      ← T2.9: declared-vs-computed Check A/B; $1 tolerance floor; findings not gates
 │   ├── gates.py                  ← gate_1 … gate_5 — pure arithmetic, no LLM
 │   ├── steps.py                  ← fetch / calculate / classify / detect / compile
 │   └── schemas.py                ← TypedDicts for all inter-step shapes
@@ -207,8 +216,14 @@ sap-b1-ai-agent/
 │   └── verify.py                 ← verify_bundle; python -m audit_bundle.verify CLI
 ├── tests/
 │   ├── fixtures/
-│   │   └── chain-run-sample.json ← Static CompileOutput for e2e tests
-│   └── test_*.py                 ← 169 tests; no live SAP required
+│   │   ├── chain-run-sample.json          ← Static CompileOutput for e2e tests
+│   │   ├── reg2627-representative-v1.json ← T2.13: representative Reg 26/27 validation fixture (blank-labelled)
+│   │   ├── reg2627-adversarial-v1.json    ← T2.13: adversarial validation fixture (blank-labelled)
+│   │   ├── SCHEMA-reg2627-v1.md           ← T2.13: fixture schema documentation
+│   │   └── export_specialist_copy.py      ← T2.13: specialist-export script; strips resolution_hint
+│   ├── test_check_declared_f5.py          ← T2.9: 18 tests — Check A/B, tolerance, isolation
+│   ├── test_t2_13_fixture_schema.py       ← T2.13: 92 tests — schema invariants, strip guard
+│   └── test_*.py                          ← 1026 tests total; no live SAP required
 └── exploration-notes/
     ├── baseline-test-results.md  ← V0→V3 experimental log; all three tests
     └── t1.4-reports/             ← PDF reports (generated; gitignored)

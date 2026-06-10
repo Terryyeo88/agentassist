@@ -87,7 +87,7 @@ signed PDF deliverable; `python run_agent.py --client <id> --period <start> <end
 it end-to-end (no `--report` flag; the PDF is always generated as part of the always-seal
 behaviour introduced in T1.5). Audit trail is resolved (T1.5, 2026-06-02): every successful
 run produces a sealed, tamper-evident bundle under `audit/<client_id>/`.
-Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (branch `t2.7-reasoning-reg2627`) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (branch `t2.8-document-ingestion`) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. Current test state: 915 passed, 1 skipped.
+Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. Current test state: 1026 passed, 1 skipped.
 
 **The three to five most important gaps before commercial deployment**
 
@@ -365,24 +365,28 @@ sap-b1-ai-agent/
 │   ├── codebase-state-report.md           ← 2026-05-28 frozen audit snapshot (pre-T1.3/T1.6); historical only
 │   ├── t1.6-tool-outputs/                 ← chain-run-<ts>.json outputs (superseded; canonical sink is audit/)
 │   ├── t1.4-reports/                      ← Generated PDF reports (generated; gitignored)
-│   └── t2.7-measurement/                  ← T2.7 (branch t2.7-reasoning-reg2627 only)
-│       ├── gate-decision.md               ← Pre-committed gate thresholds (recall > 95%, FP rate < 20%)
-│       ├── known-limitations.md           ← 8-item limitations register; living document
-│       ├── fixture-review-worksheet.md    ← 110-row human review checklist; unsigned as of 2026-06-08
-│       ├── results-20260603.md            ← Provisional measurement output (UNVALIDATED)
-│       ├── specialist-queue-20260603.md   ← 12-line specialist adjudication queue
-│       ├── labelling-pass-20260603.md     ← Per-line Opus labelling summary with KB hash
-│       ├── labelling-pass-20260603.json   ← Full Opus labelling pass output (machine-generated)
-│       ├── measurement-20260602-*.json    ← Earlier measurement run outputs
-│       ├── measurement-20260603-*.json    ← 2026-06-03 three-model measurement run outputs
-│       ├── specialist-queue-20260603.xlsx ← Specialist adjudication worksheet (binary; unsigned)
-│       └── Reg26-27_GST_Review_Worksheet.xlsx ← Full human review worksheet (binary; at repo root)
+│   ├── t2.7-measurement/                  ← T2.7 (on master)
+│   │   ├── gate-decision.md               ← Pre-committed gate thresholds (recall > 95%, FP rate < 20%)
+│   │   ├── known-limitations.md           ← 8-item limitations register; living document; T2.13 substrate note added 2026-06-09
+│   │   ├── fixture-review-worksheet.md    ← 110-row human review checklist; unsigned as of 2026-06-08
+│   │   ├── results-20260603.md            ← Provisional measurement output (UNVALIDATED)
+│   │   ├── specialist-queue-20260603.md   ← 12-line specialist adjudication queue
+│   │   ├── labelling-pass-20260603.md     ← Per-line Opus labelling summary with KB hash
+│   │   ├── labelling-pass-20260603.json   ← Full Opus labelling pass output (machine-generated)
+│   │   ├── measurement-20260602-*.json    ← Earlier measurement run outputs
+│   │   ├── measurement-20260603-*.json    ← 2026-06-03 three-model measurement run outputs
+│   │   ├── specialist-queue-20260603.xlsx ← Specialist adjudication worksheet (binary; unsigned)
+│   │   └── Reg26-27_GST_Review_Worksheet.xlsx ← Full human review worksheet (binary; at repo root)
+│   ├── t2.13/                             ← T2.13 (on master)
+│   │   └── labelling-protocol.md          ← Labelling protocol for independent specialist review (300 lines)
+│   └── doc-audit/                         ← Documentation staleness audit (2026-06-09)
+│       └── DOC-STALENESS-REPORT.md        ← Post T2.9+T2.13 staleness inventory; provenance record for this doc update
 ├── keys/
 │   ├── sap_credentials.json               ← CRITICAL: plaintext credentials; untracked but unprotected
 │   └── sap-b1-poc-sg.pem                  ← SSH PEM key for SAP CAL instance; untracked
 ├── knowledge-base/
 │   ├── sg-tax-code-mappings.md            ← VatGroup → F5-box routing; appears production-ready
-│   └── slices/                            ← T2.7 (branch t2.7-reasoning-reg2627 only)
+│   └── slices/                            ← T2.7 (on master)
 │       ├── reg2627.md                     ← IRAS §6.1.6 KB slice injected into reg2627 reasoning prompt
 │       └── business-context.md            ← Generic-SME assumption statement for reasoning prompt
 ├── mcp-servers/
@@ -405,11 +409,12 @@ sap-b1-ai-agent/
 ├── orchestrator/                          ← T1.6: deterministic chain package
 │   ├── __init__.py
 │   ├── chain.py                           ← run_chain(client_config, period) → (CompileOutput, gate_results); report_input retired (P3)
+│   ├── check_declared_f5.py               ← T2.9: declared-vs-computed Check A/B; $1.00 tolerance floor (IRAS ASK Guide s10.1(d)(iii) fn33); findings not gates; pure Python, no anthropic import
 │   ├── exceptions.py                      ← GateFailure, ChainError
 │   ├── gates.py                           ← gate_1 … gate_5; pure arithmetic / set-membership; no LLM
 │   ├── schemas.py                         ← TypedDicts for all inter-step data shapes
 │   └── steps.py                           ← fetch, calculate, classify, detect, compile, report_input
-├── reasoning/                             ← T2.7 (branch t2.7-reasoning-reg2627 only)
+├── reasoning/                             ← T2.7 (on master)
 │   ├── __init__.py
 │   ├── reg2627.py                         ← run_reg2627_pass(); imports anthropic lazily; reads ANTHROPIC_API_KEY
 │   ├── sap_lines.py                       ← fetch_si_purchase_lines(); SAP line fetcher for T2.7
@@ -420,21 +425,22 @@ sap-b1-ai-agent/
 ├── Reg26-27_GST_Review_Worksheet.xlsx     ← T2.7 human review worksheet (binary; branch only)
 ├── report/                                ← T1.4: signed PDF report generator
 │   ├── __init__.py                        ← generate_report(compile_output, client_config) → Path
-│   ├── constants.py                       ← T2.7 (branch only): AICandidatesSection, DISCLAIMER_TEXT
+│   ├── constants.py                       ← T2.7 (on master): AICandidatesSection, DISCLAIMER_TEXT
 │   ├── contract.py                        ← Input type aliases; CompileOutput is the T1.4 input
 │   ├── enrich.py                          ← Three-source join keyed by (doc_num, error_code)
 │   ├── routing.py                         ← Document-2 IRAS template routing; E2-by-VatGroup; Template 4/5
 │   ├── sections.py                        ← Eight report sections; T2.7: build_ai_candidates_section; T2.8: replaced by build_unified_candidates_section → UnifiedCandidatesSection (reasoning + document candidates merged, per-row basis tag mandatory, gated by show_ai_candidates)
-│   └── render.py                          ← Section dicts → PDF; _ai_candidates_subsection added (T2.7 branch)
-├── documents/                             ← T2.8 (branch t2.8-document-ingestion only)
+│   └── render.py                          ← Section dicts → PDF; _ai_candidates_subsection added (T2.7, on master)
+├── documents/                             ← T2.8 (on master)
 │   ├── __init__.py
 │   ├── ingest.py                          ← ingest(pdf_path) → ExtractedInvoice; born-digital pdfplumber path + multimodal fallback (deferred anthropic import)
 │   ├── reconcile.py                       ← reconcile() → list[DocumentCandidate]; 4 checks; J+/D+ ceiling; validation_status="unvalidated"
 │   ├── doc_pass.py                        ← run_documents_pass(); iterates SI lines via provider; silently skips no-PDF lines
 │   └── provider.py                        ← DocumentProvider protocol; B1AttachmentProvider (metadata verified / byte-download UNVERIFIED); UploadProvider; CompositeProvider; FixtureDocumentProvider
 ├── run_agent.py                           ← CLI: --client <id> --period <start> <end>
-│                                          ← T2.7 branch: Phase 3 (Reg 26/27 reasoning pass)
-│                                          ← T2.8 branch: --show-ai-candidates flag; --upload-dir flag; Phase 3b (source-document cross-reference)
+│                                          ← T2.7 (on master): Phase 3 (Reg 26/27 reasoning pass)
+│                                          ← T2.8 (on master): --show-ai-candidates flag; --upload-dir flag; Phase 3b (source-document cross-reference)
+│                                          ← T2.9 (on master): --declared-f5 <path> flag; Phase 3c (declared-vs-computed checks; off by default)
 ├── scripts/
 │   ├── run_baseline_tests.py              ← Reference implementation; T1.1 updated: credit notes + NR E2; T2.8 header comment updated for post-seed figures
 │   ├── seed_test_data.py                  ← Creates synthetic test documents (7 invoices + 2 credit notes)
@@ -449,32 +455,38 @@ sap-b1-ai-agent/
 ├── tests/
 │   ├── fixtures/
 │   │   ├── chain-run-sample.json          ← Static CompileOutput fixture for T1.4 e2e test
-│   │   ├── reg2627-labelled-lines.DRAFT.json ← T2.7 (branch only): Opus-labelled DRAFT fixture; unvalidated
-│   │   ├── reg2627-labelled-lines.json    ← T2.7 (branch only): promoted fixture placeholder (currently
+│   │   ├── reg2627-labelled-lines.DRAFT.json ← T2.7 (on master): Opus-labelled DRAFT fixture; unvalidated
+│   │   ├── reg2627-labelled-lines.json    ← T2.7 (on master): promoted fixture placeholder (currently
 │   │   │                                     identical to DRAFT; not yet human-reviewed and signed off)
-│   │   └── documents/                     ← T2.8 (branch only): born-digital fixture PDFs for ingest/reconcile tests
+│   │   ├── reg2627-representative-v1.json ← T2.13 (on master): representative Reg 26/27 validation fixture (blank-labelled; expected_candidate fields empty)
+│   │   ├── reg2627-adversarial-v1.json    ← T2.13 (on master): adversarial validation fixture (blank-labelled)
+│   │   ├── SCHEMA-reg2627-v1.md           ← T2.13 (on master): fixture schema documentation
+│   │   ├── export_specialist_copy.py      ← T2.13 (on master): specialist-export script; strips resolution_hint (strip guard)
+│   │   └── documents/                     ← T2.8 (on master): born-digital fixture PDFs for ingest/reconcile tests
 │   ├── test_audit_canonical.py            ← T1.5: canonical_json, sha256_bytes/file
 │   ├── test_audit_redaction.py            ← T1.5: allow-list credential exclusion
-│   ├── test_audit_seal_verify.py          ← T1.5: seal/verify round-trip, tamper detection
-│   ├── test_build_specialist_queue.py     ← T2.7 (branch only): specialist queue generation
+│   ├── test_audit_seal_verify.py          ← T1.5 + T2.9: seal/verify round-trip, tamper detection; declared-f5 seal path
+│   ├── test_build_specialist_queue.py     ← T2.7 (on master): specialist queue generation
 │   ├── test_chain.py                      ← 11 hermetic acceptance tests (P3: updated for new return type)
+│   ├── test_check_declared_f5.py          ← T2.9 (on master): 18 tests — isolation invariant, Check A/B, tolerance boundary, load validation
 │   ├── test_enrich.py                     ← T1.4: three-source join, (doc_num, error_code) aggregation
-│   ├── test_fixture_draft_structure.py    ← T2.7 (branch only): DRAFT fixture schema validation
+│   ├── test_fixture_draft_structure.py    ← T2.7 (on master): DRAFT fixture schema validation
 │   ├── test_gate_record.py                ← T1.5: gate_results shaping; GateFailure.checked
 │   ├── test_gates.py                      ← 30 unit tests; all five gates; pure Python
-│   ├── test_label_fixture.py              ← T2.7 (branch only): Opus labelling pipeline tests
-│   ├── test_measurement.py                ← T2.7 (branch only): recall/FP harness unit tests
-│   ├── test_reasoning_reg2627.py          ← T2.7 (branch only): run_reg2627_pass integration tests
+│   ├── test_label_fixture.py              ← T2.7 (on master): Opus labelling pipeline tests
+│   ├── test_measurement.py                ← T2.7 (on master): recall/FP harness unit tests
+│   ├── test_reasoning_reg2627.py          ← T2.7 (on master): run_reg2627_pass integration tests
 │   ├── test_report_e2e.py                 ← T1.4: full end-to-end from CompileOutput fixture to PDF
-│   ├── test_report_judgment_section.py    ← T2.7 (branch only): build_ai_candidates_section tests
+│   ├── test_report_judgment_section.py    ← T2.7 (on master): build_ai_candidates_section tests
 │   ├── test_routing.py                    ← T1.4: Document-2 template routing, Template 4/5 switching
 │   ├── test_run_agent_e2e.py              ← T1.5: e2e seal from fixture; T7 determinism
-│   ├── test_sap_lines.py                  ← T2.7 (branch only): fetch_si_purchase_lines tests
+│   ├── test_sap_lines.py                  ← T2.7 (on master): fetch_si_purchase_lines tests
 │   ├── test_sections.py                   ← T1.4: eight sections, HitL language invariants
-│   ├── test_document_fixtures.py          ← T2.8 (branch only): fixture PDF generation, field structure
-│   ├── test_documents_ingest.py           ← T2.8 (branch only): born-digital extraction, field patterns, multimodal mock
-│   ├── test_documents_reconcile.py        ← T2.8 (branch only): all four reconciliation checks; tolerance boundary; empty candidates
-│   └── test_documents_unified_report.py   ← T2.8 (branch only): UnifiedCandidatesSection show=True/False; basis tags; isolation invariant
+│   ├── test_t2_13_fixture_schema.py       ← T2.13 (on master): 92 tests — fixture schema invariants, specialist-export strip guard, blank-label invariant
+│   ├── test_document_fixtures.py          ← T2.8 (on master): fixture PDF generation, field structure
+│   ├── test_documents_ingest.py           ← T2.8 (on master): born-digital extraction, field patterns, multimodal mock
+│   ├── test_documents_reconcile.py        ← T2.8 (on master): all four reconciliation checks; tolerance boundary; empty candidates
+│   └── test_documents_unified_report.py   ← T2.8 (on master): UnifiedCandidatesSection show=True/False; basis tags; isolation invariant
 └── system-prompts/
     ├── base.md                            ← Primary orchestration prompt; production-ready
     ├── test1-prefix.md                    ← Task prefix for F5 calculation; working
@@ -827,8 +839,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current total on branch `t2.7-reasoning-reg2627`: 603 collected, 602 passed, 1
-skipped — see T2.7 section for the additional test files.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.13 merges): **1026 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.13 sections for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -840,11 +851,11 @@ skipped — see T2.7 section for the additional test files.
 
 ---
 
-## T2.7 — Reg 26/27 reasoning pass (BRANCH ONLY — `t2.7-reasoning-reg2627`, unvalidated as of 2026-06-08)
+## T2.7 — Reg 26/27 reasoning pass (on master; unvalidated — pending T2.11)
 
 ### Status
 
-All T2.7 work lives on branch `t2.7-reasoning-reg2627`; it has not been merged to `master`.
+T2.7 is merged to `master` (2026-06-09, from branch `t2.7-reasoning-reg2627`).
 `show_ai_candidates` is wired in code but defaults to `False` in all client YAMLs and must
 remain `False` until the measurement gate is met on the promoted fixture.
 `validation_status` is `"unvalidated"` in the fixture files. No flag has been enabled by this
@@ -874,7 +885,7 @@ prevent the audit bundle from being written. Its output is sealed into the bundl
 
 **Architectural invariant**: `reasoning/` is the only package that imports `anthropic`.
 `orchestrator/`, `report/`, `config/`, `mcp-servers/`, and `run_agent.py` contain no
-`anthropic` import (confirmed by inspection of all files on the T2.7 branch, 2026-06-08).
+`anthropic` import (confirmed by import-only grep on master, 2026-06-09; see `docs/merge-gates.md` for the canonical gate definition).
 
 ### Integration into `run_agent.py` (T2.7 branch)
 
@@ -995,11 +1006,11 @@ All new tests are no-live-SAP, no-live-Anthropic-API (LLM calls mocked).
 
 ---
 
-## T2.8 — Source-document cross-reference pre-pass (BRANCH ONLY — `t2.8-document-ingestion`, unvalidated as of 2026-06-08)
+## T2.8 — Source-document cross-reference pre-pass (on master; unvalidated — B1 attachment byte-download UNVERIFIED; pending T2.11)
 
 ### Status
 
-All T2.8 work lives on branch `t2.8-document-ingestion` (created from the T2.7 merge). `show_ai_candidates` defaults to `False` in all client YAMLs and must remain `False` for any signed working paper until T2.11 independent specialist reconciliation is complete. `validation_status` is `"unvalidated"` on all document and reasoning candidates. No flag has been enabled by this document update.
+T2.8 is merged to `master` (2026-06-09, from branch `t2.8-document-ingestion`). `show_ai_candidates` defaults to `False` in all client YAMLs and must remain `False` for any signed working paper until T2.11 independent specialist reconciliation is complete. `validation_status` is `"unvalidated"` on all document and reasoning candidates. No flag has been enabled by this document update.
 
 ### What T2.8 adds
 
@@ -1113,7 +1124,7 @@ This is **not validation against real IRAS-compliant ground truth**. `show_ai_ca
 
 ### Test state
 
-**915 collected (914 passed, 1 skipped)** on branch `t2.8-document-ingestion` as of 2026-06-08. T2.8 adds 4 new test files (~312 additional tests vs. the T2.7 state). All new tests are no-live-SAP, no-live-Anthropic-API (LLM calls mocked).
+**915 collected (914 passed, 1 skipped)** on branch `t2.8-document-ingestion` as of 2026-06-08 (pre-merge baseline). T2.8 adds 4 new test files (~312 additional tests vs. the T2.7 state). All new tests are no-live-SAP, no-live-Anthropic-API (LLM calls mocked). Current master total: 1026 passed, 1 skipped — see T2.9 and T2.13 sections below.
 
 | New test file | Coverage |
 |---|---|
@@ -1121,6 +1132,72 @@ This is **not validation against real IRAS-compliant ground truth**. `show_ai_ca
 | `tests/test_documents_ingest.py` | Born-digital extraction (all 8 fields), field-absent path, multimodal mock, `fields_present` dict |
 | `tests/test_documents_reconcile.py` | All four reconciliation checks; tolerance boundary (0.01); empty-candidates path; `validation_status` invariant |
 | `tests/test_documents_unified_report.py` | `UnifiedCandidatesSection` show=True/False; basis tag per row; isolation invariant (box values unchanged with/without provider); reasoning_status/documents_status fields |
+
+---
+
+## T2.9 — Declared-vs-computed F5 divergence detection (on master; unvalidated; flag-gated)
+
+### Status
+
+T2.9 is merged to `master` (2026-06-09, from branch `t2.9-declared-vs-computed`). The `--declared-f5` flag defaults to absent; when not supplied the chain result is completely unchanged. `validation_status` is unaffected. No change to `show_ai_candidates`.
+
+### What T2.9 adds
+
+`orchestrator/check_declared_f5.py` — two deterministic checks run against the client's manually-filed F5 figures when a `declared-f5.json` input file is provided via `--declared-f5 <path>`:
+
+| Check | What it does |
+|---|---|
+| **Check A — declared internal consistency** | Verifies the filed numbers are self-consistent: Box 4 == Box 1+Box 2+Box 3; Box 8 == Box 6−Box 7. A breach surfaces as a finding; the run always completes and seals normally. |
+| **Check B — declared-vs-computed divergence** | Compares declared to computed on the six independent boxes (Box 1, 2, 3, 5, 6, 7). Box 4 and Box 8 are derived consequence notes, not primary flagged items (avoids double-counting accumulated rounding). |
+
+**Tolerance / materiality band:** Default $1.00 per independent box, configurable in the input file. This is a **materiality floor**, not a confirmed IRAS F5-box filing rounding convention — the IRAS guides are silent on F5-box rounding (the GST General Guide §7.5.1 covers invoice-level cents only). The 1.00 default absorbs whole-dollar truncation that can occur when a client reads box values off a filed return; the basis is the analytical-review principle in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33, which explicitly excludes "rounding differences" from the declared-vs-computed indicator.
+
+**Public API:** `load_declared_f5(path, run_period) → dict`; `run_declared_f5_checks(declared_f5, computed) → list[dict]`.
+
+**Invariant:** `run_declared_f5_checks()` is read-only over `computed_boxes` — the dict passed in is never mutated; canonical JSON before and after the call is byte-identical.
+
+**`--declared-f5 <path>` CLI flag** in `run_agent.py` (Phase 3c). When absent (default), no declared-vs-computed check runs.
+
+### Honest qualifier (mandatory)
+
+DONE = built on master, deterministic, unit-tested. **UNVALIDATED end-to-end.** The F5-box filing rounding convention could NOT be verified against IRAS source, so the $1.00 per-box tolerance is a materiality floor, not a confirmed convention. Findings, never verdicts; surfaces, never asserts; does not affect F5 boxes, gates, or `validation_status`. Flag-gated off by default. Validation is tracked as roadmap task T2.9-V (deterministic scenario test on SBODEMOSG + rounding-convention confirmation) — distinct from T2.11, which is the reasoning-layer constraint, not T2.9's.
+
+### Test state
+
+**19 new tests** in `tests/test_check_declared_f5.py` (isolation invariant: no declared-f5 → empty findings; computed_boxes not mutated; Check A/B cases; tolerance boundary; load validation errors). All no-live-SAP. Master total after T2.9 merge: 934 (pre-T2.13).
+
+---
+
+## T2.13 — Reg 26/27 validation dataset construction (on master; dataset BUILT, BLANK-LABELLED; NOT validated)
+
+### Status
+
+T2.13 is merged to `master` (2026-06-09, from branch `t2.13-validation-dataset`). `validation_status` is `"unvalidated"` in both fixture files. `show_ai_candidates` stays `False`. No label has been assigned. T2.11 remains the binding constraint.
+
+### CRITICAL framing (mandatory)
+
+**T2.13 DONE ≠ validated.** T2.13 DONE means the validation DATASET is BUILT and BLANK-LABELLED only. `expected_candidate` fields are present in both fixture files but **empty** — labels will be assigned only after an independent GST specialist reviews each case against IRAS sources. This does NOT mean:
+
+- Any specialist has reviewed or assigned labels
+- `validation_status` has changed (stays `"unvalidated"`)
+- T2.11 (independent specialist reconciliation) is complete — **it is not; T2.11 is the binding constraint**
+- `show_ai_candidates` may be set to `true` in any client YAML
+
+Any doc language that lets "T2.13 done" read as "the reasoning layer is validated" is incorrect.
+
+### What T2.13 adds
+
+| File | Role |
+|---|---|
+| `tests/fixtures/reg2627-representative-v1.json` | Representative validation fixture: stratified Reg 26/27 cases covering all six §6.1.6 disallowed categories; `expected_candidate` fields blank |
+| `tests/fixtures/reg2627-adversarial-v1.json` | Adversarial validation fixture: edge cases, near-misses, ambiguous descriptions; `expected_candidate` fields blank |
+| `tests/fixtures/SCHEMA-reg2627-v1.md` | Fixture schema documentation |
+| `tests/fixtures/export_specialist_copy.py` | Specialist-export script: strips `resolution_hint` field so the labeller receives only the case, not the model's suggestion (strip guard — ensures independent labelling) |
+| `exploration-notes/t2.13/labelling-protocol.md` | Labelling protocol for independent specialist review (300 lines); covers determinability classification, category definitions, WICA carve-outs |
+
+### Test state
+
+**92 new tests** in `tests/test_t2_13_fixture_schema.py` (fixture schema invariants, strip guard, blank-label invariant, representative/adversarial structure). All no-live-SAP. Master total after T2.13 merge: 1026 passed, 1 skipped.
 
 ---
 
@@ -2194,12 +2271,7 @@ strategic or engineering conversation.
     For those clients, all suppliers would appear unregistered, generating false positives across
     every purchase invoice with input tax.
 
-21. **Static fixtures beyond SBODEMOSG** (OPEN): Test coverage is limited to SBODEMOSG Q3 2024
-    data plus seeded edge-case invoices. Synthetic static fixtures are needed for: GST rate
-    transition period, partial exemption, reverse charge, NULL FederalTaxID (legitimate small
-    suppliers below the GST threshold), custom VatGroup codes, and non-standard TaxTotal
-    structure. Fixtures should be static (not dependent on a live SAP instance) to be
-    reproducible.
+21. **Static fixtures beyond SBODEMOSG** (PARTIALLY RESOLVED by T2.13 for reasoning layer; deterministic chain still OPEN): Test coverage is limited to SBODEMOSG Q3 2024 data plus seeded edge-case invoices. **T2.13 (2026-06-09) partially resolves this for the Reg 26/27 reasoning layer** — `reg2627-representative-v1.json` and `reg2627-adversarial-v1.json` are now static, repo-resident fixtures. Synthetic static fixtures are still needed for the deterministic chain: GST rate transition period, partial exemption, reverse charge, NULL FederalTaxID (legitimate small suppliers below the GST threshold), custom VatGroup codes, and non-standard TaxTotal structure. Chain fixtures remain live-seeded (DB-state-dependent) and this gap remains OPEN.
 
 22. **ZP+TaxTotal E2 gap** (OPEN): DocNum 610 (ZP+TaxTotal=84) is a real E2 (zero-rated
     purchases should not carry GST) not currently caught by either the reference script or the
@@ -2209,15 +2281,7 @@ strategic or engineering conversation.
     `JournalEntries`. GST-relevant manual journals (e.g., VAT adjustments, F7 corrections) are
     invisible to the system. Impact depends on client's SAP B1 usage patterns.
 
-24. **Reasoning-layer evaluation harness** (PARTIALLY RESOLVED on branch
-    `t2.7-reasoning-reg2627`, 2026-06-03): A measurement harness (`reasoning/measurement.py`,
-    `reasoning/run_measurement.py`) was built and run against a 110-line labelled fixture for
-    the Reg 26/27 pass specifically. Provisional results: Sonnet fp=0.000 (PASS), Opus fp=0.022
-    (PASS), Haiku fp=0.065 (FAIL) — all at recall=1.000. However, the fixture is `validation_status:
-    "unvalidated"` (Opus-labelled, not human-reviewed) so these are NOT gate results. The
-    harness for the broader classify/detect steps (E1–E4, NO_GST_REG) against a stored reference
-    is still OPEN — current evidence for those steps remains conversational chat logs.
-    NOT MERGED TO MASTER as of 2026-06-08.
+24. **Reasoning-layer evaluation harness** (PARTIALLY RESOLVED on master, 2026-06-09): A measurement harness (`reasoning/measurement.py`, `reasoning/run_measurement.py`) was built and run against a 110-line labelled fixture for the Reg 26/27 pass specifically (T2.7, now on master). Provisional results: Sonnet fp=0.000 (PASS), Opus fp=0.022 (PASS), Haiku fp=0.065 (FAIL) — all at recall=1.000. However, the fixture is `validation_status: "unvalidated"` (Opus-labelled, not human-reviewed) so these are NOT gate results. T2.13 (on master, 2026-06-09) provides the representative + adversarial blank-labelled substrate; specialist labelling is pending. The harness for the broader classify/detect steps (E1–E4, NO_GST_REG) against a stored reference is still OPEN — current evidence for those steps remains conversational chat logs.
 
 25. **PDPA / Anthropic DPA** (OPEN — expanded 2026-06-08): AgentAssist functions as a **data intermediary** under the Singapore PDPA when it processes client financial data on behalf of clients (PDPA s.26). Key compliance specifics confirmed:
 
@@ -2266,4 +2330,14 @@ on V21000 (Sea Corp), Box 8 reconciliation (authoritative pre-T2.8 = 17,045.87; 
 12,663.87; DB-state-dependent); Appendix B third table added; Appendix C #25 PDPA expanded
 with data-intermediary/overseas-transfer/residency/ZDR specifics; #28 legibility gate and
 #29 automation-bias guard added; exec summary updated; 915 tests; validation_status
-unvalidated; not merged to master).*
+unvalidated; not merged to master). Updated 2026-06-09 (T2.7 + T2.8 + T2.9 + T2.13 merged
+to master; T2.9 declared-vs-computed F5 checks — `orchestrator/check_declared_f5.py`, Check
+A/B, $1.00 tolerance floor grounded in IRAS ASK Guide s10.1(d)(iii) fn33 (NOT confirmed
+IRAS convention), `--declared-f5` flag, 19 new tests, findings not gates, does not affect
+boxes/validation_status; T2.13 Reg 26/27 validation dataset built + blank-labelled —
+`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`, `expected_candidate` fields
+empty, T2.11 remains binding constraint, validation_status unchanged, show_ai_candidates stays
+False, 92 new tests in `test_t2_13_fixture_schema.py`, `export_specialist_copy.py` strip
+guard; T2.9 + T2.13 sections added; repo tree updated; Appendix C #21 partial resolution
+noted; #24 updated to on-master; T2.7/T2.8 BRANCH ONLY → on master throughout; pre-merge
+gate definition corrected to import-only regex (see `docs/merge-gates.md`); 1026 tests).*
