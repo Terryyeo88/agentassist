@@ -926,7 +926,7 @@ def _listing_findings(m: ReportModel, story: list) -> None:
     if not lf.seq_gap_findings and not lf.dup_claim_findings:
         return
 
-    story.append(Paragraph("Listing-Level Checks — T2.10", _H2))
+    story.append(Paragraph("Invoice Listing Completeness Checks", _H2))
     story.append(Paragraph(
         "Invoice-listing completeness checks (IRAS ASK Annual Review Guide §10.1). "
         "Findings are candidates for reviewer attention; they do not affect F5 box "
