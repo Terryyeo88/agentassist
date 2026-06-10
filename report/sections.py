@@ -335,6 +335,21 @@ class DeclaredF5Section:
 
 
 @dataclass
+class ListingFindingsSection:
+    """Data for T2.10 listing-level check results (SEQ_GAP + DUP_CLAIM).
+
+    Attributes:
+        seq_gap_findings:   SEQ_GAP finding dicts from listing_findings in
+                            CompileOutput.  Empty list means no gaps detected
+                            or the listing fetch was skipped.
+        dup_claim_findings: DUP_CLAIM finding dicts.  Empty list means no
+                            duplicates detected or NumAtCard was unpopulated.
+    """
+    seq_gap_findings: list[dict]
+    dup_claim_findings: list[dict]
+
+
+@dataclass
 class SignatureSection:
     """Data for the declaration and sign-off page.
 
@@ -350,6 +365,15 @@ class SignatureSection:
     firm_name: str
     gst_registration_number: str
     disclaimer: str
+
+
+# ── Not-examined suppression markers (T2.10) ─────────────────────────────────
+# Lowercase substrings that uniquely identify the SEQ_GAP and DUP_CLAIM items
+# in NOT_EXAMINED_ITEMS.  When the respective findings are present, the matching
+# item is removed from the Not-Examined section so the report does not claim a
+# check was "not performed" when it was in fact run and produced output.
+_SEQ_GAP_NE_MARKER = "sequence gap detection"
+_DUP_CLAIM_NE_MARKER = "duplicate input-tax claims"
 
 
 # ── Builder functions ─────────────────────────────────────────────────────────
@@ -652,11 +676,36 @@ def build_declared_f5_section(compile_output: dict[str, Any]) -> DeclaredF5Secti
 _DECL_F5_NOT_EXAMINED_PREFIX: str = "Declared-vs-computed F5 comparison"
 
 
+def render_listing_findings_section(
+    compile_output: dict[str, Any],
+) -> "ListingFindingsSection":
+    """Build T2.10 listing findings from chain output (distinct from T2.9 function).
+
+    Reads compile_output["listing_findings"] (SEQ_GAP + DUP_CLAIM dicts produced
+    by orchestrator.check_listing after gate_5) and partitions them into two typed
+    lists.  An absent key or empty list produces an empty ListingFindingsSection —
+    this is the normal case when the listing fetch was not run or found no issues.
+
+    Args:
+        compile_output: CompileOutput dict; reads 'listing_findings' (optional key).
+
+    Returns:
+        ListingFindingsSection: seq_gap_findings and dup_claim_findings partitioned
+            from the flat listing_findings list.  Never None; always safe to read.
+    """
+    raw: list[dict] = compile_output.get("listing_findings") or []
+    return ListingFindingsSection(
+        seq_gap_findings=[f for f in raw if f.get("check") == "SEQ_GAP"],
+        dup_claim_findings=[f for f in raw if f.get("check") == "DUP_CLAIM"],
+    )
+
+
 def build_not_examined_section(
     compile_output: dict[str, Any],
     client_config: Any,
     *,
     declared_f5_findings: list[dict] | None = None,
+    listing_section: "ListingFindingsSection | None" = None,
 ) -> NotExaminedSection:
     """Build Section 6 — coverage boundary from constants plus run-specific additions.
 
@@ -680,6 +729,12 @@ def build_not_examined_section(
                               removed from Section 6.  Defaults to None (no
                               suppression — backward-compatible with callers that
                               do not supply the argument).
+        listing_section:      Optional ListingFindingsSection from
+                              render_listing_findings_section.  When seq_gap_findings
+                              is non-empty, the "sequence gap detection" Not-Examined
+                              item is suppressed independently.  When dup_claim_findings
+                              is non-empty, the "duplicate input-tax claims" item is
+                              suppressed independently.  Defaults to None.
 
     Returns:
         NotExaminedSection: Items list in display order (standard items first,
@@ -692,6 +747,16 @@ def build_not_examined_section(
         if suppress_decl_f5 and item.startswith(_DECL_F5_NOT_EXAMINED_PREFIX):
             continue
         items.append(item)
+
+    # T2.10: independently suppress SEQ_GAP and DUP_CLAIM not-examined items
+    # when the respective checks ran and produced findings.  Suppression is
+    # independent: a SEQ_GAP finding only removes the sequence-gap line; a
+    # DUP_CLAIM finding only removes the duplicate-claims line.
+    if listing_section is not None:
+        if listing_section.seq_gap_findings:
+            items = [i for i in items if _SEQ_GAP_NE_MARKER not in i.lower()]
+        if listing_section.dup_claim_findings:
+            items = [i for i in items if _DUP_CLAIM_NE_MARKER not in i.lower()]
 
     # Surface any deduplicated anomalies (unknown VatGroups).
     # .get() with default guards against older chain runs that lack this key.

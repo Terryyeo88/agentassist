@@ -1,0 +1,40 @@
+Run date: 2026-06-10
+Client: SBODEMOSG
+Period: 2024-07-01 → 2024-09-30
+
+Chain log (relevant lines):
+  fetch_listing_data: period_sales=50  period_purch=34  all_sales=1005  all_purch=624
+  listing checks: SEQ_GAP=0 DUP_CLAIM=0 findings
+
+============================================================
+T2.10 Phase 3 — Live read-only FP check
+Client: SBODEMOSG  Period: 2024-07-01 → 2024-09-30
+============================================================
+Config loaded: SAP B1 Demo (SBODEMOSG) | SBODEMOSG
+Running chain (live SAP reads, no writes)...
+
+listing_findings total   : 0
+  SEQ_GAP  findings      : 0
+  DUP_CLAIM findings     : 0
+
+Gates:
+  [PASS] Gate 1 — record-count (status=WARN_PASS)
+  [PASS] Gate 2 — box-reconciliation (status=PASS)
+  [PASS] Gate 3 — inventory-consistency (status=PASS)
+  [PASS] Gate 4 — detect-consistency (status=PASS)
+  [PASS] Gate 5 — cross-tool-consistency (status=PASS)
+
+F5 Boxes (spot-check):
+  box_1_standard_rated_sales: 369589.97
+  box_2_zero_rated_sales: 10000.0
+  box_3_exempt_sales: 6000.0
+  box_4_total_sales: 385589.97
+  box_5_taxable_purchases: 191077.76
+  box_6_output_tax: 25871.32
+  box_7_input_tax: 13207.45
+  box_8_net_gst: 12663.87
+
+PHASE 3 RESULT: PASS
+  zero SEQ_GAP findings  ✓
+  zero DUP_CLAIM findings ✓
+  all_passed=True  ✓
