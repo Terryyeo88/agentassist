@@ -909,6 +909,79 @@ def _declared_f5(m: ReportModel, story: list) -> None:
         story.append(_table(b_cols, b_hdr, b_rows))
 
 
+def _listing_findings(m: ReportModel, story: list) -> None:
+    """Render T2.10 listing-level check findings (SEQ_GAP + DUP_CLAIM) when present.
+
+    Skipped entirely when model.listing_findings is None (legacy callers) or when
+    both finding lists are empty.  Renders a separate subsection for each check
+    type that has at least one finding.
+
+    Args:
+        m:     The ReportModel containing listing_findings.
+        story: Mutable story list; flowables are appended in place.
+    """
+    lf = m.listing_findings
+    if lf is None:
+        return
+    if not lf.seq_gap_findings and not lf.dup_claim_findings:
+        return
+
+    story.append(Paragraph("Listing-Level Checks — T2.10", _H2))
+    story.append(Paragraph(
+        "Invoice-listing completeness checks (IRAS ASK Annual Review Guide §10.1). "
+        "Findings are candidates for reviewer attention; they do not affect F5 box "
+        "totals or gate outcomes.",
+        _SMLX,
+    ))
+
+    if lf.seq_gap_findings:
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(Paragraph("Sequence Gap Detection (SEQ_GAP)", _H3))
+        story.append(Paragraph(
+            f"{len(lf.seq_gap_findings)} gap candidate(s). "
+            "Each DocNum is absent from all company records and falls within the "
+            "reviewed-period active range — §10.1(c)(i).",
+            _SMALL,
+        ))
+        sg_cols = [1.4*cm, 2.2*cm, 2.8*cm, 10.6*cm]
+        sg_hdr = [_p(h, _CELLB) for h in ["Series", "Gap DocNum", "Active Range", "Description"]]
+        sg_rows = [
+            [
+                _p(str(f.get("series", "—"))),
+                _p(str(f.get("gap_doc_num", "—"))),
+                _p(f"{f.get('series_min', '—')}–{f.get('series_max', '—')}"),
+                _p(f.get("description", "—")),
+            ]
+            for f in lf.seq_gap_findings
+        ]
+        story.append(_table(sg_cols, sg_hdr, sg_rows))
+
+    if lf.dup_claim_findings:
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(Paragraph("Duplicate Input-Tax Claims (DUP_CLAIM)", _H3))
+        story.append(Paragraph(
+            f"{len(lf.dup_claim_findings)} duplicate candidate(s). "
+            "Each purchase invoice shares the same vendor, vendor reference, and total "
+            "as another — §10.1(d)(i).",
+            _SMALL,
+        ))
+        dc_cols = [1.8*cm, 2.0*cm, 2.2*cm, 3.0*cm, 2.5*cm, 5.5*cm]
+        dc_hdr = [_p(h, _CELLB) for h in
+                  ["DocNum", "Duplicate Of", "Vendor", "Vendor Ref", "Total (SGD)", "Description"]]
+        dc_rows = [
+            [
+                _p(str(f.get("doc_num", "—"))),
+                _p(str(f.get("duplicate_of", "—"))),
+                _p(f.get("card_code", "—")),
+                _p(f.get("num_at_card", "—")),
+                _p(_sgd(f.get("doc_total"))),
+                _p(f.get("description", "—")),
+            ]
+            for f in lf.dup_claim_findings
+        ]
+        story.append(_table(dc_cols, dc_hdr, dc_rows))
+
+
 def _not_examined(m: ReportModel, story: list) -> None:
     """Append Section 6 — Items not examined (coverage boundary).
 
@@ -1019,6 +1092,7 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _f5_boxes(model, story)
     _declared_f5(model, story)
     _findings(model, story)
+    _listing_findings(model, story)
     _cross_findings(model, story)
     _judgment(model, story)
     _not_examined(model, story)
