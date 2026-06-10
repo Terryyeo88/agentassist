@@ -28,10 +28,12 @@ Revised from v4. v5 records what the diagnostic/fix runs of 2026-06-08 establish
 - T1.4 signed PDF working paper (`report/`); T1.5 tamper-evident audit bundle.
 - Validated 10/10 on Tests 1–3 at v3 on SBODEMOSG Q3 2024 — clean demo data, not production-proven.
 
-**Built but unvalidated (branches `t2.7-reasoning-reg2627` and `t2.8-document-ingestion`, not merged to master):**
-- Reasoning layer (`reasoning/` package): Reg 26/27 disallowed-input candidate surfacing. `show_ai_candidates` flag wired and working. Re-run over SBODEMOSG + 13 AGENTASSIST_SEED docs (2026-06-08) surfaced **5 reasoning candidates** (G2 bait DocNums 620–624) and **7 document candidates** (G1 reconciliation DocNums 614–619); both render in the unified `UnifiedCandidatesSection` with mandatory per-row `basis` tag.
+**Built but unvalidated (all on `master` as of 2026-06-09):**
+- **T2.7** — Reasoning layer (`reasoning/` package): Reg 26/27 disallowed-input candidate surfacing. `show_ai_candidates` flag wired and working. Re-run over SBODEMOSG + 13 AGENTASSIST_SEED docs (2026-06-08) surfaced **5 reasoning candidates** (G2 bait DocNums 620–624) and **7 document candidates** (G1 reconciliation DocNums 614–619); both render in the unified `UnifiedCandidatesSection` with mandatory per-row `basis` tag.
 - Provisional measurement (2026-06-03, 110-line Opus-labelled fixture): Sonnet recall 1.000 / FP 0.000, Opus 1.000 / 0.022, Haiku 1.000 / 0.065. **NOT gate results** — fixture labels are AI-generated, not human-reviewed. `validation_status: unvalidated`; `show_ai_candidates` stays `False` for any deliverable until T2.11 reconciles.
-- Source-document cross-reference (`documents/` package, T2.8): ingests PDFs, runs 4 reconciliation checks (gst_amount_mismatch J+, correct_period D+, total_inconsistency J+, reg11_supplier_gst_absent J+). Born-digital path verified on seeded PDFs. **B1 attachment `/$value` byte-download UNVERIFIED** — SBODEMOSG `AttachmentsFolderPath` not configured; upload path (`UploadProvider`) is the working path. 13 AGENTASSIST_SEED docs seeded for end-to-end demo; Box 8 post-seed = 12,663.87 (DB-state-dependent).
+- **T2.8** — Source-document cross-reference (`documents/` package): ingests PDFs, runs 4 reconciliation checks (gst_amount_mismatch J+, correct_period D+, total_inconsistency J+, reg11_supplier_gst_absent J+). Born-digital path verified on seeded PDFs. **B1 attachment `/$value` byte-download UNVERIFIED** — SBODEMOSG `AttachmentsFolderPath` not configured; upload path (`UploadProvider`) is the working path. 13 AGENTASSIST_SEED docs seeded for end-to-end demo; Box 8 post-seed = 12,663.87 (DB-state-dependent).
+- **T2.9** — Declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency: Box 4==1+2+3, Box 8==6−7) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default). Default $1.00 per-box tolerance is a **materiality floor grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33** — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source). Findings, never verdicts; does not affect F5 boxes or gates. 19 new tests.
+- **T2.13** — Reg 26/27 validation dataset built + blank-labelled: `tests/fixtures/reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`. `expected_candidate` fields are present but **empty** — labels assigned only after independent specialist review. `validation_status: unvalidated`; `show_ai_candidates` stays `False`; **T2.11 remains the binding constraint**. 92 new tests.
 
 **Remaining gates to a paid pilot (none are correctness or delivery-format gaps):** production-data trust, PDPA compliance, security history scrub.
 
@@ -91,7 +93,7 @@ Business reason: the entire 👤 → J+ band in coverage-analysis Document 4 is 
 - `UnifiedCandidatesSection` in `report/sections.py` — merges T2.7 reasoning candidates and T2.8 document candidates with mandatory per-row `basis` tag; gated by `show_ai_candidates` (default False).
 - `--upload-dir` and `--show-ai-candidates` CLI flags in `run_agent.py`.
 - 13 AGENTASSIST_SEED docs (DocNums 612–624) on vendor V21000 (Sea Corp) for end-to-end demo; `scripts/seed_manifest.json` as seed identity record.
-- 915 tests passing (4 new T2.8 test files).
+- 1026 tests passing, 1 skipped (T2.7 +434 vs T1.5; T2.8 +312; T2.9 +19 in `test_check_declared_f5.py`; T2.13 +92 in `test_t2_13_fixture_schema.py`).
 
 **Caveats and open items:**
 - `B1AttachmentProvider` metadata chain verified; `/$value` byte-download UNVERIFIED (SBODEMOSG `AttachmentsFolderPath` not configured). Provider is correct-by-construction, not live-proven. Upload path (`UploadProvider`) is the working path.
@@ -104,8 +106,29 @@ Business reason: the entire 👤 → J+ band in coverage-analysis Document 4 is 
 
 Why it caps at J+: extraction is probabilistic — reading raises recall, not authority. The sole exception is invoice-date → correct-period (B6 → D+). Legal characterisations (export, exemption, Reg 26/27) stay J+ regardless. Extracted values never enter Layer 1, boxes, or gates; the deterministic listing stays the authoritative anchor. DoD achieved: byte-identical box figures/gate results with and without the adapter confirmed on SBODEMOSG Q3 2024 + T2.8 seeds.
 
-### T2.9 — Filed-F5-return ingestion (declared-vs-computed reconciliation) — PLANNED
-Effort PROPOSED 1 wk. Owner Terry/Collin. Accept the filed F5 (manual entry or IRAS extract); compare declared vs computed per box; flag deltas (Step 1.3b output-tax threshold; Step 1.3d TP/TS > 1.2). Deterministic; surfaces, never auto-corrects. Closes the recurring ◐ across Steps 1, 3A.1.a, 3B.1.a, 3C.1.a, 3D.1.1.a. DoD: per-box declared-vs-computed reconciliation added to the report, replacing the current "Declared-vs-computed F5 comparison" Items-Not-Examined line.
+### T2.9 — Filed-F5-return ingestion (declared-vs-computed reconciliation) — DONE (built, flag-gated, UNVALIDATED)
+Completed 2026-06-09 on `master`. Owner Terry.
+
+**What was built:** `orchestrator/check_declared_f5.py` — two deterministic checks:
+- **Check A** (declared internal consistency): Box 4 == Box 1+Box 2+Box 3; Box 8 == Box 6−Box 7. Inconsistency surfaces as a finding; run always completes and seals normally.
+- **Check B** (declared-vs-computed per independent box): Compares the client's declared figures (from a `declared-f5.json` input file) to the chain's computed figures on each of the six independent boxes (Box 1, 2, 3, 5, 6, 7). Box 4 and Box 8 are derived consequence notes, not primary flagged items (avoids double-counting accumulated rounding).
+
+**`--declared-f5 <path>` CLI flag** in `run_agent.py` supplies the declared input file. Off by default (flag-gated); when absent, the chain result is unchanged.
+
+**Honest qualifier:** DONE = built on master, deterministic, unit-tested. **UNVALIDATED end-to-end** — the F5-box filing rounding convention could NOT be verified against IRAS source, so the $1.00 per-box default tolerance is a **materiality floor** (grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33, which explicitly excludes "rounding differences" from the declared-vs-computed indicator), not a confirmed IRAS F5 filing rounding convention. Findings, never verdicts; surfaces, never asserts; does not affect F5 boxes, gates, or `validation_status`.
+
+**19 new tests** in `tests/test_check_declared_f5.py` (isolation invariant, Check A/B, tolerance boundary, load validation). Partially closes the recurring ◐ across Steps 1, 3A.1.a, 3B.1.a, 3C.1.a, 3D.1.1.a — but validation against real filed-return data has not occurred.
+
+### T2.9-V — Declared-vs-computed validation (deterministic, small) — PLANNED
+Effort PROPOSED ~0.5 wk + one practitioner question. Owner Terry (scenario test) + cousin (rounding-convention confirmation). Resolves the "BUILT, UNVALIDATED" status of T2.9. **NOT the binding constraint** — T2.11 (reasoning layer) remains that; T2.9-V is independent of it.
+
+**(a) Scenario test on SBODEMOSG Q3 2024 (NEEDS B1 ON):** Run the chain to get the computed boxes; build a `declared-f5.json` equal to them EXCEPT for deliberately seeded divergences (a Box 7 over-claim, a Box 1 transcription error, an internally-inconsistent declared Box 4); run via `--declared-f5` and confirm Check A + Check B surface EXACTLY those and nothing else, AND that a clean `declared-f5.json` (within rounding) surfaces nothing (zero false positives). Deterministic analog of the Tests 1–3 10/10 validation.
+
+Optional two-birds: capture the computed boxes once as a static fixture so the scenario test is reproducible without B1 thereafter — chips at open item #21.
+
+**(b) Rounding-convention confirmation (NO B1):** Confirm against IRAS source / the cousin whether F5 boxes are filed whole-dollar or to the cent; confirms the $1.00 default tolerance or changes it. The one external dependency.
+
+**DoD:** Scenario test passes (seeded divergences surfaced, zero clean-box false positives); rounding convention documented with its source; declared-vs-computed coverage cells graduate from "BUILT, UNVALIDATED" to "validated on demo."
 
 ### T2.10 — Mechanical gap-fills (deterministic checks currently ✗) — PLANNED
 Effort PROPOSED 1.5–2 wk total. Owner Collin (audit-not-partner — implement in both tool and reference script). Invoice-sequence-gap over `DocNum` (3A.1.c/3B.1.b/3C.1.b → D); duplicate input-tax claims (3D.1.1.d → D); claim-outside-period (3D.1.1.c → D+, needs cross-period history); time-of-supply anomaly (3A.1.b → J+, needs payment-date ingestion); ZP+TaxTotal>0 E2 extension (open item #22, DocNum 610 → D, low effort).
@@ -122,17 +145,24 @@ Scope: extend the T2.3 harness to compute the accuracy basket against T2.13's la
 ### T2.12 — Extract-based delivery adapter (advisory-firm channel) — PLANNED
 Effort PROPOSED 3–4 wk. Owner Terry/Collin. Advisory firms access client data via extracts, not live B1. Add an input adapter mapping CSV/Excel (later PINT-SG) to the same internal line-item schema so the chain/gates/report run unchanged. The MCP connector becomes one input adapter among several. DoD: a CSV extract produces identical chain output to the equivalent MCP run on the same data. **This refactor (decoupling input adapter from engine behind a stable schema/API) is also the architectural prerequisite for any future platform — see Tier 4.**
 
-### T2.13 — Validation dataset construction (synthetic-paired + pilot-derived) — PLANNED (NEW)
-Effort PROPOSED 1–2 wk to build the synthetic substrate; specialist labelling is external time. Owner Terry (build) + independent specialist (labels).
+### T2.13 — Validation dataset construction (synthetic-paired + pilot-derived) — DONE (dataset built, blank-labelled; NOT validated)
+Completed 2026-06-09 on `master`. Owner Terry (build) + independent specialist (labels — pending).
 
-Business reason: T2.11 needs ground truth. Real IRAS-validated taxpayer data is not purchasable (confidential, and the literature confirms such labels are intrinsically scarce); acquiring it would import the very PDPA/confidentiality risk we are avoiding. The validation lever is **expert labelling of representative cases**, not "real" data — a synthetic SG-GST case labelled by an accredited specialist is better ground truth than foreign real data, because the system is judged against IRAS rules.
+**CRITICAL framing (mandatory):** T2.13 DONE means the validation DATASET is BUILT and BLANK-LABELLED only. `expected_candidate` fields are present in both fixture files but **empty** — labels will be assigned only after an independent GST specialist reviews each case against IRAS sources. This does NOT mean:
+- Any specialist has reviewed or assigned labels
+- `validation_status` has changed — it stays `"unvalidated"`
+- T2.11 (independent specialist reconciliation) is complete — **it is not; T2.11 is the binding constraint**
+- `show_ai_candidates` may be set to `true` in any client YAML
 
-Scope:
-- Construct synthetic but representative SG-GST cases spanning clearly-correct, clearly-wrong, and genuine edge cases, across the categories the reasoning layer claims (Reg 26/27 first).
-- **For the current reasoning layer (Reg 26/27): labelled LINE ITEMS only are required** (it reads the line description; no invoice needed).
-- **For the future document checks (T2.8): paired data is required** — synthetic invoice PDFs generated to pair with synthetic line items, with deliberate mismatches for positives (GST amount ≠ listing, wrong period, missing reg number).
-- Independent specialist assigns the authoritative labels. The labeller of the validation-of-record must not be a rule author (cousin may label the dev set; an independent accredited specialist labels the holdout claimed against).
-- Pilot upgrade path: once a pilot is live (under a DPA, T3.2), the firm's accredited reviewer's adjudications become real validated ground truth — the gold standard — superseding synthetic over time.
+**What was built:**
+- `tests/fixtures/reg2627-representative-v1.json` — representative validation fixture (stratified Reg 26/27 cases covering all six §6.1.6 categories)
+- `tests/fixtures/reg2627-adversarial-v1.json` — adversarial validation fixture (edge cases, near-misses, ambiguous descriptions)
+- `tests/fixtures/SCHEMA-reg2627-v1.md` — fixture schema documentation
+- `tests/fixtures/export_specialist_copy.py` — specialist-export script; strips `resolution_hint` field so the labeller receives only the case, not the model's suggestion (strip guard — ensures independent labelling)
+- `exploration-notes/t2.13/labelling-protocol.md` — labelling protocol for independent specialist review
+- **92 new tests** in `tests/test_t2_13_fixture_schema.py` (fixture schema invariants, strip guard, blank-label invariant)
+
+Business reason (unchanged): Expert labelling of representative cases, not "real" data — a synthetic SG-GST case labelled by an accredited specialist is better ground truth than foreign real data, because the system is judged against IRAS rules. For the current reasoning layer (Reg 26/27): labelled LINE ITEMS only are required (it reads the line description; no invoice needed).
 
 Uses of the labelled set (all evaluation, **not training**): (1) the validation gate / accuracy basket (T2.11); (2) the regression-eval reference re-run on every model/prompt change (T2.3); (3) few-shot exemplars to sharpen the reasoning layer (in-context, not weight updates); (4) the eval substrate that lets a check be packaged as an agent skill with a known accuracy and definition-of-done. The data never trains or fine-tunes a model — Claude is used via API.
 
@@ -229,6 +259,6 @@ Mirror the deterministic-script docs for the reasoning layer; Document 4 of the 
 - **AGENTASSIST_SEED Remarks marker does not persist** — the SAP demo instance does not return the `Remarks` field on read-back; seed identity depends solely on `scripts/seed_manifest.json`. Cleanup of the 13 seeds (DocEntries 615–627) must be by DocEntry, not by Remarks filter.
 - **Box 8 is DB-state-dependent** — post-T2.8-seeds Box 8 = 12,663.87 (current state, run_baseline_tests.py 2026-06-08). Any future seed or cancellation on SBODEMOSG will change this figure. Pre-T2.8 authoritative Box 8 = 17,045.87. The 17,395.87 in v0–v3 test scoring is from the earliest 2026-05-25 run (before T1.x seeds). See Appendix B of `AGENTASSIST_TECHNICAL_STATE.md` for the full reconciliation.
 - **SBODEMOSG has no document attachments** — any T2.8 document-ingestion demo/build must supply its own invoice PDFs (the 13 seeded PDFs in `scripts/seed_uploads/` serve this role for the SBODEMOSG demo).
-- **Test fixtures are live-seeded into SBODEMOSG and ephemeral** (tied to the SAP CAL instance). Static, repo-resident fixtures (open item #21) still do not exist. Preserve the captured v0-vs-v3 evidence (it cannot be re-run identically once the DB changes).
+- **Test fixtures are live-seeded into SBODEMOSG and ephemeral** (tied to the SAP CAL instance). Static, repo-resident fixtures (open item #21): **PARTIALLY RESOLVED by T2.13 for the Reg 26/27 reasoning layer** — `reg2627-representative-v1.json` and `reg2627-adversarial-v1.json` are now static, repo-resident fixtures. The deterministic chain (rate-transition, partial exemption, reverse-charge, custom VatGroup fixtures) still requires live-seeded data and remains **OPEN**. Preserve the captured v0-vs-v3 evidence (it cannot be re-run identically once the DB changes).
 - **All Singapore tax specifics** (materiality thresholds, Step-4 reconciliation thresholds, paragraph numbers) must be re-verified against the current IRAS e-Tax Guide edition before any customer-facing claim.
 - **Strategy watch:** the platform vision (Tier 4) is a north-star, not a near-term build. Guard against drifting effort into a dashboard before one vertical is validated and sold; the bottleneck remains distribution + trust.

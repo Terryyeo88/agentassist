@@ -26,8 +26,8 @@ Analytical review across the financial year's filed returns. AgentAssist compute
 | ASK check (¶) | What it requires | Coverage | AgentAssist function | What's missing |
 |---|---|---|---|---|
 | 1.3a — Major fluctuations in SR/ZR/exempt supplies & taxable purchases across the year | Period-over-period comparison of Boxes 1/2/3/5 | ◐ | `calculate_f5_return` per period | Single-period tool; no multi-quarter trend/fluctuation comparison or business-cycle reasoning (👤 for the explanation) |
-| 1.3b — Declared vs computed output tax (flag if diff ≤ −$10,000) | Computed Box 6 vs *declared* Box 6 | ◐ | `calculate_f5_return` computes Box 6 | Does not ingest the filed return's declared Box 6; comparison + reconciliation is manual |
-| 1.3c — Declared vs computed input tax (flag if diff significant) | Computed Box 7 vs *declared* Box 7 | ◐ | `calculate_f5_return` computes Box 7 | Same: declared figure not ingested |
+| 1.3b — Declared vs computed output tax (flag if diff ≤ −$10,000) | Computed Box 6 vs *declared* Box 6 | ◐ | `calculate_f5_return` computes Box 6; T2.9 `check_declared_f5.py` Check B ingests declared Box 6 via `--declared-f5` flag | **BUILT, UNVALIDATED** — T2.9 adds declared-vs-computed Check B (flag-gated, off by default). Rounding/tolerance convention unverified vs IRAS source: $1.00 tolerance is a materiality floor per ASK Guide s10.1(d)(iii) fn33, not a confirmed IRAS convention. Coverage cell stays ◐ pending T2.9-V validation (deterministic scenario test + rounding-convention confirmation). |
+| 1.3c — Declared vs computed input tax (flag if diff significant) | Computed Box 7 vs *declared* Box 7 | ◐ | `calculate_f5_return` computes Box 7; T2.9 `check_declared_f5.py` Check B ingests declared Box 7 via `--declared-f5` flag | **BUILT, UNVALIDATED** — same T2.9 qualifier as 1.3b. Coverage cell stays ◐ pending T2.9-V validation (deterministic scenario test + rounding-convention confirmation). |
 | 1.3d — TP/TS ratio > 1.2 evaluation | Box 5 ÷ Box 4 | ◐ | Both boxes computed by `calculate_f5_return` | Ratio not surfaced as an output; >1.2 threshold flag and reasonableness assessment not implemented (assessment itself is 👤) |
 
 ## Step 2 — Select GST Return(s) for Review (Guide §9)
@@ -42,7 +42,7 @@ Procedural step: choose which filed return(s) to subject to substantive testing.
 
 | ASK check (¶) | What it requires | Coverage | AgentAssist function | What's missing |
 |---|---|---|---|---|
-| 3A.1.a — Listing tallies to Boxes 1, 6 (and 14/15/16/17 where applicable) | Sum SR lines = declared box values | ◐ | `calculate_f5_return` (Box 1, 6) | Computes the listing total; does not reconcile against the *declared* box. Boxes 14–17 (RC/OVR/LVG) not computed |
+| 3A.1.a — Listing tallies to Boxes 1, 6 (and 14/15/16/17 where applicable) | Sum SR lines = declared box values | ◐ | `calculate_f5_return` (Box 1, 6); T2.9 Check B provides declared-vs-computed for Box 1 and Box 6 | Computes the listing total; T2.9 adds declared reconciliation (**BUILT, UNVALIDATED** — rounding/tolerance convention unverified vs IRAS source; flag-gated). Boxes 14–17 (RC/OVR/LVG) not computed. Coverage cell stays ◐ pending T2.9-V validation (deterministic scenario test + rounding-convention confirmation). |
 | 3A.1.b — Time-of-supply compliance (earlier of invoice issued / payment received) | Invoice date vs payment date | ✗ / 👤 | — | No payment-date ingestion; time-of-supply is a documentary judgment |
 | 3A.1.c — Missing invoice numbers in listing | Sequence-gap analysis | ✗ | — | Not implemented; feasible as a future extension over `DocNum` sequences |
 | 3A.1.d — Transactions reducing sales recorded via valid credit/debit notes | Credit/debit-note linkage | ◐ | `calculate_f5_return` / `validate_invoice_tax_codes` (credit notes fetched & subtracted; CN lines classified) | Subtraction is handled; matching a CN to its original invoice and confirming single-use is not |
@@ -55,7 +55,7 @@ Procedural step: choose which filed return(s) to subject to substantive testing.
 
 | ASK check (¶) | What it requires | Coverage | AgentAssist function | What's missing |
 |---|---|---|---|---|
-| 3B.1.a — Listing tallies to Box 2 | Sum ZR lines = declared Box 2 | ◐ | `calculate_f5_return` (Box 2) | Reconciliation to declared figure manual |
+| 3B.1.a — Listing tallies to Box 2 | Sum ZR lines = declared Box 2 | ◐ | `calculate_f5_return` (Box 2); T2.9 Check B provides declared-vs-computed for Box 2 | Reconciliation to declared figure: T2.9 adds declared Check B (**BUILT, UNVALIDATED** — rounding/tolerance convention unverified vs IRAS source; flag-gated). Coverage cell stays ◐ pending T2.9-V validation (deterministic scenario test + rounding-convention confirmation). |
 | 3B.1.b — Missing invoice numbers | Sequence-gap analysis | ✗ | — | Not implemented |
 | 3B.3.1 — No GST amount on zero-rated invoices | Per-line GST = 0 on ZR | ◐ / J+ | E2 flags ZR + TaxTotal>0 | Catches the inverse error (GST wrongly charged on ZR); confirming a ZR line is *legitimately* zero-rated needs export evidence |
 | 3B.3.2.1 — Export evidence (bill of lading, air waybill, export permit, etc.) proves goods exported | Inspect transport documents | 👤 | — | Documentary; AgentAssist can surface ZR lines with a Singapore ship-to as suspicious candidates (J+) but cannot verify export |
@@ -66,7 +66,7 @@ Procedural step: choose which filed return(s) to subject to substantive testing.
 
 | ASK check (¶) | What it requires | Coverage | AgentAssist function | What's missing |
 |---|---|---|---|---|
-| 3C.1.a / 3C-2.a — Listing tallies to Box 3 | Sum exempt lines = declared Box 3 | ◐ | `calculate_f5_return` (Box 3, ES33/ESN33) | Reconciliation to declared figure manual |
+| 3C.1.a / 3C-2.a — Listing tallies to Box 3 | Sum exempt lines = declared Box 3 | ◐ | `calculate_f5_return` (Box 3, ES33/ESN33); T2.9 Check B provides declared-vs-computed for Box 3 | Reconciliation to declared figure: T2.9 adds declared Check B (**BUILT, UNVALIDATED** — rounding/tolerance convention unverified vs IRAS source; flag-gated). Coverage cell stays ◐ pending T2.9-V validation (deterministic scenario test + rounding-convention confirmation). |
 | 3C-1.b — Missing invoice numbers | Sequence-gap analysis | ✗ | — | Not implemented |
 | Exempt value reported correctly (e.g., interest, FX gains, residential property) | Per-transaction-type valuation (Reg 33 / 4th Schedule) | ✗ / 👤 | — | `sg-tax-code-mappings.md` notes financial-services valuation has 9 transaction types out of POC scope; valuation is judgment-heavy |
 | Supplies genuinely qualify as exempt | Legal characterisation | J+ | E2 flags ES33/ESN33 + TaxTotal>0 (GST wrongly charged on exempt) | Confirming a supply *is* exempt is semantic; AgentAssist surfaces candidates |
@@ -75,7 +75,7 @@ Procedural step: choose which filed return(s) to subject to substantive testing.
 
 | ASK check (¶) | What it requires | Coverage | AgentAssist function | What's missing |
 |---|---|---|---|---|
-| 3D.1.1.a — Listing tallies to Boxes 5, 7 (10, 11) | Sum purchase lines = declared boxes | ◐ | `calculate_f5_return` (Box 5, 7) | Boxes 10/11 (TRS, bad-debt/RC refunds) not computed; reconciliation to declared figure manual |
+| 3D.1.1.a — Listing tallies to Boxes 5, 7 (10, 11) | Sum purchase lines = declared boxes | ◐ | `calculate_f5_return` (Box 5, 7); T2.9 Check B provides declared-vs-computed for Box 5 and Box 7 | Boxes 10/11 (TRS, bad-debt/RC refunds) not computed; declared reconciliation: T2.9 adds Check B (**BUILT, UNVALIDATED** — rounding/tolerance convention unverified vs IRAS source; flag-gated). Coverage cell stays ◐ pending T2.9-V validation (deterministic scenario test + rounding-convention confirmation). |
 | 3D.1.1.b — Import permits beginning "ME"/"MC" wrongly used without MES/IGDS approval | Permit-prefix scan + scheme status | ✗ / D+ | — | No import-permit data ingested; would need permit feed + per-client scheme config |
 | 3D.1.1.c — Input tax claimed outside the accounting period | Date-window + cross-period dedup | ✗ | — | No cross-period claim tracking |
 | 3D.1.1.d — Duplicate input-tax claims | Cross-transaction dedup | ✗ | — | Not implemented |
@@ -254,7 +254,7 @@ Documents 1–3 describe **validated, deterministic** coverage — what the Pyth
 ## Known limitations of this analysis
 
 - **Validated only on SBODEMOSG.** Coverage symbols describe designed/validated behaviour on clean demo data. Production data may include custom VatGroup codes (silently excluded today), partial-exemption scenarios, manual journals, and scheme-specific imports — none yet tested.
-- **"Declared vs computed" gap.** Several Step 1 checks are marked ◐ because AgentAssist computes box figures from SAP transactions but does not ingest the *filed* F5 return; the comparison the guide prescribes therefore needs a second input AgentAssist does not currently take.
+- **"Declared vs computed" gap (partially addressed by T2.9).** Several Step 1 checks are marked ◐ because AgentAssist computes box figures from SAP transactions but did not previously ingest the *filed* F5 return. T2.9 adds declared-vs-computed Check B via `--declared-f5` flag — **BUILT, UNVALIDATED** (rounding/tolerance convention unverified vs IRAS source: $1.00 tolerance is a materiality floor per ASK Guide s10.1(d)(iii) fn33, not a confirmed IRAS convention; flag-gated, off by default; findings not gates). Coverage cells stay ◐ pending T2.9-V validation (deterministic scenario test + rounding-convention confirmation).
 - **Citation scheme.** References use the ASK Annual Review Guide's step/paragraph numbering and Appendix 1 wording as loaded in Project Knowledge. Confirm the guide edition on its cover (expected: Sixteenth Edition, 30 Jan 2026) and re-verify paragraph numbers if a later edition is substituted.
 - **Pre-Filing Checklist not used.** Per the agreed approach, Document 3 maps to the Annual Review Steps 3A–3E (post-submission substantive testing), which matches AgentAssist's workflow, rather than the separate Section 2 Pre-Filing Checklists.
 - **Not legal advice.** This is an engineering coverage analysis, not a determination of ASK compliance. Final ASK certification rests with an SCTP-accredited ATA (GST) / ATP (GST).

@@ -2,7 +2,7 @@
 Not development blockers. Action in a later session. Full detail in
 AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
 
-**T1.5 completed 2026-06-02.** All six Tier-1 items are done; 169 tests passing. The
+**T1.5 completed 2026-06-02.** All six Tier-1 items are done. T2.7, T2.8, T2.9, T2.13 merged to master 2026-06-09; 1026 tests passing. The
 `audit/` directory is now the canonical output sink (gitignored). The provisional path
 `exploration-notes/t1.6-tool-outputs/` was removed in P3.
 

@@ -154,6 +154,8 @@ section for the contested / indeterminate subset.  When every row is reviewed an
 the file is renamed and `_meta.ground_truth_set_by` is updated to record the reviewer's name
 and date.
 
+**T2.13 update (2026-06-09):** The validation-dataset substrate now exists on `master` — `tests/fixtures/reg2627-representative-v1.json` and `reg2627-adversarial-v1.json` built and blank-labelled. `expected_candidate` fields are present but empty; T2.11 (independent specialist labelling) remains the binding constraint. `validation_status` stays `"unvalidated"`.
+
 ---
 
 ## 6. Production Roadmap Item — Client Business-Nature Field
