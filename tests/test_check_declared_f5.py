@@ -411,3 +411,80 @@ def test_isolation_no_declared_f5_empty_findings():
     result = compile_step(manifest, calc, cls, det)
     assert "declared_f5_findings" in result
     assert result["declared_f5_findings"] == []
+
+
+# ---------------------------------------------------------------------------
+# [A-FP] Check A — float-artifact robustness (Step 2 reproduction + Step 4 cases)
+# ---------------------------------------------------------------------------
+
+def test_check_a_float_artifact_box4_false_positive():
+    """[A-FP1] Cent-consistent box_4 must NOT flag due to IEEE-754 float sum artifact.
+
+    0.10 + 0.20 + 0.00 = 0.30000000000000004 in IEEE 754 (differs from 0.30 by ~5e-17).
+    With exact equality the current code emits a spurious Check A finding.
+    ACCEPTANCE: this test FAILS on unpatched code, passes after the cent-rounding fix.
+    """
+    # Values are to-the-cent consistent: 0.30 == 0.10 + 0.20 + 0.00 (in cents)
+    df5 = _declared_f5(box_1=0.10, box_2=0.20, box_3=0.00, box_4=0.30)
+    findings = run_declared_f5_checks(df5, _computed())
+    check_a = [f for f in findings if f["check"] == "A" and f["box"] == "box_4"]
+    assert check_a == [], (
+        "Check A incorrectly flagged cent-consistent box_4=0.30 "
+        f"(float sum=0.1+0.2+0.0={0.10 + 0.20 + 0.00!r})"
+    )
+
+
+def test_check_a_float_artifact_box8_false_positive():
+    """[A-FP2] Cent-consistent box_8 must NOT flag due to IEEE-754 float subtraction artifact.
+
+    0.30 - 0.10 = 0.19999999999999998 in IEEE 754 (differs from 0.20 by ~1e-17).
+    With exact equality the current code emits a spurious Check A finding.
+    ACCEPTANCE: this test FAILS on unpatched code, passes after the cent-rounding fix.
+    """
+    # box_8 = 0.20 is to-the-cent consistent with box_6=0.30 − box_7=0.10
+    df5 = _declared_f5(box_6=0.30, box_7=0.10, box_8=0.20)
+    findings = run_declared_f5_checks(df5, _computed())
+    check_a = [f for f in findings if f["check"] == "A" and f["box"] == "box_8"]
+    assert check_a == [], (
+        "Check A incorrectly flagged cent-consistent box_8=0.20 "
+        f"(float diff=0.30-0.10={0.30 - 0.10!r})"
+    )
+
+
+def test_check_a_exact_cent_match_no_finding():
+    """[A-FP3] Values with no float artifact (exact integer cents) produce no Check A finding."""
+    df5 = _declared_f5(box_1=1000.00, box_2=2000.00, box_3=3000.00, box_4=6000.00)
+    findings = run_declared_f5_checks(df5, _computed())
+    check_a_box4 = [f for f in findings if f["check"] == "A" and f["box"] == "box_4"]
+    assert check_a_box4 == []
+
+
+def test_check_a_off_by_one_cent_still_flags():
+    """[A-FP4] An off-by-one-cent discrepancy must still be flagged after the fix.
+
+    box_4 = 600.61 but box_1+box_2+box_3 = 600.60 → genuine inconsistency, must flag.
+    """
+    df5 = _declared_f5(box_1=200.20, box_2=200.20, box_3=200.20, box_4=600.61)
+    findings = run_declared_f5_checks(df5, _computed())
+    check_a = [f for f in findings if f["check"] == "A" and f["box"] == "box_4"]
+    assert len(check_a) == 1, "Off-by-one-cent inconsistency must still flag"
+
+
+def test_check_a_large_magnitude_float_artifact_no_false_positive():
+    """[A-FP5] Large-magnitude values that are cent-consistent must not trip Check A.
+
+    At large magnitudes floating-point addition artifacts can be larger (e.g. ~1e-10).
+    Example: 100000.10 + 200000.20 + 300000.30 vs declared box_4=600000.60.
+    """
+    # Verify that this is actually a float-artifact case at this magnitude
+    raw_sum = 100000.10 + 200000.20 + 300000.30
+    # If the sum rounds to 600000.60 at the cent, it's cent-consistent
+    df5 = _declared_f5(
+        box_1=100000.10, box_2=200000.20, box_3=300000.30, box_4=600000.60
+    )
+    findings = run_declared_f5_checks(df5, _computed())
+    check_a = [f for f in findings if f["check"] == "A" and f["box"] == "box_4"]
+    assert check_a == [], (
+        f"Large-magnitude float artifact triggered false positive; "
+        f"raw_sum={raw_sum!r}, declared_box4=600000.60"
+    )
