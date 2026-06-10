@@ -163,6 +163,53 @@ def _fetch_entity(
     return records, inline_count
 
 
+def _fetch_headers_paginated(
+    entity: str,
+    select_fields: str,
+    date_filter: str | None = None,
+    page_size: int = 20,
+) -> list[dict]:
+    """Fetch header-only records for an OData entity, paginating via $skip.
+
+    Uses $select to limit returned fields — no DocumentLines, no expensive
+    line-level data.  Designed for the lightweight header reads needed by
+    listing checks (SEQ_GAP, DUP_CLAIM).
+
+    page_size defaults to 20 to match the SAP B1 Service Layer's server-side
+    page cap — requesting more than the server returns per page causes the
+    pagination loop to stop prematurely (returned < requested = "last page"
+    sentinel), so the value must not exceed the server's actual page size.
+
+    Args:
+        entity:        OData entity name (e.g. "Invoices").
+        select_fields: Comma-separated field names for $select.
+        date_filter:   OData $filter expression, or None for company-wide.
+        page_size:     Records per page; must not exceed SAP's server cap (default 20).
+
+    Returns:
+        List of dicts containing only the requested fields.
+    """
+    results: list[dict] = []
+    skip = 0
+    while True:
+        params: dict = {"$select": select_fields, "$top": page_size, "$skip": skip}
+        if date_filter:
+            params["$filter"] = date_filter
+        try:
+            resp = sap_b1_server.sap.get(f"/{entity}", params=params)
+            page = resp.get("value", [])
+        except Exception as exc:
+            log.warning(f"_fetch_headers_paginated: {entity} skip={skip} failed ({exc})")
+            break
+        if not page:
+            break
+        results.extend(page)
+        if len(page) < page_size:
+            break
+        skip += page_size
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Step functions
 # ---------------------------------------------------------------------------
@@ -225,6 +272,60 @@ def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
         # Expose the aggregate count only when all four entities supplied one;
         # a partial sum would give Gate 1 a misleadingly small expected total.
         "sap_inline_count": total_inline if inline_available else None,
+    }
+
+
+def fetch_listing_data(client_config: ClientConfig, period: Period) -> dict:
+    """Fetch minimal header data for T2.10 SEQ_GAP and DUP_CLAIM listing checks.
+
+    Makes four lightweight header-only OData queries (no DocumentLines):
+      - period_sales_headers:  Invoices in the reviewed period (DocNum,Series,Cancelled)
+      - period_purch_headers:  PurchaseInvoices in period (DocNum,Series,Cancelled,
+                               CardCode,NumAtCard,DocTotal)
+      - all_sales_headers:     ALL Invoices company-wide (DocNum,Series,Cancelled)
+      - all_purch_headers:     ALL PurchaseInvoices company-wide (DocNum,Series,Cancelled)
+
+    The company-wide queries (no date filter) are required by SEQ_GAP so it can
+    distinguish "DocNum issued in another period" from "DocNum never issued anywhere".
+
+    Args:
+        client_config: Validated ClientConfig (not used directly; present for
+                       step-function signature consistency).
+        period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+
+    Returns:
+        dict with keys: period_sales_headers, period_purch_headers,
+                        all_sales_headers, all_purch_headers.
+    """
+    period_start = period["start"]
+    period_end = period["end"]
+    date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
+
+    period_sales = _fetch_headers_paginated(
+        "Invoices", "DocNum,Series,Cancelled", date_filter=date_filter
+    )
+    period_purch = _fetch_headers_paginated(
+        "PurchaseInvoices",
+        "DocNum,Series,Cancelled,CardCode,NumAtCard,DocTotal",
+        date_filter=date_filter,
+    )
+    all_sales = _fetch_headers_paginated(
+        "Invoices", "DocNum,Series,Cancelled", date_filter=None
+    )
+    all_purch = _fetch_headers_paginated(
+        "PurchaseInvoices", "DocNum,Series,Cancelled", date_filter=None
+    )
+
+    log.info(
+        f"fetch_listing_data: period_sales={len(period_sales)} "
+        f"period_purch={len(period_purch)} "
+        f"all_sales={len(all_sales)} all_purch={len(all_purch)}"
+    )
+    return {
+        "period_sales_headers": period_sales,
+        "period_purch_headers": period_purch,
+        "all_sales_headers": all_sales,
+        "all_purch_headers": all_purch,
     }
 
 
@@ -389,6 +490,8 @@ def compile(  # noqa: A001 — shadows builtin; intentional, chain.py does not u
         # T2.9: populated by run_chain() when declared_f5 is supplied;
         # always present as an empty list so the schema key is always defined.
         "declared_f5_findings": [],
+        # T2.10: populated by run_chain() after listing fetch; always [] here.
+        "listing_findings": [],
     }
 
 
