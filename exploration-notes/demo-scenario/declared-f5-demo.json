@@ -1,0 +1,15 @@
+{
+  "period": {"start": "2024-07-01", "end": "2024-09-30"},
+  "source": "demo-synthetic-injection",
+  "declared": {
+    "box_1": 374590,
+    "box_2": 10000,
+    "box_3": 6000,
+    "box_4": 390590,
+    "box_5": 191078,
+    "box_6": 25871,
+    "box_7": 13207,
+    "box_8": 12664
+  },
+  "_comment": "SYNTHETIC DEMO (Fixture-B style): box_1=374590 is ~+5000 above the live computed value 369589.97 (delta +5000.03). box_4=390590 = box_1+box_2+box_3 (Check A consistent). box_6-box_7=25871-13207=12664=box_8 (Check A consistent). All other boxes within 1.00 tolerance of computed (no additional Check B findings). Intended to trigger exactly one Check B primary finding (box_1 over_declared) and one derived consequence note (box_4). NOT real client data."
+}
