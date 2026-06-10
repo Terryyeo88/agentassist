@@ -87,7 +87,7 @@ signed PDF deliverable; `python run_agent.py --client <id> --period <start> <end
 it end-to-end (no `--report` flag; the PDF is always generated as part of the always-seal
 behaviour introduced in T1.5). Audit trail is resolved (T1.5, 2026-06-02): every successful
 run produces a sealed, tamper-evident bundle under `audit/<client_id>/`.
-Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. Current test state: 1026 passed, 1 skipped.
+Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.9-V (on master, 2026-06-10) validated the declared-vs-computed mechanism end-to-end on SBODEMOSG Q3 2024: three isolated fixtures (Check A isolation, Check B isolation, control), 22 assertions, box-isolation held, report section renders (Check A/B findings in PDF/text when `--declared-f5` supplied with divergences; Section 6 "Not Examined" retains the placeholder when absent — correct behaviour). **$1.00 tolerance remains a materiality floor, NOT a confirmed IRAS F5 rounding convention — rounding-convention confirmation is a pending cousin task; a surfaced divergence is a candidate, not a confirmed discrepancy.** T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. Current test state: 1104 passed, 1 skipped.
 
 **The three to five most important gaps before commercial deployment**
 
@@ -839,7 +839,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.13 merges): **1026 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.13 sections for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10 merges): **1104 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10 sections for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -1165,6 +1165,31 @@ DONE = built on master, deterministic, unit-tested. **UNVALIDATED end-to-end.** 
 ### Test state
 
 **19 new tests** in `tests/test_check_declared_f5.py` (isolation invariant: no declared-f5 → empty findings; computed_boxes not mutated; Check A/B cases; tolerance boundary; load validation errors). All no-live-SAP. Master total after T2.9 merge: 934 (pre-T2.13).
+
+### Validation (T2.9-V)
+
+**Full-pipeline validation on SBODEMOSG Q3 2024 (2026-06-10, merged commit `0741dab`).**
+
+Three isolated `declared-f5.json` fixtures were run against the live chain:
+
+| Fixture | Design | Expected | Actual |
+|---------|--------|----------|--------|
+| A — Check A isolation | Box 4 identity violated (+$100); six independent boxes declared within $1.00 of computed | 1 × Check A finding on Box 4 | ✓ — delta=+100.0, rule verified |
+| B — Check B isolation | Box 1 over-declared (+$5,000, internally consistent); Box 4 co-shifted to preserve identity | 1 × Check B primary (Box 1, delta=+5000.03); 1 × derived consequence (Box 4) | ✓ — direction=over_declared; root_cause_attribution={'box_1': 5000.03} |
+| C — Control | All declared within $1.00 of computed | 0 findings (false-positive check) | ✓ — zero findings confirmed |
+
+**22 assertions verified** (all passed):
+- Correct finding types per fixture (check A/B isolation confirmed)
+- Box-isolation held: `calculate.boxes` byte-identical to no-`--declared-f5` baseline for all three fixtures
+- Gate `all_passed` unchanged across all runs
+- `render_declared_f5_section` returns non-empty string when findings present; empty string when absent
+- Section 6 "Not Examined": placeholder suppressed when findings present; retained when absent (correct — no filed return to compare against in the default case)
+
+**Report section delivered.** `report/sections.py` — `DeclaredF5Section` dataclass + `build_declared_f5_section`; `report/render.py` — public `render_declared_f5_section` (text) + `_declared_f5` PDF renderer (wired into `render_pdf` between `_f5_boxes` and `_findings`); `report/report.py` — optional `declared_f5` field on `ReportModel`, backward-compatible (`None` when `--declared-f5` absent; existing callers unaffected). Check A findings render to a rule/box/description table; Check B findings render to declared/computed/delta/direction/observation columns with a separate note for derived consequence boxes.
+
+**MANDATORY CAVEAT (unchanged from T2.9):** The $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — **NOT a confirmed IRAS F5 filing rounding convention.** Whether F5 boxes are filed whole-dollar or to the cent has not been confirmed against IRAS source. A divergence flagged by Check B is a **candidate for reviewer attention, not a confirmed discrepancy**. Rounding-convention confirmation remains a **pending cousin task** — the one external dependency not resolved by T2.9-V.
+
+**17 new hermetic tests** in `tests/test_declared_f5_section.py` (`TestWithFindings` 10 tests, `TestWithoutFindings` 7 tests); no SAP calls, no live chain, no PDF rendering. Master total after T2.9-V merge: **1104 passed, 1 skipped** (+17 over 1087).
 
 ---
 
