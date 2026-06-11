@@ -67,7 +67,7 @@ Non-blocking for the first 1–2 friendly pilots; real problems at 5+ clients or
 Effort 1–1.5 wk. Owner Collin. Add `JournalEntries` queries; filter GST-relevant accounts via per-client `gst_accounts` config; per-line classification where account context is GST-input/output. Hardest part: identifying GST-relevant journal lines (inferred from GL account). Out of scope: adjusting journals that re-classify GST across boxes.
 
 ### T2.2 — Custom VatGroup discovery and reporting — PLANNED
-Effort 1 wk. Owner Collin. `discover_vat_groups` tool run at engagement start: report standard vs custom VatGroups, surface sample DocNums/counterparties for custom codes, persist treatment decisions in per-client config.
+Effort 1 wk. Owner Collin. Enumerate the VatGroup codes actually present in the client's transaction data, classify against the 18-code standard set, and surface unknowns with sample DocNums/counterparties — the independent completeness check that catches codes the client forgot or never declared. The enumeration produces a client-confirmation worksheet; the client declares the intended treatment of each custom/unknown code; those client-declared treatments persist to per-client config. Treatment is CLIENT-DECLARED, not auto-classified — intended treatment of a custom code cannot be inferred from data (self-report is authoritative for treatment; enumeration is authoritative for completeness). Thin slice of the future T2.12 normalization adapter.
 
 ### T2.3 — Automated evaluation harness — PLANNED (durability mechanism for the headline reliability claim)
 Effort 2–3 wk. Owner Terry. Given stored prompt + reference output, invoke the Claude API directly, capture response, compute a scoring vector; run as CI on every meaningful change. Scoring uses structural checks, not text comparison. Protects the 30/30 across model upgrades and prompt/KB edits. T2.11 builds on it for the reasoning-layer basket.
@@ -223,6 +223,21 @@ documented as a tuning parameter, not a regulatory threshold) as candidates for 
 explanation (business cycle vs error). Surfaces, never asserts. Consumes list[QuarterBoxes]
 from T2.16's FY-box pass via the fixed contract; computation + tests built in parallel,
 report/chain wiring is a follow-on after T2.16 merges. Branch t2.17-period-fluctuation.
+
+### T2.18 — ClientConfig scheme & treatment block — PLANNED
+Effort PROPOSED 0.5–1 wk. Owner Collin. Config infrastructure ONLY — extends ClientConfig
+with the principal's scheme-status facts the scheme-dependent D+ checks will read. Builds NO
+check logic (the consumers — 3E.1, 3D.1.1.b ME/MC, reverse charge, Template-4 routing — are
+separate downstream tasks). Scope: (1) promote actively_makes_exempt_supplies from the
+getattr-default-False to a real, validated ClientConfig field (Known-State B; activates
+Template-4 routing when set); (2) add scheme-status fields — MES (Major Exporter Scheme),
+IGDS (Import GST Deferment Scheme), reverse-charge applicability — defaulting off, validated
+in loader.py, round-tripped through per-client YAML; (3) document the schema. Boundary vs
+T2.2: T2.2 persists per-VatGroup-code treatments; T2.18 adds scheme-level flags — distinct
+categories, no overlap. Backward-compatible: existing YAMLs without the new fields load with
+defaults. DoD: each field present/absent/invalid tested; loader validation step added + step
+count updated; Template-4 routing activates on the real field; existing clients unaffected;
+canonical docs updated. Branch t2.18-config-scheme-block.
 
 ---
 
