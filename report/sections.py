@@ -357,15 +357,17 @@ class AnalyticalReviewSection:
     show=True               → renders FY quarter table, totals, ratio, findings.
 
     Attributes:
-        show:          True when --analytical-review flag was supplied.
-        fy_start:      ISO date string — first day of the financial year.
-        fy_end:        ISO date string — last day of the financial year.
-        quarter_boxes: list[QuarterBoxes] (4 entries, chronological).
-        fy_box_4:      Financial-year Total Supplies (Box 4), as str(Decimal).
-        fy_box_5:      Financial-year Taxable Purchases (Box 5), as str(Decimal).
-        ratio:         TP/TS ratio str(Decimal rounded to 4dp), or None when
-                       fy_box_4 == 0.
-        findings:      list of TP_TS_RATIO finding dicts (empty when ratio ≤ 1.2).
+        show:                 True when --analytical-review flag was supplied.
+        fy_start:             ISO date string — first day of the financial year.
+        fy_end:               ISO date string — last day of the financial year.
+        quarter_boxes:        list[QuarterBoxes] (4 entries, chronological).
+        fy_box_4:             Financial-year Total Supplies (Box 4), as str(Decimal).
+        fy_box_5:             Financial-year Taxable Purchases (Box 5), as str(Decimal).
+        ratio:                TP/TS ratio str(Decimal rounded to 4dp), or None when
+                              fy_box_4 == 0.
+        findings:             list of TP_TS_RATIO finding dicts (empty when ratio ≤ 1.2).
+        fluctuation_findings: list[FluctuationFinding] — QoQ movement candidates per
+                              ASK §1.3a.  Empty when not run or no findings.
     """
     show: bool
     fy_start: str
@@ -375,6 +377,7 @@ class AnalyticalReviewSection:
     fy_box_5: str
     ratio: str | None
     findings: list[dict]
+    fluctuation_findings: list
 
 
 @dataclass
@@ -757,7 +760,7 @@ def build_analytical_review_section(
             show=False,
             fy_start="", fy_end="",
             quarter_boxes=[], fy_box_4="0", fy_box_5="0",
-            ratio=None, findings=[],
+            ratio=None, findings=[], fluctuation_findings=[],
         )
     return AnalyticalReviewSection(
         show=True,
@@ -768,6 +771,7 @@ def build_analytical_review_section(
         fy_box_5=str(analytical_review_data.get("fy_box_5", "0")),
         ratio=analytical_review_data.get("ratio"),
         findings=list(analytical_review_data.get("findings") or []),
+        fluctuation_findings=list(analytical_review_data.get("fluctuation_findings") or []),
     )
 
 
