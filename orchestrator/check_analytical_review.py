@@ -35,6 +35,7 @@ Public API:
     QuarterBoxes                                         TypedDict
     derive_fy_period(period_start, fiscal_year_start_month) -> (str, str)
     generate_fy_quarters(fy_start, fy_end)               -> list[tuple[str,str]]
+    filter_populated_quarters(quarters)                  -> list[QuarterBoxes]
     aggregate_to_fy(quarter_boxes_list)                  -> (Decimal, Decimal)
     check_tpts_ratio(fy_box_4, fy_box_5)                 -> list[dict]
     run_analytical_review_pass(client_config, period)    -> dict
@@ -49,6 +50,8 @@ from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import TypedDict
+
+from orchestrator.check_period_fluctuation import detect_period_fluctuations
 
 # Ensure repo root and mcp-servers/custom are on sys.path so sap_b1_server
 # and config.loader are importable when called from run_agent.py.
@@ -88,6 +91,30 @@ class QuarterBoxes(TypedDict):
     box_2: Decimal
     box_3: Decimal
     box_5: Decimal
+
+
+# ---------------------------------------------------------------------------
+# Empty-quarter filter (T2.17 integration)
+# ---------------------------------------------------------------------------
+
+_FLUCT_BOXES: tuple[str, ...] = ("box_1", "box_2", "box_3", "box_5")
+
+
+def filter_populated_quarters(quarters: list[QuarterBoxes]) -> list[QuarterBoxes]:
+    """Return only quarters that have at least one non-zero box value.
+
+    A quarter is "empty" when box_1 == box_2 == box_3 == box_5 == 0.  This
+    covers partial-year runs where the company has not filed the trailing
+    quarter yet — excluding them prevents -100% artefact fluctuation findings
+    from appearing in the report.
+
+    Args:
+        quarters: List of QuarterBoxes (Decimal values).  Not mutated.
+
+    Returns:
+        New list containing only the populated entries, in original order.
+    """
+    return [q for q in quarters if any(q[b] != 0 for b in _FLUCT_BOXES)]  # type: ignore[literal-required]
 
 
 # ---------------------------------------------------------------------------
@@ -271,13 +298,14 @@ def run_analytical_review_pass(
 
     Returns:
         dict with keys:
-            fy_start:       ISO date str
-            fy_end:         ISO date str
-            quarter_boxes:  list[QuarterBoxes] (4 entries, chronological)
-            fy_box_4:       str (Decimal value)
-            fy_box_5:       str (Decimal value)
-            ratio:          str or None (Decimal, None when fy_box_4 == 0)
-            findings:       list[dict]
+            fy_start:              ISO date str
+            fy_end:                ISO date str
+            quarter_boxes:         list[QuarterBoxes] (4 entries, chronological)
+            fy_box_4:              str (Decimal value)
+            fy_box_5:              str (Decimal value)
+            ratio:                 str or None (Decimal, None when fy_box_4 == 0)
+            findings:              list[dict] — TP/TS ratio findings
+            fluctuation_findings:  list[FluctuationFinding] — QoQ movement candidates
     """
     import sap_b1_server  # noqa: PLC0415 — deferred; module must be path-importable
 
@@ -319,9 +347,13 @@ def run_analytical_review_pass(
         r = fy_box_5 / fy_box_4
         ratio = str(r.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
 
+    populated = filter_populated_quarters(quarter_boxes)
+    fluctuation_findings = detect_period_fluctuations(populated)
     log.info(
         f"analytical-review: fy_box_4={fy_box_4} fy_box_5={fy_box_5} "
-        f"ratio={ratio} findings={len(findings)}"
+        f"ratio={ratio} findings={len(findings)} "
+        f"fluctuation_findings={len(fluctuation_findings)} "
+        f"(from {len(populated)}/{len(quarter_boxes)} populated quarters)"
     )
 
     return {
@@ -332,4 +364,5 @@ def run_analytical_review_pass(
         "fy_box_5": str(fy_box_5),
         "ratio": ratio,
         "findings": findings,
+        "fluctuation_findings": fluctuation_findings,
     }
