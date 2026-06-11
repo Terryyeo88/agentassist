@@ -208,6 +208,10 @@ NOT_EXAMINED_ITEMS: list[str] = [
 
     "Reverse charge on imported services and Overseas Vendor Registration (OVR) "
     "output tax (Boxes 14–17 and reverse-charge accounting not implemented)",
+
+    "Annual analytical review (TP/TS ratio and period-over-period box fluctuations "
+    "not performed — supply --analytical-review flag to enable "
+    "ASK Steps 1.3a and 1.3d checks)",
 ]
 
 

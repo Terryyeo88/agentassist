@@ -63,6 +63,7 @@ if str(_REPO_ROOT) not in sys.path:
 from audit_bundle import seal_bundle                                      # noqa: E402
 from config.loader import ConfigError, load_client_config                 # noqa: E402
 from orchestrator.chain import run_chain                                  # noqa: E402
+from orchestrator.check_analytical_review import run_analytical_review_pass  # noqa: E402
 from orchestrator.check_declared_f5 import load_declared_f5               # noqa: E402
 from orchestrator.exceptions import GateFailure                           # noqa: E402
 from reasoning.reg2627 import run_reg2627_pass            # noqa: E402
@@ -116,6 +117,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "F5 box values.  When provided, runs the declared-vs-computed checks "
             "(T2.9) and seals the declared figures as inputs/declared-f5.json.  "
             "Divergences surface as findings; the run always seals normally."
+        ),
+    )
+    p.add_argument(
+        "--analytical-review", action="store_true", default=False,
+        help=(
+            "Run the annual analytical review pass (T2.16): compute the FY TP/TS "
+            "ratio across four quarterly SAP reads and surface a candidate when the "
+            "ratio exceeds the IRAS 1.2 threshold (ASK Step 1.3d).  Non-gating: "
+            "the run seals normally regardless of findings."
         ),
     )
     return p
@@ -243,6 +253,18 @@ def main(*, provider=None) -> None:
         )
         print(f"  Source documents: {len(doc_candidates)} candidate(s)")
 
+    # --- Phase 2b: Annual analytical review pass (optional, non-gating) ---
+
+    # Runs outside run_chain() so compile_output["calculate"]["boxes"] is never
+    # touched.  sap_b1_server is already configured by run_chain above.
+    analytical_review_data: dict | None = None
+    if args.analytical_review:
+        print("Running annual analytical review pass (ASK Step 1.3d) ...")
+        analytical_review_data = run_analytical_review_pass(cfg, period)
+        ratio = analytical_review_data.get("ratio") or "—"
+        nf = len(analytical_review_data.get("findings", []))
+        print(f"  TP/TS ratio    : {ratio}  findings={nf}")
+
     # --- Phase 4: Report + seal ---
 
     # Summary from CompileOutput
@@ -294,7 +316,8 @@ def main(*, provider=None) -> None:
     print("Building PDF report ...")
     model = build_report(compile_output, cfg, generated_at=generated_at,
                          judgment_artefact=reasoning_artefact,
-                         document_candidates=doc_candidates)
+                         document_candidates=doc_candidates,
+                         analytical_review_data=analytical_review_data)
     render_pdf(model, pdf_path)
     print(f"  Report PDF     : {pdf_path}")
 
