@@ -139,6 +139,7 @@ def run_chain(
         client_config.password,
         client_config.ssl_verify,
         client_config.custom_vat_groups,
+        client_config.tax_code_mappings,
     )
 
     # Mutable accumulator closed over by _rec; collects one entry per gate

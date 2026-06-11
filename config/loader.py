@@ -37,9 +37,10 @@ Dependencies:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -53,6 +54,8 @@ try:
     import urllib3
 except ImportError:  # pragma: no cover
     sys.exit("config/loader.py requires requests: pip install requests")
+
+logger = logging.getLogger(__name__)
 
 
 # ── Standard VatGroup codes ────────────────────────────────────────────────────
@@ -94,6 +97,13 @@ class ClientConfig:
         show_ai_candidates:      Whether the AI-candidate subsection appears in the
                                  PDF.  Defaults to False — must stay False until the
                                  recall/precision measurement gate is met.
+        source_system:           Name of the client's accounting system (e.g.
+                                 "xero", "myob", "quickbooks"). Optional, defaults
+                                 to "sap_b1". Used only for logging/display.
+        tax_code_mappings:       Source-system tax code (uppercase) -> canonical
+                                 AgentAssist VatGroup code. Empty for SAP B1
+                                 clients, whose VatGroup codes are already
+                                 canonical and pass through unchanged.
     """
     client_id: str
     client_name: str
@@ -116,6 +126,10 @@ class ClientConfig:
     # recall/precision measurement gate is met; the artefact always seals into the
     # bundle regardless of this flag).
     show_ai_candidates: bool = False
+    # Non-SAP-B1 source system support (logging/display only; see tax_code_mappings).
+    source_system: str = "sap_b1"
+    # Source tax code (uppercase) -> canonical VatGroup; empty for SAP B1 clients.
+    tax_code_mappings: dict = field(default_factory=dict)
 
 
 class ConfigError(RuntimeError):
@@ -140,6 +154,8 @@ def load_client_config(
       7. Check custom_vat_groups for collisions with standard codes.
       8. (if check_connectivity=True) SAP login probe — reports endpoint +
          failure mode. Skipped by consumers that manage their own sessions.
+      9. Validate tax_code_mappings — every mapped-to value must be a
+         canonical VatGroup code; keys are normalized to uppercase.
 
     Args:
         client_id:          Filename stem in config/clients/ (e.g. "sbodemosg").
@@ -156,6 +172,8 @@ def load_client_config(
         ConfigError: On any validation failure — file missing, YAML error,
             required field absent, client_id mismatch, unset env var, GST
             rate out of range, VatGroup collision, or SAP login failure.
+        ValueError: If tax_code_mappings maps a source code to a value that
+            is not a canonical AgentAssist VatGroup code.
 
     Example:
         cfg = load_client_config("sbodemosg", check_connectivity=False)
@@ -271,6 +289,34 @@ def load_client_config(
         )
     show_ai: bool = bool(_raw_ai)
 
+    # --- Step 9: tax_code_mappings validation (non-SAP-B1 source systems) ---
+
+    source_system: str = str(raw.get("source_system") or "sap_b1")
+
+    # `or {}` handles both the key being absent and it being explicitly null in YAML.
+    raw_mappings: dict = dict(raw.get("tax_code_mappings") or {})
+    tax_code_mappings: dict = {}
+    for source_code, target_code in raw_mappings.items():
+        if target_code not in _STANDARD_VAT_GROUPS:
+            raise ValueError(
+                f"tax_code_mappings in '{client_id}.yaml' maps "
+                f"'{source_code}' -> '{target_code}', but '{target_code}' is not "
+                f"a canonical AgentAssist VatGroup code.\n"
+                f"  Valid targets: {sorted(_STANDARD_VAT_GROUPS)}"
+            )
+        # Normalize keys to uppercase so runtime lookups are case-insensitive.
+        tax_code_mappings[str(source_code).upper()] = target_code
+
+    if tax_code_mappings:
+        # Gaps are not errors — a client may legitimately never use some codes —
+        # but surfacing them helps catch missing mappings early.
+        missing = sorted(_STANDARD_VAT_GROUPS - set(tax_code_mappings.values()))
+        if missing:
+            logger.warning(
+                f"tax_code_mappings in '{client_id}.yaml' has no source code "
+                f"mapped to canonical VatGroup(s): {missing}."
+            )
+
     return ClientConfig(
         client_id=raw["client_id"],
         client_name=raw["client_name"],
@@ -287,6 +333,8 @@ def load_client_config(
         reviewer_name=str(report.get("reviewer_name") or ""),
         firm_name=str(report.get("firm_name") or ""),
         show_ai_candidates=show_ai,
+        source_system=source_system,
+        tax_code_mappings=tax_code_mappings,
     )
 
 
