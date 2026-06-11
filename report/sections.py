@@ -350,6 +350,34 @@ class ListingFindingsSection:
 
 
 @dataclass
+class AnalyticalReviewSection:
+    """Data for the optional Annual Analytical Review section (T2.16).
+
+    show=False or data=None → renderer is a no-op; rest of report byte-identical.
+    show=True               → renders FY quarter table, totals, ratio, findings.
+
+    Attributes:
+        show:          True when --analytical-review flag was supplied.
+        fy_start:      ISO date string — first day of the financial year.
+        fy_end:        ISO date string — last day of the financial year.
+        quarter_boxes: list[QuarterBoxes] (4 entries, chronological).
+        fy_box_4:      Financial-year Total Supplies (Box 4), as str(Decimal).
+        fy_box_5:      Financial-year Taxable Purchases (Box 5), as str(Decimal).
+        ratio:         TP/TS ratio str(Decimal rounded to 4dp), or None when
+                       fy_box_4 == 0.
+        findings:      list of TP_TS_RATIO finding dicts (empty when ratio ≤ 1.2).
+    """
+    show: bool
+    fy_start: str
+    fy_end: str
+    quarter_boxes: list
+    fy_box_4: str
+    fy_box_5: str
+    ratio: str | None
+    findings: list[dict]
+
+
+@dataclass
 class SignatureSection:
     """Data for the declaration and sign-off page.
 
@@ -675,6 +703,10 @@ def build_declared_f5_section(compile_output: dict[str, Any]) -> DeclaredF5Secti
 # minor wording edits in constants.py do not silently break suppression.
 _DECL_F5_NOT_EXAMINED_PREFIX: str = "Declared-vs-computed F5 comparison"
 
+# Prefix of the NOT_EXAMINED_ITEMS entry that is suppressed when the
+# analytical-review pass ran (--analytical-review flag supplied).
+_ANALYTICAL_REVIEW_NE_PREFIX: str = "Annual analytical review"
+
 
 def render_listing_findings_section(
     compile_output: dict[str, Any],
@@ -700,12 +732,52 @@ def render_listing_findings_section(
     )
 
 
+def build_analytical_review_section(
+    analytical_review_data: dict | None,
+    *,
+    show: bool,
+) -> AnalyticalReviewSection:
+    """Build the AnalyticalReviewSection from the T2.16 pass output.
+
+    When show=False the section is built with empty/placeholder values so the
+    renderer can skip it unconditionally.  When show=True the pass data is
+    consumed; a None data dict produces a degenerate section with no content.
+
+    Args:
+        analytical_review_data: Dict returned by run_analytical_review_pass(),
+                                or None when the pass did not run.
+        show:                   True when --analytical-review was supplied.
+                                Keyword-only to prevent positional mis-ordering.
+
+    Returns:
+        AnalyticalReviewSection: Fully populated; renderer never receives None.
+    """
+    if not show or analytical_review_data is None:
+        return AnalyticalReviewSection(
+            show=False,
+            fy_start="", fy_end="",
+            quarter_boxes=[], fy_box_4="0", fy_box_5="0",
+            ratio=None, findings=[],
+        )
+    return AnalyticalReviewSection(
+        show=True,
+        fy_start=analytical_review_data.get("fy_start", ""),
+        fy_end=analytical_review_data.get("fy_end", ""),
+        quarter_boxes=list(analytical_review_data.get("quarter_boxes") or []),
+        fy_box_4=str(analytical_review_data.get("fy_box_4", "0")),
+        fy_box_5=str(analytical_review_data.get("fy_box_5", "0")),
+        ratio=analytical_review_data.get("ratio"),
+        findings=list(analytical_review_data.get("findings") or []),
+    )
+
+
 def build_not_examined_section(
     compile_output: dict[str, Any],
     client_config: Any,
     *,
     declared_f5_findings: list[dict] | None = None,
     listing_section: "ListingFindingsSection | None" = None,
+    analytical_review_section: "AnalyticalReviewSection | None" = None,
 ) -> NotExaminedSection:
     """Build Section 6 — coverage boundary from constants plus run-specific additions.
 
@@ -719,32 +791,44 @@ def build_not_examined_section(
     longer out of scope.  The match uses startswith(_DECL_F5_NOT_EXAMINED_PREFIX)
     so minor wording edits in constants.py do not silently reintroduce the item.
 
+    When analytical_review_section.show is True the "Annual analytical review"
+    placeholder is suppressed — the pass ran and the section is in the report.
+
     Args:
-        compile_output:       CompileOutput dict; reads 'deduplicated_anomalies'
-                              if present (absent in older chain runs; defaults []).
-        client_config:        ClientConfig; reads 'custom_vat_groups' via getattr.
-        declared_f5_findings: Optional list of findings from run_declared_f5_checks.
-                              Keyword-only to prevent accidental positional errors.
-                              When non-empty the "Declared-vs-computed" item is
-                              removed from Section 6.  Defaults to None (no
-                              suppression — backward-compatible with callers that
-                              do not supply the argument).
-        listing_section:      Optional ListingFindingsSection from
-                              render_listing_findings_section.  When seq_gap_findings
-                              is non-empty, the "sequence gap detection" Not-Examined
-                              item is suppressed independently.  When dup_claim_findings
-                              is non-empty, the "duplicate input-tax claims" item is
-                              suppressed independently.  Defaults to None.
+        compile_output:              CompileOutput dict; reads 'deduplicated_anomalies'
+                                     if present (absent in older chain runs; defaults []).
+        client_config:               ClientConfig; reads 'custom_vat_groups' via getattr.
+        declared_f5_findings:        Optional list of findings from run_declared_f5_checks.
+                                     Keyword-only to prevent accidental positional errors.
+                                     When non-empty the "Declared-vs-computed" item is
+                                     removed from Section 6.  Defaults to None (no
+                                     suppression — backward-compatible with callers that
+                                     do not supply the argument).
+        listing_section:             Optional ListingFindingsSection from
+                                     render_listing_findings_section.  When seq_gap_findings
+                                     is non-empty, the "sequence gap detection" Not-Examined
+                                     item is suppressed independently.  When dup_claim_findings
+                                     is non-empty, the "duplicate input-tax claims" item is
+                                     suppressed independently.  Defaults to None.
+        analytical_review_section:   Optional AnalyticalReviewSection from
+                                     build_analytical_review_section.  When show=True
+                                     the "Annual analytical review" Not-Examined item is
+                                     suppressed.  Defaults to None (no suppression).
 
     Returns:
         NotExaminedSection: Items list in display order (standard items first,
             run-specific additions appended).
     """
     suppress_decl_f5: bool = bool(declared_f5_findings)
+    suppress_analytical_review: bool = bool(
+        analytical_review_section and analytical_review_section.show
+    )
 
     items: list[str] = []
     for item in NOT_EXAMINED_ITEMS:
         if suppress_decl_f5 and item.startswith(_DECL_F5_NOT_EXAMINED_PREFIX):
+            continue
+        if suppress_analytical_review and item.startswith(_ANALYTICAL_REVIEW_NE_PREFIX):
             continue
         items.append(item)
 

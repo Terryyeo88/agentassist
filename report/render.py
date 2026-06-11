@@ -35,6 +35,7 @@ Exports:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -807,6 +808,83 @@ def _judgment(m: ReportModel, story: list) -> None:
     _unified_candidates_subsection(m, story)
 
 
+def _analytical_review(m: ReportModel, story: list) -> None:
+    """Append the Annual Analytical Review section when the pass ran.
+
+    No-op when model.analytical_review is None or show=False, keeping the rest
+    of the report byte-identical to a run without --analytical-review.
+
+    Renders: FY period context; per-quarter Box 1/2/3/5 table; FY totals and
+    TP/TS ratio; any TP_TS_RATIO findings with the RC/OVR approximation caveat.
+
+    Args:
+        m:     The ReportModel; analytical_review may be None for legacy callers.
+        story: Mutable story list; flowables are appended in place.
+    """
+    ar = getattr(m, "analytical_review", None)
+    if ar is None or not ar.show:
+        return
+
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph(
+        "Annual Analytical Review — ASK Step 1.3d (TP/TS Ratio)", _H2
+    ))
+    story.append(Paragraph(
+        f"Financial year: {ar.fy_start} to {ar.fy_end}.  "
+        "Taxable Purchases (Box 5) / Total Supplies (Box 4) ratio computed from "
+        "four quarterly SAP reads.  IRAS threshold: ratio &gt; 1.2 is a "
+        "candidate for reviewer explanation.",
+        _SMLX,
+    ))
+    story.append(Spacer(1, 0.2 * cm))
+
+    # Per-quarter box table — column widths sum to _UW (17.0 cm)
+    q_cols = [3.5*cm, 2.5*cm, 2.5*cm, 2.5*cm, 2.5*cm, 3.5*cm]
+    q_hdr = [_p(h, _CELLB) for h in
+             ["Quarter", "Box 1", "Box 2", "Box 3", "Box 4 (sum)", "Box 5"]]
+    q_rows = []
+    for qb in ar.quarter_boxes:
+        box4_q = qb["box_1"] + qb["box_2"] + qb["box_3"]
+        q_rows.append([
+            Paragraph(f"{qb['period_start']}<br/>{qb['period_end']}", _CELL),
+            _p(_sgd(qb["box_1"])),
+            _p(_sgd(qb["box_2"])),
+            _p(_sgd(qb["box_3"])),
+            _p(_sgd(box4_q)),
+            _p(_sgd(qb["box_5"])),
+        ])
+    story.append(_table(q_cols, q_hdr, q_rows))
+
+    # FY totals and ratio
+    story.append(Spacer(1, 0.15 * cm))
+    fy_b4 = Decimal(ar.fy_box_4)
+    fy_b5 = Decimal(ar.fy_box_5)
+    ratio_display = ar.ratio if ar.ratio is not None else "—"
+    story.append(Paragraph(
+        f"<b>FY Box 4 (Total Supplies):</b>  {_sgd(fy_b4)}"
+        f"   <b>FY Box 5 (Taxable Purchases):</b>  {_sgd(fy_b5)}"
+        f"   <b>TP/TS Ratio:</b>  {ratio_display}",
+        _BODY,
+    ))
+
+    # TP/TS findings — empty list when ratio ≤ 1.2
+    if ar.findings:
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(Paragraph("TP/TS Ratio — Candidate for Review", _H3))
+        for f in ar.findings:
+            story.append(Paragraph(f.get("description", ""), _BODY))
+            if f.get("caveat"):
+                story.append(Spacer(1, 0.1 * cm))
+                story.append(Paragraph(f.get("caveat"), _SMLX))
+            if f.get("note"):
+                story.append(Paragraph(f"Note: {f.get('note')}", _SMLX))
+    else:
+        story.append(Spacer(1, 0.1 * cm))
+        story.append(Paragraph(
+            "TP/TS ratio is within the IRAS threshold — no finding.", _SMALL
+        ))
+
+
 def _declared_f5(m: ReportModel, story: list) -> None:
     """Append the Declared-vs-Computed F5 section when findings are present.
 
@@ -1077,6 +1155,7 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _cover(model, story)
     _scope(model, story)
     _f5_boxes(model, story)
+    _analytical_review(model, story)
     _declared_f5(model, story)
     _findings(model, story)
     _listing_findings(model, story)

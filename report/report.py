@@ -42,6 +42,7 @@ from config.loader import ClientConfig
 from report.enrich import EnrichedFinding, enrich
 from report.sections import (
     AICandidatesSection,
+    AnalyticalReviewSection,
     CoverSection,
     CrossFindingSection,
     DeclaredF5Section,
@@ -54,6 +55,7 @@ from report.sections import (
     SignatureSection,
     UnifiedCandidatesSection,
     build_ai_candidates_section,
+    build_analytical_review_section,
     build_cover_section,
     build_cross_finding_section,
     build_declared_f5_section,
@@ -122,6 +124,9 @@ class ReportModel:
     # T2.10: listing-level findings (SEQ_GAP + DUP_CLAIM).  None only in legacy
     # callers that predate T2.10 — renderer skips the section when None.
     listing_findings: ListingFindingsSection | None = None
+    # T2.16: annual analytical review (TP/TS ratio + quarter boxes for T2.17).
+    # None only in legacy callers; renderer skips section when None or show=False.
+    analytical_review: AnalyticalReviewSection | None = None
 
 
 def build_report(
@@ -131,6 +136,7 @@ def build_report(
     generated_at: str,
     judgment_artefact: dict | None = None,
     document_candidates: list | None = None,
+    analytical_review_data: dict | None = None,
 ) -> ReportModel:
     """Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
@@ -183,6 +189,12 @@ def build_report(
     # T2.10: build listing findings section once so the same object can be
     # passed to both ReportModel and build_not_examined_section for suppression.
     listing_sec = render_listing_findings_section(compile_output)
+    # T2.16: build analytical review section once for both ReportModel and
+    # build_not_examined_section (suppression when the pass ran).
+    analytical_sec = build_analytical_review_section(
+        analytical_review_data,
+        show=(analytical_review_data is not None),
+    )
 
     return ReportModel(
         cover=build_cover_section(
@@ -197,6 +209,7 @@ def build_report(
             compile_output, client_config,
             declared_f5_findings=df5_findings,
             listing_section=listing_sec,
+            analytical_review_section=analytical_sec,
         ),
         signature=build_signature_section(client_config),
         generated_at=generated_at,
@@ -215,4 +228,6 @@ def build_report(
         declared_f5=build_declared_f5_section(compile_output),
         # T2.10: listing findings section (SEQ_GAP + DUP_CLAIM).
         listing_findings=listing_sec,
+        # T2.16: analytical review section; show=False when pass did not run.
+        analytical_review=analytical_sec,
     )
