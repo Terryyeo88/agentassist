@@ -17,8 +17,9 @@ including inconsistencies and gaps, regardless of how they reflect on the curren
 work.
 
 The repository is at `C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent`. T1.1–T1.6 are on
-`master`. T2.7 (Reg 26/27 reasoning pass) is on branch `t2.7-reasoning-reg2627`, not yet
-merged to `master` as of 2026-06-08.
+`master`. T2.7 (Reg 26/27 reasoning pass) and T2.8 (source-document cross-reference) are on
+`master` (merged 2026-06-09 from branches `t2.7-reasoning-reg2627` and
+`t2.8-document-ingestion` respectively).
 
 ---
 
@@ -622,14 +623,15 @@ One resolved and one remaining design question:
 
 `config/loader.py` provides `load_client_config(client_id, *, check_connectivity=True) → ClientConfig`. Per-client config YAML lives in `config/clients/<id>.yaml`; `sbodemosg.yaml` is the first.
 
-**Validation pipeline** (each step fails with a human-readable message):
-1. Locate and parse `config/clients/<id>.yaml`
-2. Validate required fields (`client_id`, `client_name`, `applicable_gst_rate`, `sap_b1` block)
-3. `client_id` must match filename stem
-4. Resolve credential env-var names to values (stores values, never stores var names)
-5. Sanity-check `applicable_gst_rate` in `[0.05, 0.15]`
-6. Detect `custom_vat_groups` collisions with the 17 standard IRAS VatGroup codes
-7. Optional SAP login probe (logs out immediately on success; skipped by consumers that manage sessions)
+**Validation pipeline** (each step fails with a human-readable message; 8 steps — README's 8-step count is correct):
+1. File existence check (`config/clients/<id>.yaml` must exist)
+2. YAML parse (`config/clients/<id>.yaml`)
+3. Validate required fields (`client_id`, `client_name`, `applicable_gst_rate`, `sap_b1` block)
+4. `client_id` must match filename stem
+5. Resolve credential env-var names to values (stores values, never stores var names)
+6. Sanity-check `applicable_gst_rate` in `[0.05, 0.15]`
+7. Detect `custom_vat_groups` collisions with the 18 standard IRAS VatGroup codes (SO, DS, ZR, ES33, ESN33, OS, SI, ZP, IM, IGDS, ME, NR, BL, EP, OP, TX-E33, TX-N33, TX-RE)
+8. Optional SAP login probe (logs out immediately on success; skipped by consumers that manage sessions)
 
 **`ClientConfig` fields**: `client_id`, `client_name`, `gst_registration_number`, `applicable_gst_rate`, `service_layer_url`, `company_db`, `username`, `password`, `ssl_verify`, `fiscal_year_start_month`, `custom_vat_groups`, `completeness_threshold`, `reviewer_name`, `firm_name`.
 
@@ -656,7 +658,7 @@ One resolved and one remaining design question:
 **Chain sequence**:
 ```
 fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect → gate_4
-      → compile → gate_5 → report_input → write chain-run-<ts>.json → return ReportInput
+      → compile → gate_5 → fetch_listing_data + listing checks → return (CompileOutput, gate_results)
 ```
 
 **Five deterministic gates** (pure arithmetic / set-membership, never an LLM call):
@@ -739,6 +741,8 @@ The join key is `(doc_num, error_code)`. COMPLETENESS findings (`doc_num=None`) 
 - **E2-by-VatGroup branching**: the applicable template depends on the specific zero-rated or exempt VatGroup — the E2 error code alone is not sufficient for routing.
 - **Template 5 default**: findings without a specific Document-2 assignment route to Template 5.
 - **Template 4** is used instead of Template 5 when `actively_makes_exempt_supplies` is set in `ClientConfig` — reflecting the IRAS distinction between businesses that make exempt supplies as a principal activity vs. incidentally.
+- **`actively_makes_exempt_supplies` unimplemented (known state)**: `actively_makes_exempt_supplies` is read via `getattr(client_config, "actively_makes_exempt_supplies", False)` and is NOT yet a `ClientConfig` field (`report/report.py:169`); all clients route exempt E2 findings to Template 5. Activating Template 4 for an actively-exempt client is a documented one-line `ClientConfig` addition (planned, not built).
+- **ZP → Template 1 fall-through (known state)**: ZP E2 findings currently route to the default Template 1. `ZP` is absent from every E2 routing branch in `report/routing.py` — not in `_ZERO_RATED_VGS` (`{"ZR","OS"}`), `_EXEMPT_VGS` (`{"ES33","ESN33"}`), or `_BLOCKED_INPUT_VGS` (`{"BL","NR"}`). Routing ZP E2 to Template 6 alongside BL/NR input-tax findings is a documented refinement candidate, not a defect.
 
 ### Eight report sections
 
@@ -880,7 +884,7 @@ and never blocks sealing — a reasoning failure (`status="errored"`) is logged 
 prevent the audit bundle from being written. Its output is sealed into the bundle as
 `steps/judgment-candidates.json`.
 
-### Package: `reasoning/` (branch `t2.7-reasoning-reg2627` only)
+### Package: `reasoning/` (on master)
 
 | File | Role |
 |---|---|
@@ -895,9 +899,9 @@ prevent the audit bundle from being written. Its output is sealed into the bundl
 `orchestrator/`, `report/`, `config/`, `mcp-servers/`, and `run_agent.py` contain no
 `anthropic` import (confirmed by import-only grep on master, 2026-06-09; see `docs/merge-gates.md` for the canonical gate definition).
 
-### Integration into `run_agent.py` (T2.7 branch)
+### Integration into `run_agent.py` (on master)
 
-`run_agent.py` on the T2.7 branch adds a Phase 3 between the chain run and the PDF/seal:
+`run_agent.py` on master has Phase 3 (Reg 26/27 reasoning pass) between the chain run and the PDF/seal:
 
 ```python
 from reasoning.reg2627 import run_reg2627_pass
@@ -907,13 +911,11 @@ line_source = functools.partial(fetch_si_purchase_lines, period["start"], period
 reasoning_artefact = run_reg2627_pass(period, line_source=line_source)
 ```
 
-The `reasoning_artefact` is passed to `seal_bundle(reasoning_artefact=…)`; `seal_bundle` on
-the T2.7 branch writes it as `steps/judgment-candidates.json` when the argument is provided.
-(`run_agent.py` on `master` has no Phase 3 and no `reasoning_artefact` parameter.)
+The `reasoning_artefact` is forwarded to `build_report` (as `judgment_artefact=`) and to `seal_bundle(reasoning_artefact=…)`, which writes it as `steps/judgment-candidates.json`. Phase 3b (source-document cross-reference, `run_documents_pass`) also runs on master; its candidates reach `build_report` as `document_candidates=`.
 
 ### `show_ai_candidates` flag
 
-`config/loader.py:118` (T2.7 branch) adds `show_ai_candidates: bool = False` to `ClientConfig`.
+`config/loader.py:118` (on master) declares `show_ai_candidates: bool = False` on `ClientConfig`.
 The field is read from the optional `report.show_ai_candidates` key in the client YAML,
 defaulting to `False`. `report/report.py:156` gates rendering:
 
@@ -927,7 +929,7 @@ show_ai: bool = getattr(client_config, "show_ai_candidates", False)
 renderer skips it. The flag is not set to `True` in any committed client YAML (`sbodemosg.yaml`
 has `report: {reviewer_name: "", firm_name: ""}` only — no `show_ai_candidates` key).
 
-### Knowledge-base slices (T2.7 branch only)
+### Knowledge-base slices (on master)
 
 Two KB slices live in `knowledge-base/slices/`:
 
@@ -943,9 +945,7 @@ Two KB slices live in `knowledge-base/slices/`:
 
 A measurement harness (`reasoning/measurement.py`, `reasoning/run_measurement.py`) was built
 and run on 2026-06-03 against a 110-line Opus-labelled DRAFT fixture
-(`tests/fixtures/reg2627-labelled-lines.DRAFT.json`, period 2024-07-01 → 2024-09-30). Gate
-thresholds are fixed in `exploration-notes/t2.7-measurement/gate-decision.md` (recall > 95%
-hard floor; FP rate < 20% soft ceiling), recorded before any measurement was run.
+(`tests/fixtures/reg2627-labelled-lines.DRAFT.json`, period 2024-07-01 → 2024-09-30). Gate verdict is computed in `reasoning/run_measurement.py` (NOT `measurement.py`, which only scores): predicate is `recall > 0.95 AND fp_rate < 0.05`, both strict (`run_measurement.py:49-50, 322-327`). NOTE — UNRECONCILED DISCREPANCY: `exploration-notes/t2.7-measurement/gate-decision.md` §2 pre-registers the FP ceiling at < 20%, while the implemented harness uses < 5%. The threshold choice flips Haiku's provisional verdict (PASS at 20%, FAIL at 5%). Reconciliation (ratify 5% by dated gate-decision.md amendment, or revert code to 20%) is a pending Terry decision; the git-history origin of `GATE_FP_RATE=0.05` is commit `6c050bc` (2026-06-03), same commit as the measurement results — git history cannot determine whether the threshold was set before or after the run.
 
 **Provisional results — UNVALIDATED (run against Opus-labelled DRAFT, not the promoted fixture):**
 
@@ -956,7 +956,7 @@ hard floor; FP rate < 20% soft ceiling), recorded before any measurement was run
 | claude-opus-4-8 | 1.000 | 0.022 | PASS | $1.66 |
 
 Source: `exploration-notes/t2.7-measurement/measurement-20260603-091632.json` and
-`results-20260603.md`.
+`results-20260603.md`. Haiku FAIL = 3 FP on WICA work-injury carve-out lines (DocNums 2073/2077/2078) flagged as `medical_expenses` despite being WICA-mandatory; fp_rate 3/46 = 0.065 > 0.05 gate. Recall 1.000 across all three models.
 
 These results **do not constitute a gate pass**. The fixture's `validation_status` is
 `"unvalidated"` (`tests/fixtures/reg2627-labelled-lines.DRAFT.json:_meta`). Labels were
@@ -1009,8 +1009,8 @@ All new tests are no-live-SAP, no-live-Anthropic-API (LLM calls mocked).
 4. **Fixture test floors adjusted post-hoc (Low)**: `_MIN_POSITIVES_PER_CATEGORY` lowered
    from 10→8 after Opus relabelling; structural tests now describe the Opus-labelled fixture
    rather than an independent spec.
-5. **`requirements.txt` now includes `anthropic`** (T2.7 branch only): added to support the
-   `reasoning/` package. Not present on `master`.
+5. **`requirements.txt` now includes `anthropic`** (on master): added to support the
+   `reasoning/` package.
 
 ---
 
@@ -1031,7 +1031,7 @@ T2.8 adds a source-document cross-reference pre-pass (`documents/` package) that
 
 The pass expands recall on checks that require reading the physical document without altering the F5 boxes or the deterministic gate path. **Extracted values never enter Layer 1, boxes, or gates**.
 
-### Package: `documents/` (branch `t2.8-document-ingestion` only)
+### Package: `documents/` (on master)
 
 | File | Role |
 |---|---|
@@ -1070,7 +1070,7 @@ Consequence: for any SBODEMOSG demo or test run, `B1AttachmentProvider.get_docum
 
 Activation on a real client SAP B1 instance requires: (1) the client's SAP B1 has `AttachmentsFolderPath` configured server-side; (2) purchase invoices have at least one PDF attachment. Once those conditions hold, Steps 1–3 will execute and the byte-download can be verified against a live attachment.
 
-### Integration into `run_agent.py` (T2.8 branch)
+### Integration into `run_agent.py` (on master, Phase 3b)
 
 Two new CLI flags added to `_build_parser()`:
 
@@ -1263,7 +1263,7 @@ Three checks, all deterministic, findings-not-gates:
 |---|---|---|
 | **SEQ_GAP** — DocNum sequence-gap detection over sales invoices | ASK Annual Review Guide §10.1(c)(i) — "Invoices not in running sequences" | Implemented + chain-wired + positive-detection validated on synthetic cases (T2.10-V); report-rendered |
 | **DUP_CLAIM** — Duplicate input-tax claim detection over purchases | ASK Annual Review Guide §10.1(d)(i) — "Processing the same invoice more than once" | Implemented + chain-wired + positive-detection validated on synthetic cases (T2.10-V); report-rendered; **INERT on SBODEMOSG** (NumAtCard 0% populated — client-onboarding precondition) |
-| **ZP E2 extension** — `"ZP"` added to both `_E2_ZERO_RATE_CODES` sets | ASK Annual Review Guide §10.1(d)(iv) — "tax coded as zero-rated/exempt/out-of-scope but reflects GST" | Implemented; DocNum 610 (LineTotal=800, TaxTotal=56, DocTotal=856) confirmed fixture |
+| **ZP E2 extension** — `"ZP"` added to both `_E2_ZERO_RATE_CODES` sets | ASK Annual Review Guide §10.1(d)(iv) — "tax coded as zero-rated/exempt/out-of-scope but reflects GST" | Implemented; DocNum 610 (ZP, LineTotal=1,200.00, TaxTotal=84.00, DocTotal=1,284.00) confirmed fixture. DocNum 607 is the pre-existing live SBODEMOSG ZP E2 (1,200.00 / 84.00). |
 
 ### Files changed
 
