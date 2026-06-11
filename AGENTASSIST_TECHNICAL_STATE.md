@@ -88,7 +88,7 @@ signed PDF deliverable; `python run_agent.py --client <id> --period <start> <end
 it end-to-end (no `--report` flag; the PDF is always generated as part of the always-seal
 behaviour introduced in T1.5). Audit trail is resolved (T1.5, 2026-06-02): every successful
 run produces a sealed, tamper-evident bundle under `audit/<client_id>/`.
-Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.9-V (on master, 2026-06-10) validated the declared-vs-computed mechanism end-to-end on SBODEMOSG Q3 2024: three isolated fixtures (Check A isolation, Check B isolation, control), 22 assertions, box-isolation held, report section renders (Check A/B findings in PDF/text when `--declared-f5` supplied with divergences; Section 6 "Not Examined" retains the placeholder when absent — correct behaviour). **$1.00 tolerance remains a materiality floor, NOT a confirmed IRAS F5 rounding convention — rounding-convention confirmation is a pending cousin task; a surfaced divergence is a candidate, not a confirmed discrepancy.** T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. T2.10-V (on master, 2026-06-10) validated the listing-checks detection path end-to-end via crafted-input full-chain: SEQ_GAP (DocNum 8002 truly-absent FLAGGED; 8003 within-range-but-present-company-wide NOT flagged — the period-boundary discriminating case; 8001/8004 not gaps), DUP_CLAIM (dup pair 7001/7002 flagged; near-miss 7003 different NumAtCard not flagged), both Not-Examined lines suppressed independently when findings present, box-isolation held. Live read-only FP check on SBODEMOSG Q3 2024 (1005 sales / 624 purchase headers company-wide): zero SEQ_GAP, zero DUP_CLAIM. **SBODEMOSG is a demo/synthetic DB — NOT real-client validation.** `validation_status` and `show_ai_candidates` unchanged. CI/test-infra self-provisioning (commit 40112ca, 2026-06-10): session-scoped autouse conftest fixture auto-generates gitignored PDF fixtures via `generate_invoices.py` (loaded by file path); `pdfplumber` added to `requirements.txt`; suite verified green on clean checkouts (no API key needed); diagnosis archived at `exploration-notes/infra/ci-fixture-diagnosis-20260610.md`. Report section header renamed to "Invoice Listing Completeness Checks" (commit 958ed3d — internal task ID removed from client-facing PDF; no functional change). Synthetic demo scenario committed at `exploration-notes/demo-scenario/` (commit 8b60d87): crafted SEQ_GAP/DUP_CLAIM/declared-F5 injections over a live SBODEMOSG Q3 2024 run, 10 self-verification assertions, disclosure README. **SYNTHETIC showcase — NOT real-client validation.** Check A float-robustness (commit 40c9024): declared-F5 internal-consistency comparisons (Box 4 == Box 1+Box 2+Box 3; Box 8 == Box 6−Box 7) now use cent-quantized `Decimal` comparison (`ROUND_HALF_UP`) instead of exact float equality — eliminates IEEE-754 sub-cent false positives; off-by-one-cent still flags; Check B and its $1.00 tolerance unchanged; 5 new `[A-FP]` tests. Report styling normalized (commit ae76578, merged via PR #4 as `d9c670c`): shared style palette in `report/render.py` — redundant `_META` removed, AI heading rhythm normalized, duplicated AI `TableStyle` blocks replaced by `_ai_table_style()` helper; content invariant (byte-identical text extraction); client-visible change: minor spacing only. Current test state: **1161 passed, 1 skipped**.
+Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.9-V (on master, 2026-06-10) validated the declared-vs-computed mechanism end-to-end on SBODEMOSG Q3 2024: three isolated fixtures (Check A isolation, Check B isolation, control), 22 assertions, box-isolation held, report section renders (Check A/B findings in PDF/text when `--declared-f5` supplied with divergences; Section 6 "Not Examined" retains the placeholder when absent — correct behaviour). **$1.00 tolerance remains a materiality floor, NOT a confirmed IRAS F5 rounding convention — rounding-convention confirmation is a pending cousin task; a surfaced divergence is a candidate, not a confirmed discrepancy.** T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. T2.10-V (on master, 2026-06-10) validated the listing-checks detection path end-to-end via crafted-input full-chain: SEQ_GAP (DocNum 8002 truly-absent FLAGGED; 8003 within-range-but-present-company-wide NOT flagged — the period-boundary discriminating case; 8001/8004 not gaps), DUP_CLAIM (dup pair 7001/7002 flagged; near-miss 7003 different NumAtCard not flagged), both Not-Examined lines suppressed independently when findings present, box-isolation held. Live read-only FP check on SBODEMOSG Q3 2024 (1005 sales / 624 purchase headers company-wide): zero SEQ_GAP, zero DUP_CLAIM. **SBODEMOSG is a demo/synthetic DB — NOT real-client validation.** `validation_status` and `show_ai_candidates` unchanged. CI/test-infra self-provisioning (commit 40112ca, 2026-06-10): session-scoped autouse conftest fixture auto-generates gitignored PDF fixtures via `generate_invoices.py` (loaded by file path); `pdfplumber` added to `requirements.txt`; suite verified green on clean checkouts (no API key needed); diagnosis archived at `exploration-notes/infra/ci-fixture-diagnosis-20260610.md`. Report section header renamed to "Invoice Listing Completeness Checks" (commit 958ed3d — internal task ID removed from client-facing PDF; no functional change). Synthetic demo scenario committed at `exploration-notes/demo-scenario/` (commit 8b60d87): crafted SEQ_GAP/DUP_CLAIM/declared-F5 injections over a live SBODEMOSG Q3 2024 run, 10 self-verification assertions, disclosure README. **SYNTHETIC showcase — NOT real-client validation.** Check A float-robustness (commit 40c9024): declared-F5 internal-consistency comparisons (Box 4 == Box 1+Box 2+Box 3; Box 8 == Box 6−Box 7) now use cent-quantized `Decimal` comparison (`ROUND_HALF_UP`) instead of exact float equality — eliminates IEEE-754 sub-cent false positives; off-by-one-cent still flags; Check B and its $1.00 tolerance unchanged; 5 new `[A-FP]` tests. Report styling normalized (commit ae76578, merged via PR #4 as `d9c670c`): shared style palette in `report/render.py` — redundant `_META` removed, AI heading rhythm normalized, duplicated AI `TableStyle` blocks replaced by `_ai_table_style()` helper; content invariant (byte-identical text extraction); client-visible change: minor spacing only. T2.16 (on master, 2026-06-11) added the annual analytical review TP/TS ratio pass (`orchestrator/check_analytical_review.py`): FY TP/TS ratio (Box 5 ÷ Box 4 > 1.2), opt-in `--analytical-review` flag, Annual Analytical Review report section; demo-validated on SBODEMOSG (live FY ratio, box-isolation, >1.2 flag-fire via crafted input); RC/OVR approximation caveat (Boxes 14–16 not computed); NOT real-client validated; findings not gates. T2.17 (on master, 2026-06-11) added period-over-period fluctuation detection (`orchestrator/check_period_fluctuation.py`): QoQ movements in Boxes 1/2/3/5, ±50% non-regulatory surfacing threshold; wired into the Annual Analytical Review section (T2.17b, PR #7); demo-validated on SBODEMOSG (live FY render, Q4 all-zero excluded, box-isolation); surfaces candidates, never asserts; NOT real-client validated. Current test state: **1211 passed, 1 skipped**.
 
 **The three to five most important gaps before commercial deployment**
 
@@ -851,7 +851,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette merges): **1161 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V sections and D7 footer entry for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17 merges): **1211 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17 sections and D8 footer entry for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -1374,6 +1374,112 @@ Shared style palette in `report/render.py`:
 **Content invariant confirmed:** pdfplumber text extraction before and after the change is byte-identical — the styling normalization does not alter any report content, findings, box values, or section text. Client-visible effect is limited to minor spacing adjustments.
 
 No functional change to any check, gate, box, or test semantics. The full 1161-test suite passes with the styled render.
+
+---
+
+## T2.16 — Annual analytical review: TP/TS ratio pass (on master; demo-validated; DONE 2026-06-11)
+
+### Status
+
+T2.16 is merged to `master` (2026-06-11, PR #6 from branch `t2.16-tpts-ratio`).
+
+### What T2.16 adds
+
+Opt-in annual analytical review pass (`orchestrator/check_analytical_review.py`):
+
+| Component | Detail |
+|---|---|
+| `run_analytical_review_pass()` | Aggregates all quarters within `ClientConfig.fiscal_year_start` into FY-level box totals; computes TP/TS ratio (Box 5 ÷ Box 4); surfaces a candidate when ratio > 1.2 |
+| `--analytical-review` CLI flag | `run_agent.py` opt-in; pass does not run when absent, and does not affect any other check |
+| `AnalyticalReviewSection` | `report/sections.py` dataclass + renderer; adds "Annual Analytical Review" section to PDF report |
+| Box 4 = 0 guard | No finding when denominator is zero |
+| Box-isolation | FY aggregation is read-only; `result["calculate"]["boxes"]` is not mutated |
+
+**RC/OVR approximation caveat:** IRAS defines Total Supplies to exclude Boxes 14–16 (RC/OVR/LVG); those boxes are not computed by AgentAssist, so the ratio is approximate for RC/OVR clients. This caveat is encoded in every finding text.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `orchestrator/check_analytical_review.py` | New file — `run_analytical_review_pass()`, `filter_populated_quarters()`, `aggregate_fy_boxes()` |
+| `report/sections.py` | `AnalyticalReviewSection` dataclass; `build_analytical_review_section()` factory; `fluctuation_findings: list` field (populated by T2.17b) |
+| `report/render.py` | `_analytical_review()` renderer; `render_analytical_review_section()` text helper |
+| `tests/test_check_analytical_review.py` | 19 hermetic tests |
+
+### Demo validation (SBODEMOSG FY2024, 2026-06-11)
+
+| Assertion | Result |
+|---|---|
+| Live FY ratio computes and renders | TP/TS = 0.5039 — no finding (ratio < 1.2, correct) |
+| >1.2 flag-fire | Crafted input surfaces candidate (not live-seedable — demo ratio ~0.50) |
+| Box-isolation | PASS — boxes byte-identical with and without `--analytical-review` |
+| Section renders in PDF | PASS |
+
+### Honest qualifier (mandatory)
+
+DONE = merged to master, deterministic, unit-tested, demo-validated.
+
+- **SBODEMOSG is a demo/synthetic database** — NOT real-client validation.
+- **>1.2 flag-fire not live-seedable** on SBODEMOSG (demo FY ratio ~0.50); validated via crafted input fixture.
+- **RC/OVR approximation**: TP/TS ratio is approximate for clients making reverse-charge or overseas-vendor purchases (Boxes 14–16 not computed). Caveat encoded in every finding text.
+- Findings, never verdicts; does not affect F5 boxes, gates, or `validation_status`.
+
+### Test state
+
+**19 hermetic tests** in `tests/test_check_analytical_review.py`. All no-live-SAP. Master total after T2.16+T2.17 merges: **1211 passed, 1 skipped**.
+
+---
+
+## T2.17 — Annual analytical review: period-over-period fluctuations (on master; demo-validated; DONE 2026-06-11)
+
+### Status
+
+T2.17 computation merged to `master` (2026-06-10, PR #5 from branch `t2.17-period-fluctuation`). T2.17b chain/report integration merged to `master` (2026-06-11, PR #7 from branch `t2.17b-fluctuation-integration`, commit `a643ee5`, merge commit `0177abf`).
+
+### What T2.17 adds
+
+Period-over-period fluctuation detection (`orchestrator/check_period_fluctuation.py`), wired into the T2.16 analytical review pass:
+
+| Component | Detail |
+|---|---|
+| `detect_period_fluctuations()` | QoQ movement in Boxes 1/2/3/5; surfaces movements exceeding `threshold_pct` (default 50%) as `FluctuationFinding` items |
+| `filter_populated_quarters()` | Strips all-zero quarters before comparison (prevents −100% artefacts from data-absent periods) |
+| Surfacing threshold | **NOT IRAS-defined** — IRAS §Step 1.3a gives no numeric threshold; 50% default is an explicit non-regulatory tuning parameter documented in every finding description |
+| Integration (T2.17b) | `run_analytical_review_pass()` calls `detect_period_fluctuations()`; `AnalyticalReviewSection.fluctuation_findings` carries results; `_analytical_review()` renders a QoQ fluctuation subsection |
+
+### Files changed (T2.17b integration, PR #7)
+
+| File | Change |
+|---|---|
+| `orchestrator/check_analytical_review.py` | `filter_populated_quarters()` new public helper; `run_analytical_review_pass()` now returns `fluctuation_findings` |
+| `report/sections.py` | `AnalyticalReviewSection` gains `fluctuation_findings: list` field |
+| `report/render.py` | `_analytical_review()` gains QoQ fluctuation subsection; `render_analytical_review_section()` text helper added |
+| `tests/test_analytical_review_integration.py` | 13 hermetic integration tests (new) |
+
+### Demo validation (SBODEMOSG FY2024, 2026-06-11)
+
+| Assertion | Result |
+|---|---|
+| Live FY render, real Q1→Q2→Q3 movements | PASS — exactly 4 candidates surfaced |
+| Q1→Q2 box_1 | +66.53% — surfaced |
+| Q1→Q2 box_5 | +130.63% — surfaced |
+| Q2→Q3 box_2 | from=0 — surfaced |
+| Q2→Q3 box_3 | from=0 — surfaced |
+| Q4 all-zero excluded (no −100% artefacts) | PASS — `filter_populated_quarters` confirmed working |
+| Box-isolation | PASS |
+
+### Honest qualifier (mandatory)
+
+DONE = merged to master, deterministic, unit-tested, demo-validated.
+
+- **SBODEMOSG is a demo/synthetic database** — NOT real-client validation.
+- **±50% threshold is non-regulatory** — IRAS §Step 1.3a gives no number; the threshold is a surfacing tuning parameter, not a compliance criterion.
+- **Surfaces candidates, never asserts** — the business-cycle vs error assessment is always human.
+- Findings, never verdicts; does not affect F5 boxes, gates, or `validation_status`.
+
+### Test state
+
+**18 tests** in `tests/test_check_period_fluctuation.py` (computation). **13 tests** in `tests/test_analytical_review_integration.py` (T2.17b integration). Master total after T2.16+T2.17 merges: **1211 passed, 1 skipped**.
 
 ---
 
@@ -2516,4 +2622,4 @@ empty, T2.11 remains binding constraint, validation_status unchanged, show_ai_ca
 False, 92 new tests in `test_t2_13_fixture_schema.py`, `export_specialist_copy.py` strip
 guard; T2.9 + T2.13 sections added; repo tree updated; Appendix C #21 partial resolution
 noted; #24 updated to on-master; T2.7/T2.8 BRANCH ONLY → on master throughout; pre-merge
-gate definition corrected to import-only regex (see `docs/merge-gates.md`); 1026 tests). Updated 2026-06-10 (D6 doc-sync for T2.10-V — T2.10 validation subsection, crafted-chain test, live FP check, section renders, test count 1104 → 1156; see D6 roadmap entry). Updated 2026-06-10 (D7: CI self-provisioning — conftest auto-generates gitignored PDF fixtures via `generate_invoices.py`, `pdfplumber` added to `requirements.txt`, suite green on clean checkouts, diagnosis at `exploration-notes/infra/ci-fixture-diagnosis-20260610.md`; report section heading renamed to "Invoice Listing Completeness Checks" (internal task ID removed, commit 958ed3d); synthetic demo scenario at `exploration-notes/demo-scenario/` (SYNTHETIC — NOT real-client validation, commit 8b60d87, 10 self-verification assertions, disclosure README); Check A float-robustness — cent-quantized `Decimal` comparison eliminates IEEE-754 sub-cent false positives, off-by-one-cent still flags, Check B/$1.00 tolerance unchanged, 5 new `[A-FP]` tests (commit 40c9024); report styling normalized — shared `_ai_table_style()` helper, redundant `_META` removed, content invariant (commit ae76578, merged PR #4); test count 1156 → 1161; repo tree updated with `infra/` and `demo-scenario/`; T1.5 master total updated; Check A float-robustness subsection added to T2.9; report styling section added).*
+gate definition corrected to import-only regex (see `docs/merge-gates.md`); 1026 tests). Updated 2026-06-10 (D6 doc-sync for T2.10-V — T2.10 validation subsection, crafted-chain test, live FP check, section renders, test count 1104 → 1156; see D6 roadmap entry). Updated 2026-06-10 (D7: CI self-provisioning — conftest auto-generates gitignored PDF fixtures via `generate_invoices.py`, `pdfplumber` added to `requirements.txt`, suite green on clean checkouts, diagnosis at `exploration-notes/infra/ci-fixture-diagnosis-20260610.md`; report section heading renamed to "Invoice Listing Completeness Checks" (internal task ID removed, commit 958ed3d); synthetic demo scenario at `exploration-notes/demo-scenario/` (SYNTHETIC — NOT real-client validation, commit 8b60d87, 10 self-verification assertions, disclosure README); Check A float-robustness — cent-quantized `Decimal` comparison eliminates IEEE-754 sub-cent false positives, off-by-one-cent still flags, Check B/$1.00 tolerance unchanged, 5 new `[A-FP]` tests (commit 40c9024); report styling normalized — shared `_ai_table_style()` helper, redundant `_META` removed, content invariant (commit ae76578, merged PR #4); test count 1156 → 1161; repo tree updated with `infra/` and `demo-scenario/`; T1.5 master total updated; Check A float-robustness subsection added to T2.9; report styling section added). Updated 2026-06-11 (D8: T2.16 + T2.17 annual analytical review — TP/TS ratio pass (ASK 1.3d, `orchestrator/check_analytical_review.py`, `run_analytical_review_pass()`), period-over-period fluctuation (ASK 1.3a, `orchestrator/check_period_fluctuation.py`, `detect_period_fluctuations()`), opt-in `--analytical-review` flag, Annual Analytical Review report section; T2.16 demo-validated on SBODEMOSG (live FY ratio, box-isolation, >1.2 flag-fire via crafted input, RC/OVR approximation caveat Boxes 14–16 not computed); T2.17b chain/report integration (PR #7) demo-validated on SBODEMOSG (live FY render, exactly 4 candidates Q1→Q2/Q3, Q4 all-zero excluded, box-isolation); ±50% non-regulatory surfacing threshold; surfaces candidates, never asserts; NOT real-client validated; 50 new tests (19 + 18 + 13); test count 1161 → 1211; T2.16 + T2.17 sections added to STATE; exec summary updated; T2.16 + T2.17 roadmap entries DONE).*

@@ -203,26 +203,21 @@ Effort PROPOSED 0.5 wk. Owner Terry. The born-digital extraction path in `docume
 ### T2.15 — Automation-bias override tracking — PLANNED (NEW)
 Effort PROPOSED 0.5 wk engineering + process design. Owner Terry/Collin. The reviewer sign-off model requires genuine adjudication of surfaced candidates. A reviewer who accepts 100% of J+ candidates without override is a red flag for automation bias — professional responsibility is being transferred without oversight. Add per-engagement reviewer override/edit-rate tracking to the engagement workflow. Flag 100% accept rates as anomalous. This is primarily a process control; the code component is adding a reviewer-action field to the candidate adjudication workflow (which belongs in T3.2). DoD: override tracking defined in the engagement workflow specification; 100% accept rate flagged as anomalous in the engagement review; included in the T3.2 PDPA/compliance framework. See open item #29 in `AGENTASSIST_TECHNICAL_STATE.md`.
 
-### T2.16 — Annual analytical review: TP/TS ratio (ASK Step 1.3d) — PLANNED
-Effort PROPOSED 0.5 wk. Owner Terry. Computes the financial-year TP/TS ratio
-(Box 5 ÷ Box 4, FY derived from ClientConfig.fiscal_year_start) and surfaces a
-candidate when ratio > 1.2 (IRAS-defined threshold, ASK Annual Review Guide §Step 1.3d).
-Owns the new opt-in --analytical-review pass, the FY-box aggregation helper, and the
-"Annual Analytical Review" report section scaffold (foundation for T2.17). Surfaces a
-candidate for reviewer explanation; never asserts an error; the reasonableness
-assessment is human. CAVEAT to encode: IRAS defines Total Supplies to exclude Boxes
-14–16 (RC/OVR/LVG); those boxes are not computed, so the ratio is approximate for
-RC/OVR clients — flag this in the finding text. Box 4 = 0 → no finding (guard).
-Findings not gates; box-isolation preserved. Branch t2.16-tpts-ratio.
+### T2.16 — Annual analytical review: TP/TS ratio (ASK Step 1.3d) — DONE (2026-06-11)
+DONE (2026-06-11). TP/TS ratio (ASK 1.3d) over the FY (Box 5 ÷ Box 4 > 1.2), opt-in
+--analytical-review pass, Annual Analytical Review report section. Demo-validated on
+SBODEMOSG: live FY ratio computes + renders + zero findings on clean run + box-isolation;
+>1.2 flag-fire validated via crafted input (not live-seedable — demo ratio ~0.50).
+RC/OVR approximation caveat: Total Supplies not adjusted for Boxes 14–16 (not computed).
+NOT real-client validated. 19 tests (test_check_analytical_review.py).
 
-### T2.17 — Annual analytical review: period-over-period fluctuations (ASK Step 1.3a) — PLANNED
-Effort PROPOSED 0.5–1 wk. Owner Terry. Computes quarter-over-quarter movement in
-Boxes 1/2/3/5 across the financial year and surfaces movements exceeding a configurable
-surfacing threshold (NOT IRAS-defined — IRAS §Step 1.3a gives no number; default
-documented as a tuning parameter, not a regulatory threshold) as candidates for reviewer
-explanation (business cycle vs error). Surfaces, never asserts. Consumes list[QuarterBoxes]
-from T2.16's FY-box pass via the fixed contract; computation + tests built in parallel,
-report/chain wiring is a follow-on after T2.16 merges. Branch t2.17-period-fluctuation.
+### T2.17 — Annual analytical review: period-over-period fluctuations (ASK Step 1.3a) — DONE (2026-06-11)
+DONE (2026-06-11). Period-over-period fluctuation (ASK 1.3a) on Boxes 1/2/3/5, ±50%
+non-regulatory surfacing threshold; wired into the Annual Analytical Review section
+(integration branch t2.17b, PR #7). Demo-validated on SBODEMOSG: live FY render of real
+Q1→Q2→Q3 movements; all-zero quarters excluded (Q4 empty on demo). Surfaces candidates,
+never asserts. NOT real-client validated. 31 tests (18 test_check_period_fluctuation.py +
+13 test_analytical_review_integration.py).
 
 ### T2.18 — ClientConfig scheme & treatment block — PLANNED
 Effort PROPOSED 0.5–1 wk. Owner Collin. Config infrastructure ONLY — extends ClientConfig
