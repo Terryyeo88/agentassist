@@ -10,6 +10,11 @@ client_name: "Example Client Pte Ltd"     # Human-readable display name.
 gst_registration_number: "M90000001A"     # IRAS-issued GST reg no. Leave blank for demo/test.
 applicable_gst_rate: 0.09                 # 0.09 = 9% (current SG rate). 0.07 for pre-2024 demo data.
 
+# Optional. Name of the client's accounting system, e.g. "xero", "myob",
+# "quickbooks". Defaults to "sap_b1" if omitted. Used only for logging/display
+# — it does not change behaviour by itself (see tax_code_mappings below).
+source_system: sap_b1
+
 sap_b1:
   service_layer_url: "https://your-sap-host:50000/b1s/v2"
   company_db: "YOUR_COMPANY_DB"
@@ -30,6 +35,32 @@ period_defaults:
 #     tt_box: null                       # or a box key; null if no tax contribution
 #     side: purchase                     # "sales" or "purchase"
 custom_vat_groups: {}
+
+# Optional. Maps this client's source-system tax codes to AgentAssist's
+# canonical VatGroup codes. Leave absent (or empty) for SAP B1 clients —
+# SAP B1 VatGroup codes are already canonical and pass through unchanged.
+#
+# - Keys are the raw tax code as it appears in the source system; matching
+#   is case-insensitive at runtime (keys are uppercased on load).
+# - Values MUST be one of the 17 canonical AgentAssist VatGroup codes:
+#   SO, DS, ZR, OS, ES33, ESN33, SI, ZP, EP, OP, IM, IGDS, ME, NR, BL,
+#   TX-E33, TX-N33, TX-RE. The loader rejects the config if any value is
+#   not in this set.
+# - A source code that is not a key here passes through unchanged and will
+#   surface in the anomalies bucket if it is also not a recognised
+#   canonical code.
+#
+# Example for a client on Xero (uncomment and adjust to match the tax
+# rates configured in their Xero organisation):
+#
+# tax_code_mappings:
+#   OUTPUT: SO                  # Xero "GST on Income" -> Standard-rated sales
+#   ZERORATEDSUPPLIES: ZR       # Xero "GST Free Income" -> Zero-rated supply
+#   EXEMPTOUTPUT: ESN33         # Xero "Exempt Income" -> Exempt supply (non-Reg 33)
+#   INPUT: SI                   # Xero "GST on Expenses" -> Standard-rated input
+#   ZERORATEDINPUT: ZP          # Xero "GST Free Expenses" -> Zero-rated purchase
+#   NONE: OS                    # Xero "No GST" -> Out-of-scope supply
+tax_code_mappings: {}
 
 completeness_threshold: 0.10            # Flag if purchases < this fraction of sales count.
 

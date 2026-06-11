@@ -305,6 +305,27 @@ def _safe_float(val) -> float:
         return 0.0
 
 
+def normalize_vat_group(raw_code: str, mappings: dict[str, str]) -> str:
+    """Translate a source-system tax code to its canonical AgentAssist VatGroup.
+
+    If mappings is empty (SAP B1 clients), returns raw_code unchanged.
+    If raw_code is not in mappings, returns raw_code unchanged — unknown codes
+    will fall through to the anomalies bucket in the existing logic.
+
+    Args:
+        raw_code: The VatGroup code as read from the source record.
+        mappings: Source tax code (uppercase) -> canonical VatGroup code,
+            from ClientConfig.tax_code_mappings. Empty for SAP B1 clients.
+
+    Returns:
+        str: The canonical VatGroup code, or raw_code unchanged if mappings
+            is empty or raw_code has no entry in mappings.
+    """
+    if not mappings:
+        return raw_code
+    return mappings.get(raw_code.strip().upper(), raw_code)
+
+
 def _is_sgd(doc: dict) -> bool:
     """Return True if the document's currency is SGD (or blank, which SAP defaults to SGD).
 
@@ -385,6 +406,8 @@ def _load_sap_config() -> ClientConfig:
     return load_client_config(client_id, check_connectivity=False)
 
 
+_tax_code_mappings: dict[str, str] = {}
+
 try:
     _client_config = _load_sap_config()
     # Merge client-specific VatGroup codes into the standard mapping (additive only).
@@ -392,6 +415,7 @@ try:
     # this loop can only add new codes — never overwrite existing ones.
     for _code, _mapping in _client_config.custom_vat_groups.items():
         F5_BOX_MAPPING[_code] = _mapping
+    _tax_code_mappings = dict(_client_config.tax_code_mappings)
     sap = SAPB1Client(_client_config)
 except RuntimeError as _init_err:
     logger.warning(
@@ -408,6 +432,7 @@ def configure_client(
     password: str,
     ssl_verify: bool,
     custom_vat_groups: Optional[dict] = None,
+    tax_code_mappings: Optional[dict] = None,
 ) -> None:
     """Override the module-level SAP client for orchestrator chain use.
 
@@ -426,8 +451,12 @@ def configure_client(
         custom_vat_groups: Optional dict of additional VatGroup → box mappings
             to merge into F5_BOX_MAPPING (additive; existing codes are not
             overwritten).
+        tax_code_mappings: Optional dict of source-system tax code (uppercase)
+            -> canonical VatGroup code, from ClientConfig.tax_code_mappings.
+            Empty/None for SAP B1 clients — VatGroup codes pass through
+            unchanged. See normalize_vat_group().
     """
-    global sap
+    global sap, _tax_code_mappings
 
     # Lightweight duck-type stand-in for ClientConfig so this module does not
     # need to import it — attributes are assigned dynamically after construction.
@@ -448,6 +477,8 @@ def configure_client(
         for _code, _mapping in custom_vat_groups.items():
             if _code not in F5_BOX_MAPPING:
                 F5_BOX_MAPPING[_code] = _mapping
+
+    _tax_code_mappings = dict(tax_code_mappings or {})
 
     logger.info(
         f"configure_client: SAP client set for {company_db} at {service_layer_url}"
@@ -547,6 +578,7 @@ def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_r
     """
     issues = []
     vg = (line.get("VatGroup") or "").strip()
+    vg = normalize_vat_group(vg, _tax_code_mappings)
     line_total = _safe_float(line.get("LineTotal"))
     tax_total = _safe_float(line.get("TaxTotal"))
     currency = (doc.get("DocCurrency") or "SGD").strip().upper()
@@ -768,6 +800,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
     for doc in sgd_sales:
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             mapping = F5_BOX_MAPPING.get(vg)
             if mapping is None:
                 if vg:
@@ -790,6 +823,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
     for doc in sgd_purchases:
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             mapping = F5_BOX_MAPPING.get(vg)
             if mapping is None:
                 if vg:
@@ -814,6 +848,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
     for doc in sgd_sales_credits:
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             mapping = F5_BOX_MAPPING.get(vg)
             if mapping is None:
                 if vg:
@@ -845,6 +880,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
     for doc in sgd_purchase_credits:
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             mapping = F5_BOX_MAPPING.get(vg)
             if mapping is None:
                 if vg:
@@ -898,6 +934,7 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
         })
         for line in doc.get("DocumentLines", []):
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             if vg in _STANDARD_RATE_SALES:
                 e1_candidates.append({
                     "doc_num": doc.get("DocNum"),
@@ -1024,6 +1061,7 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
         for line in doc.get("DocumentLines", []):
             issues.extend(_classify_line(line, doc, entity_type="sales", expected_rate=expected_rate))
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             if vg:
                 if vg not in vg_inventory:
                     mapping = F5_BOX_MAPPING.get(vg, {})
@@ -1041,6 +1079,7 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
         for line in doc.get("DocumentLines", []):
             issues.extend(_classify_line(line, doc, entity_type="purchase", expected_rate=expected_rate))
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             if vg:
                 if vg not in vg_inventory:
                     mapping = F5_BOX_MAPPING.get(vg, {})
@@ -1058,6 +1097,7 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
         for line in doc.get("DocumentLines", []):
             issues.extend(_classify_line(line, doc, entity_type="sales", expected_rate=expected_rate, credit_note=True))
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             if vg:
                 if vg not in vg_inventory:
                     mapping = F5_BOX_MAPPING.get(vg, {})
@@ -1075,6 +1115,7 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
         for line in doc.get("DocumentLines", []):
             issues.extend(_classify_line(line, doc, entity_type="purchase", expected_rate=expected_rate, credit_note=True))
             vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group(vg, _tax_code_mappings)
             if vg:
                 if vg not in vg_inventory:
                     mapping = F5_BOX_MAPPING.get(vg, {})
