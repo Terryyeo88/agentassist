@@ -379,6 +379,47 @@ def render_declared_f5_section(section) -> str:
     return "\n".join(lines)
 
 
+# ── Analytical review text renderer (public) ─────────────────────────────────
+
+def render_analytical_review_section(section) -> str:
+    """Render an AnalyticalReviewSection to a plain-text summary for validation.
+
+    Duck-typed: accepts any object with .ratio, .findings, and .fluctuation_findings.
+    Returns a multi-line string covering the TP/TS ratio and the QoQ fluctuation
+    subsections.  Always returns a non-empty string when section.show is True.
+
+    Args:
+        section: AnalyticalReviewSection (or duck-typed equivalent).
+
+    Returns:
+        str: Plain-text summary of both analytical-review subsections.
+    """
+    lines: list[str] = [
+        "Annual Analytical Review",
+        "=" * 50,
+        f"FY: {getattr(section, 'fy_start', '')} → {getattr(section, 'fy_end', '')}",
+        f"TP/TS ratio: {getattr(section, 'ratio', None) or '—'}",
+    ]
+    tpts = getattr(section, "findings", None) or []
+    if tpts:
+        lines.append("TP/TS Ratio — Candidate for Review:")
+        for f in tpts:
+            lines.append(f"  {f.get('description', '')}")
+    else:
+        lines.append("TP/TS ratio: within threshold — no finding.")
+
+    lines.append("")
+    lines.append("QoQ Fluctuation Candidates — ASK Step 1.3a:")
+    fluct = getattr(section, "fluctuation_findings", None) or []
+    if fluct:
+        for f in fluct:
+            lines.append(f"  {f.description}")
+    else:
+        lines.append("  No material quarter-over-quarter fluctuations detected at the ±50% threshold.")
+
+    return "\n".join(lines)
+
+
 # ── Section renderers ─────────────────────────────────────────────────────────
 
 def _cover(m: ReportModel, story: list) -> None:
@@ -882,6 +923,29 @@ def _analytical_review(m: ReportModel, story: list) -> None:
         story.append(Spacer(1, 0.1 * cm))
         story.append(Paragraph(
             "TP/TS ratio is within the IRAS threshold — no finding.", _SMALL
+        ))
+
+    # QoQ fluctuation findings — ASK §1.3a, T2.17
+    fluct = getattr(ar, "fluctuation_findings", None) or []
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph(
+        "QoQ Fluctuation Candidates — ASK Step 1.3a", _H3
+    ))
+    if fluct:
+        story.append(Paragraph(
+            "The following quarter-over-quarter movements in F5 boxes exceed the ±50% "
+            "surfacing threshold (non-regulatory tuning parameter, not an IRAS rule). "
+            "Each is a candidate for reviewer explanation — business cycle, seasonal "
+            "pattern, or data issue.",
+            _SMLX,
+        ))
+        story.append(Spacer(1, 0.1 * cm))
+        for f in fluct:
+            story.append(Paragraph(f.description, _BODY))
+    else:
+        story.append(Paragraph(
+            "No material quarter-over-quarter fluctuations detected at the ±50% threshold.",
+            _SMALL,
         ))
 
 
