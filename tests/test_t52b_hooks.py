@@ -172,7 +172,6 @@ class TestT3Tier1ValidJustification:
         original_pre_cb = None
 
         async def observing_pre(inp, uid, ctx):
-            nonlocal original_pre_cb
             result = await original_pre_cb(inp, uid, ctx)
             ledger_len_at_hook_return.append(len(ledger.entries))
             return result
