@@ -60,4 +60,4 @@ jobs:
         # "from audit_bundle.canonical import ..." resolve correctly in CI
         PYTHONPATH: .
       run: |
-        pytest
+        pytest -n auto
