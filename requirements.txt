@@ -9,3 +9,4 @@ pdfplumber
 pytest
 pytest-xdist
 anthropic
+claude-agent-sdk==0.2.99

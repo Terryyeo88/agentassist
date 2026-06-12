@@ -129,11 +129,13 @@ def seal_bundle(
     run_completed_at: str,
     reasoning_artefact: dict | None = None,
     declared_f5: dict | None = None,
+    agent_ledger=None,
 ) -> Path:
     """Write a sealed, tamper-evident audit bundle and return the bundle directory.
 
     Bundle layout (8 core artefacts hashed in manifest.json; 9 when reasoning
-    artefact is supplied; 9 when declared_f5 is supplied):
+    artefact is supplied; 9 when declared_f5 is supplied; +1 when agent_ledger
+    is supplied):
         audit/<client_id>/<start>_<end>/<run_ts>/
             manifest.json                         ← written last; covers all others
             config.json                           ← allow-listed; no credentials
@@ -141,6 +143,7 @@ def seal_bundle(
             inputs/declared-f5.json               ← only when declared_f5 given (T2.9)
             steps/{calculate,classify,detect}.json
             steps/judgment-candidates.json        ← only when reasoning_artefact given
+            steps/agent-ledger.json               ← only when agent_ledger given (T5.2b)
             gates.json
             compile-output.json
             report.pdf
@@ -177,6 +180,11 @@ def seal_bundle(
                              When provided, written as inputs/declared-f5.json and
                              included in the manifest hash as an immutable input
                              record alongside inputs/fetch-manifest.json.
+        agent_ledger:        Optional agent.ledger.Ledger instance (T5.2b).
+                             When provided, its entries are serialised and written
+                             as steps/agent-ledger.json and included in the manifest
+                             hash.  Typed as object to avoid importing agent/ into
+                             audit_bundle/ at module level.
 
     Returns:
         Path: Absolute path to the sealed bundle directory
@@ -238,6 +246,18 @@ def seal_bundle(
             declared_f5,
         )
 
+    # --- b4. Optional agent justification ledger (T5.2b) ---
+
+    # Serialised as a list of entry dicts (all LedgerEntry fields).  Written
+    # before the manifest so the manifest hash covers it.  Typed as object to
+    # keep audit_bundle/ free of agent/ imports.  dataclasses.asdict is stdlib.
+    if agent_ledger is not None:
+        from dataclasses import asdict as _asdict  # noqa: PLC0415
+        _write_canonical(
+            bundle_dir / "steps" / "agent-ledger.json",
+            [_asdict(e) for e in agent_ledger.entries],
+        )
+
     # --- c/d. Engagement and provenance metadata ---
 
     engagement = {
@@ -269,6 +289,10 @@ def seal_bundle(
     # when present so the tamper-evidence chain covers the declared figures.
     if declared_f5 is not None:
         artefact_paths.append(bundle_dir / "inputs" / "declared-f5.json")
+    # T5.2b: agent-ledger.json is a deterministic artefact; add to manifest hash
+    # when present so the tamper-evidence chain covers permission decisions.
+    if agent_ledger is not None:
+        artefact_paths.append(bundle_dir / "steps" / "agent-ledger.json")
     # Build per-artefact llm metadata for the reasoning artefact entry only.
     # Deterministic artefacts carry no llm key (absence ≡ false).
     artefact_llm_meta: dict | None = None
