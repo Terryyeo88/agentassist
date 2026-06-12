@@ -177,7 +177,7 @@ Scope: extend the T2.3 harness to compute the accuracy basket against T2.13's la
 > Inspection vs validation: inspecting raw reasoning output in a dev/scratch run is fine (pre-validation). What stays gated is letting candidates into a signed working paper or describing them as validated. Looking ≠ blessing. Inspection artefacts marked `UNVALIDATED / DRAFT`.
 
 ### T2.12 — Extract-based delivery adapter (advisory-firm channel) — PLANNED
-Effort PROPOSED 3–4 wk. Owner Terry/Collin. Advisory firms access client data via extracts, not live B1. Add an input adapter mapping CSV/Excel (later PINT-SG) to the same internal line-item schema so the chain/gates/report run unchanged. The MCP connector becomes one input adapter among several. DoD: a CSV extract produces identical chain output to the equivalent MCP run on the same data. **This refactor (decoupling input adapter from engine behind a stable schema/API) is also the architectural prerequisite for any future platform — see Tier 4.**
+Effort PROPOSED 3–4 wk. Owner Terry/Collin. Advisory firms access client data via extracts, not live B1. Add an input adapter mapping CSV/Excel (later PINT-SG) to the same internal line-item schema so the chain/gates/report run unchanged. The MCP connector becomes one input adapter among several. DoD: a CSV extract produces identical chain output to the equivalent MCP run on the same data. **This refactor (decoupling input adapter from engine behind a stable schema/API) is also the architectural prerequisite for any future platform — see Tier 4.** The stable `review(client, period, inputs) → ReviewResult` interface produced by this refactor is also the seam consumed by the Tier 5 agent shell (T5.1).
 
 ### T2.13 — Validation dataset construction (synthetic-paired + pilot-derived) — DONE (dataset built, blank-labelled; NOT validated)
 Completed 2026-06-09 on `master`. Owner Terry (build) + independent specialist (labels — pending).
@@ -307,7 +307,53 @@ Owner Terry. Effort: large; not estimated until the gate is met.
 
 **Why gated (honest flag).** The documented moat is **distribution + domain trust, not the tooling**, and the model is consulting/channel, **not pure SaaS**. A dashboard is a packaging/distribution surface; it does not address the distribution bottleneck and earns its build only once there is a validated, sold vertical to put in it. Building the container before the contents are proven spreads effort away from validation and first revenue. This is also the future state where the Anthropic Skill abstraction (Reminder #5) finally earns its place — but that, too, is post-validation.
 
-**What to do now toward it (near-zero-cost option-keeping):** nothing UI. Keep the engine cleanly separable behind a stable internal schema/API (the T2.12 input-adapter refactor), and keep per-agent boundaries clean, so a dashboard can wrap the engine later without a rewrite. Architecture readiness is the only platform work that belongs in the present.
+**What to do now toward it (near-zero-cost option-keeping):** nothing UI. Keep the engine cleanly separable behind a stable internal schema/API (the T2.12 input-adapter refactor), and keep per-agent boundaries clean, so a dashboard can wrap the engine later without a rewrite. Architecture readiness is the only platform work that belongs in the present. Tier 5 (the agentic shell) is the engineering substrate of this platform vision — reusable shell + per-vertical validated cores — and the T4.1 gate is unchanged.
+
+---
+
+## Tier 5 — Agentic shell — bounded-autonomy junior layer (PLANNED, GATED)
+
+Design sentence (verbatim): "The compliance computation is a workflow forever. Agency is added only where dynamism pays: gathering context, assembling evidence, and proposing actions. The agent drives the process; it never owns an outcome."
+
+Framing: per Anthropic's workflow/agent distinction (Building Effective Agents, anthropic.com/engineering/building-effective-agents), the existing system is a workflow — LLMs and tools orchestrated through predefined code paths. Tier 5 adds an agent layer (LLM dynamically directing process and tool use) AROUND the workflow, never inside it. Authority lives only in the Tier-2 executor behind human approval and in the reviewer's signature; no tool in the agent's registry carries authority.
+
+### Action-tier model (the core of bounded autonomy)
+- Tier 0 — Observe: read-only tools (SAP reads, ledger reads, KB reads). Autonomous; every call logged via PostToolUse hook.
+- Tier 1 — Work in staging: chain invocation, dossier drafting, report-section drafting; effects confined to a staging workspace. Every Tier-1 tool takes a mandatory `justification` parameter; a PreToolUse hook writes it to the justification ledger BEFORE execution and BLOCKS the call if absent or trivial. The agent cannot act silently.
+- Tier 2 — Propose and hold: anything crossing the staging boundary (seal bundle, emit final PDF, reviewer-facing sends, decision-ledger writes). The agent emits a schema-validated proposal artifact (action + justification + evidence refs); a human approves; approval triggers a DETERMINISTIC EXECUTOR (plain Python) that performs the action. The agent never executes Tier 2, even after approval — a compromised agent can at worst produce a bad proposal, never a bad action.
+- Tier 3 — Structurally impossible: SAP writes, git operations, IRAS filing, client-config edits, edits to its own ledger/labels/permission rules. These tools DO NOT EXIST in the agent's registry (absent, not denied), and the agent process holds no write-capable credentials (privilege separation backstops the registry).
+
+### New invariants (graduate to docs/merge-gates.md when T5.2 lands)
+1. Every autonomy rule exists three times: stated in the system prompt, enforced in a hook, proven by a test. A rule that exists only in a prompt is not a rule.
+2. The agent process holds no write-capable credentials to SAP or git.
+3. Atomicity: the agent orchestrates BETWEEN sealed components, never WITHIN one. run_review_chain is exposed as a single atomic tool (gates included); the agent never invokes individual chain steps. (Rationale: T1.6 — "Claude decided to skip validate_invoice_tax_codes" is not defensible.)
+4. The agent may INVOKE a reasoning check (reg2627 pass, documents pass) as a versioned, separately-measured tool; it may never PERFORM judgment in its own voice. Agent-voiced compliance opinions are a lint failure. Measured accuracy baskets attach to the packaged passes only; T2.11 gating is inherited unchanged (show_ai_candidates governs dossier visibility too).
+5. Decision-ledger entries are context for annotation/demotion only — never suppression, never training. Known-accepted recurring findings render annotated and demoted, never hidden.
+6. Bounded task surface: the product interface is a fixed menu of intents mapping to tier-classified action sequences; free text is permitted only within a task and is treated as untrusted input. Note: input bounding is a product/evaluability measure, NOT a safety mechanism — any safety property that fails under adversarial user input was never a safety property.
+
+### T5.1 — Engine API seam — PLANNED (≈ T2.12 delta)
+Stable callable interface review(client, period, inputs) → ReviewResult. The agent shell is the first consumer of the T2.12 seam. Cross-ref T2.12. Effort: small delta over T2.12.
+
+### T5.2 — Action-tier framework + justification ledger — PLANNED (build first)
+Tier registry; PreToolUse justification gate; PostToolUse audit logger; append-only hash-chained justification ledger (same construction as T1.5 bundle; sealed into the bundle; signed PDF gains an "agent activity appendix"); deterministic Tier-2 executor; adversarial test suite (skip-justification → blocked; Tier-3 tool request → tool-not-found; Tier-2 self-execution attempt → impossible by construction). Pure Python + Agent SDK plumbing; buildable against fixtures, no live SAP. Effort ~1–2 wk. Owner: Terry. HARD ORDERING: T5.2 before T5.3 — retrofitting safety onto a working agent is how bounded autonomy quietly becomes unbounded. Also defines the check-registry schema (check ID, ASK paragraph, inputs needed, finding schema) — the coordination contract with the deterministic-check track (Collin).
+
+### T5.3 — Case-file builder — PLANNED
+First real agent loop (gather context → take action → verify work). Per finding: pull source PDF (T2.8 path), linked CN, vendor reg status, prior-period treatment; assemble dossier in staging. Verification is a CODE-DEFINED completeness checklist per finding type — never model self-assessment. Deterministic language lint over dossier text rejects assertive compliance phrasing (candidate framing required); lint failure = blocked artifact. Honest caveat: phrase-list lint is brittle — a backstop to prompt design, not a replacement. Effort ~2–3 wk.
+
+### T5.4 — Check planner — PLANNED
+Routing, not invention: agent selects applicable checks from the FIXED registry given the client profile. First plan per client is a Tier-2 proposal; an identical plan re-executes at Tier 1; plan drift re-escalates to Tier 2 automatically. The planner never composes new logic. Effort ~1 wk after T5.2.
+
+### T5.5 — Decision ledger — PLANNED
+Append-only reviewer adjudications keyed by deterministic finding fingerprint (error code, VatGroup, CardCode, amount band). Annotate-and-demote only (invariant 5). Effort ~1–2 wk.
+
+### T5.6 — Trigger layer — PLANNED, HARD-GATED
+Cadence/period-close detection initiating Tier-1 runs whose outputs hold at Tier 2. Gates (all required): credentials scrubbed from git history (aec650f9); GCP 0.0.0.0/0 firewall closed; an always-on deployment target existing at all. Build last; lowest value per risk.
+
+### Tier-5 cross-cutting requirements
+(a) Agent-behavior evals: the honest-status taxonomy (built ≠ unit-tested ≠ demo-validated ≠ real-client-validated) applies to agent BEHAVIORS. Scenario eval harness with fixed fixtures measuring: dossier completeness rate, justification-gate hold rate, zero Tier-2 self-executions over N adversarial runs, language-lint pass rate. No entry above advances past "built" without it.
+(b) Prompt-injection resistance: once the agent reads client documents, every vendor PDF is untrusted input to a tool-bearing system. Injection fixtures (adversarial instructions embedded in invoice descriptions/PDF text) are a mandatory eval category. The tier system is the structural containment (worst case: a poisoned proposal a human reads).
+(c) System prompt / procedure-packaging / tools / hooks stack: system prompt = standing constitution (role, tier rules stated, language contract, escalation); per-procedure packages = versioned modules pairing a code-defined completeness checklist with a prompt template (e.g. E2-dossier assembly), independently eval-able. Near-term these are plain versioned modules, NOT the formal Agent Skill abstraction — which stays gated per Final Architectural Reminder #5 (introduce Skills only when the product expands beyond one workflow, post-validation). When that gate is met these packages are the natural unit to graduate into Skills and the unit of cross-vertical reuse. tools = tier-classified actions; hooks = enforcement. Vertical generalisation: shell + procedure-packaging pattern reuse; each new vertical re-pays its own deterministic core + knowledge base + independent validation.
+(d) Honesty flags (verbatim): "junior accountant" is internal design language only — customer-facing it is "automated evidence assembly with human-controlled actions" until behavior evals and T2.11 exist. The agent adds nondeterminism to a product whose pitch is determinism; containment is architectural (agent artifacts in labelled sections; sealed chain output never agent-touched). Nothing in Tier 5 accelerates T2.11.
 
 ---
 
@@ -346,7 +392,7 @@ Mirror the deterministic-script docs for the reasoning layer; Document 4 of the 
 4. The reviewer signs off on every finding before submission. No automatic filing or IRAS contact, at any tier — including any future platform.
 5. Don't add the Skill abstraction until the product expands beyond one workflow (this is the Tier 4 / multi-vertical future, post-validation).
 6. The knowledge base is modular per chain-step. Data flows forward; regulatory context stays sliced per step.
-7. Orchestration is a predefined code path, not autonomous agents. Gates are deterministic Python, never LLM calls.
+7. The engine's orchestration is a predefined code path, not autonomous agents — the deterministic chain, its gates, and the reasoning passes are never under LLM runtime control. The Tier 5 agent shell operates AROUND the engine (deciding when to invoke it, which registry checks to plan, what evidence to assemble, what to propose), never WITHIN it: it invokes the chain as a single atomic tool and never selects individual chain steps.
 8. Document ingestion expands recall, never authority. A read-derived finding caps at J+ (sole exception: invoice-date → correct-period → D+). Extracted fields never enter Layer 1, boxes, or gates. What converts J+ → D is structured data at source (InvoiceNow/PINT-SG), not reading a PDF.
 9. The MCP connector is one input adapter, not the product. The engine accepts live MCP, CSV/Excel extracts, and (future) PINT-SG against one internal schema. This separability is also the platform prerequisite.
 10. **(NEW) Labelled data is for evaluation, not training.** It powers validation, regression eval, few-shot exemplars, and skill definition-of-done. Claude is used via API; no weights are ever updated.
