@@ -148,3 +148,33 @@ class Ledger:
                     f"stored={entry.prev_hash!r}, expected={prev_hash!r}"
                 )
             prev_hash = entry.entry_hash
+
+    @classmethod
+    def from_entries(cls, entries: list[dict]) -> "Ledger":
+        """Reconstruct a Ledger from a list of serialised entry dicts.
+
+        Used to reload a ledger from a sealed steps/agent-ledger.json and run
+        verify() on the reconstructed object.  Each dict must have all
+        LedgerEntry fields; unrecognised extra keys are ignored.
+
+        Args:
+            entries: List of dicts, each matching the LedgerEntry field set.
+
+        Returns:
+            A Ledger whose .entries list mirrors the input; ready for verify().
+        """
+        ledger = cls()
+        for d in entries:
+            ledger.entries.append(LedgerEntry(
+                entry_id=d["entry_id"],
+                tool_name=d["tool_name"],
+                tier=d["tier"],
+                justification=d["justification"],
+                call_params=d["call_params"],
+                outcome=d["outcome"],
+                blocked_reason=d["blocked_reason"],
+                timestamp=d["timestamp"],
+                prev_hash=d["prev_hash"],
+                entry_hash=d["entry_hash"],
+            ))
+        return ledger
