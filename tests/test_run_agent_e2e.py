@@ -2,11 +2,15 @@
 Hermetic end-to-end tests for run_agent.py seal integration.  No live SAP.
 
 All external I/O is monkeypatched:
-  - load_client_config  → fake ClientConfig
-  - run_chain           → (fixture CompileOutput, fabricated gate_results)
-  - render_pdf          → writes a dummy PDF at the given path
-  - seal._AUDIT_ROOT    → tmp_path/audit (keeps bundles out of the repo tree)
-  - run_agent._REPORTS_DIR → tmp_path/reports
+  - load_client_config      → fake ClientConfig (patched on run_agent)
+  - engine.review.run_chain → (fixture CompileOutput, fabricated gate_results)
+  - engine.review.render_pdf → writes a dummy PDF at the given path
+  - seal._AUDIT_ROOT        → tmp_path/audit (keeps bundles out of the repo tree)
+  - engine.review._REPORTS_DIR → tmp_path/reports
+
+T5.1 behavior-equivalence: run_agent.py now delegates to engine.review.review().
+The same three tests (sealed bundle produced, T7 determinism, GateFailure exit)
+pass unchanged, demonstrating content-equivalent observable behavior.
 """
 from __future__ import annotations
 
@@ -79,16 +83,20 @@ def _mock_render_pdf(model, out_path):
 
 
 def _setup_mocks(monkeypatch, tmp_path) -> dict:
-    """Wire all mocks; return the compile_output dict used by run_chain."""
+    """Wire all mocks; return the compile_output dict used by run_chain.
+
+    T5.1: run_chain, render_pdf, and _REPORTS_DIR are now inside engine.review,
+    not run_agent directly.  Patch targets updated accordingly.
+    """
     compile_output = json.loads(FIXTURE.read_text(encoding="utf-8"))
 
     monkeypatch.setattr(sys, "argv",
                         ["run_agent", "--client", _CLIENT, "--period"] + _PERIOD_ARGS)
     monkeypatch.setattr("run_agent.load_client_config", lambda *a, **kw: _make_cfg())
-    monkeypatch.setattr("run_agent.run_chain",
+    monkeypatch.setattr("engine.review.run_chain",
                         lambda *a, **kw: (compile_output, _gate_results()))
-    monkeypatch.setattr("run_agent.render_pdf", _mock_render_pdf)
-    monkeypatch.setattr("run_agent._REPORTS_DIR", tmp_path / "reports")
+    monkeypatch.setattr("engine.review.render_pdf", _mock_render_pdf)
+    monkeypatch.setattr("engine.review._REPORTS_DIR", tmp_path / "reports")
     monkeypatch.setattr(_seal_mod, "_AUDIT_ROOT", tmp_path / "audit")
 
     return compile_output
@@ -181,8 +189,6 @@ def test_T7_compile_output_deterministic_across_seals(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_gate_failure_exits_nonzero_no_bundle_created(monkeypatch, tmp_path):
-    compile_output = json.loads(FIXTURE.read_text(encoding="utf-8"))
-
     monkeypatch.setattr(sys, "argv",
                         ["run_agent", "--client", _CLIENT, "--period"] + _PERIOD_ARGS)
     monkeypatch.setattr("run_agent.load_client_config", lambda *a, **kw: _make_cfg())
@@ -193,9 +199,9 @@ def test_gate_failure_exits_nonzero_no_bundle_created(monkeypatch, tmp_path):
             checked={"box_4": 999.0, "box_1_2_3_sum": 100.0, "tolerance": 0.01},
         )
 
-    monkeypatch.setattr("run_agent.run_chain", _raise)
-    monkeypatch.setattr("run_agent.render_pdf", _mock_render_pdf)
-    monkeypatch.setattr("run_agent._REPORTS_DIR", tmp_path / "reports")
+    # T5.1: run_chain lives in engine.review; review() catches GateFailure and
+    # returns status="halted" — run_agent.main() reads this and calls sys.exit(1).
+    monkeypatch.setattr("engine.review.run_chain", _raise)
     monkeypatch.setattr(_seal_mod, "_AUDIT_ROOT", tmp_path / "audit")
 
     with pytest.raises(SystemExit) as exc_info:

@@ -1,7 +1,7 @@
 # Pre-Merge Gate Protocol
 
-**Updated:** 2026-06-12 (T5.2 post-cage sync — Gate a extended to cover `agent/`; invariants
-1/2/3/7 graduated from roadmap; Gate e flake8 added; explicit agent/-allowed note)
+**Updated:** 2026-06-12 (T5.1 engine-seam — Gate a Check 2 extended to cover `engine/`;
+dependency direction is engine→orchestrator, never reverse)
 
 This document is the canonical definition of the pre-merge gate protocol for AgentAssist
 branches. Run all gates and report results before any merge to `master`. Stop if any gate
@@ -12,9 +12,10 @@ fails.
 ## Gate a — No forbidden imports in `orchestrator/`
 
 The invariant: `orchestrator/` is pure Python — no `anthropic` package dependency, no
-`reasoning`, `documents`, or `agent` package import. This keeps the deterministic chain
-import-safe AND prevents `orchestrator/` from transitively pulling the Claude Agent SDK
-through `agent/`.
+`reasoning`, `documents`, `agent`, or `engine` package import. This keeps the deterministic
+chain import-safe AND prevents `orchestrator/` from transitively pulling the Claude Agent
+SDK through `agent/`. The dependency direction is `engine/ → orchestrator/`, never reverse:
+`engine/` calls into `orchestrator/`; `orchestrator/` must not import `engine/`.
 
 **Correct form (import-only grep; all three must return nothing):**
 
@@ -22,8 +23,8 @@ through `agent/`.
 # Check 1 — no anthropic import
 grep -rnE "^[[:space:]]*(import[[:space:]]+anthropic|from[[:space:]]+anthropic[[:space:]]+import)" orchestrator/
 
-# Check 2 — no reasoning/documents/agent import
-grep -rnE "^[[:space:]]*(import[[:space:]]+(reasoning|documents|agent)|from[[:space:]]+(reasoning|documents|agent)[[:space:]]+import)" orchestrator/
+# Check 2 — no reasoning/documents/agent/engine import
+grep -rnE "^[[:space:]]*(import[[:space:]]+(reasoning|documents|agent|engine)|from[[:space:]]+(reasoning|documents|agent|engine)[[:space:]]+import)" orchestrator/
 ```
 
 All commands must return **nothing** (empty output, exit 1). A match on either is a gate
@@ -37,13 +38,14 @@ as `reasoning/` and `documents/` do. The boundary is at `orchestrator/`, not at 
 
 The correct allowed/forbidden map:
 
-| Package | May import `anthropic` | May import `agent/` | May import `orchestrator/` |
-|---|---|---|---|
-| `orchestrator/` | **NO** | **NO** | — |
-| `reasoning/` | YES (lazy) | NO | NO |
-| `documents/` | YES (lazy, multimodal path) | NO | NO |
-| `agent/` | YES (lazy, SDK) | — | NO |
-| `run_agent.py` | NO (orchestrator glue) | YES | YES |
+| Package | May import `anthropic` | May import `agent/` | May import `engine/` | May import `orchestrator/` |
+|---|---|---|---|---|
+| `orchestrator/` | **NO** | **NO** | **NO** | — |
+| `engine/` | NO | NO | — | YES |
+| `reasoning/` | YES (lazy) | NO | NO | NO |
+| `documents/` | YES (lazy, multimodal path) | NO | NO | NO |
+| `agent/` | YES (lazy, SDK) | — | YES | NO |
+| `run_agent.py` | NO (orchestrator glue) | YES | YES | YES |
 
 **Why this exact form — not `grep -r "anthropic" orchestrator/`:**
 
@@ -198,3 +200,7 @@ git merge --no-ff <branch> -m "Merge <branch>: <one-line summary>
   F824. Gate e added — agentic-cage invariants 1/2/3/7 graduated from
   `knowledge-base/AgentAssist-Technical-Roadmap-v5.md` §"New invariants" as enforced gates.
   CI import-scan step added to `.github/workflows/ci.yml` (CHANGE-2 of T5.2 post-cage sync).
+- **2026-06-12:** T5.1 engine-seam — Gate a Check 2 extended to include `engine/` in the
+  forbidden-imports list for `orchestrator/`. The `engine/` package wraps the full GST review
+  pipeline (calling into `orchestrator/`); the dependency direction is engine→orchestrator,
+  never reverse. The CI import-scan step updated accordingly.
