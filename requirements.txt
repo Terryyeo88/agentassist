@@ -7,4 +7,5 @@ PyYAML
 reportlab
 pdfplumber
 pytest
+pytest-xdist
 anthropic
