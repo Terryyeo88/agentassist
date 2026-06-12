@@ -51,15 +51,16 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     # Enforce the orchestrator/ import-isolation rule: orchestrator/ must not import
-    # anthropic, reasoning, documents, or agent. Mirrors docs/merge-gates.md Gate a.
+    # anthropic, reasoning, documents, agent, or engine. Mirrors docs/merge-gates.md Gate a.
     # agent/ is ALLOWED the SDK (lazy) — this check is scoped to orchestrator/ only.
-    - name: Import-scan — orchestrator/ must not import anthropic, reasoning, documents, or agent
+    # T5.1: engine/ added to Check 2 — dependency direction is engine->orchestrator, never reverse.
+    - name: Import-scan — orchestrator/ must not import anthropic, reasoning, documents, agent, or engine
       run: |
         if grep -rnE "^[[:space:]]*(import[[:space:]]+anthropic|from[[:space:]]+anthropic[[:space:]]+import)" orchestrator/; then
           echo "FAIL: anthropic import found in orchestrator/"; exit 1
         fi
-        if grep -rnE "^[[:space:]]*(import[[:space:]]+(reasoning|documents|agent)|from[[:space:]]+(reasoning|documents|agent)[[:space:]]+import)" orchestrator/; then
-          echo "FAIL: reasoning/documents/agent import found in orchestrator/"; exit 1
+        if grep -rnE "^[[:space:]]*(import[[:space:]]+(reasoning|documents|agent|engine)|from[[:space:]]+(reasoning|documents|agent|engine)[[:space:]]+import)" orchestrator/; then
+          echo "FAIL: reasoning/documents/agent/engine import found in orchestrator/"; exit 1
         fi
         echo "PASS: orchestrator/ import-scan clean"
 
