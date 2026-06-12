@@ -94,6 +94,7 @@ T2.19 (committed 2026-06-10 on branch `t2.2-vat-discovery`, commits `47e31a0`/`1
 T2.16 (on master, 2026-06-11) added the annual analytical review TP/TS ratio pass (`orchestrator/check_analytical_review.py`): FY TP/TS ratio (Box 5 ÷ Box 4 > 1.2), opt-in `--analytical-review` flag, Annual Analytical Review report section; demo-validated on SBODEMOSG (live FY ratio, box-isolation, >1.2 flag-fire via crafted input); RC/OVR approximation caveat (Boxes 14–16 not computed); NOT real-client validated; findings not gates. T2.17 (on master, 2026-06-11) added period-over-period fluctuation detection (`orchestrator/check_period_fluctuation.py`): QoQ movements in Boxes 1/2/3/5, ±50% non-regulatory surfacing threshold; wired into the Annual Analytical Review section (T2.17b, PR #7); demo-validated on SBODEMOSG (live FY render, Q4 all-zero excluded, box-isolation); surfaces candidates, never asserts; NOT real-client validated. Test state after T2.16+T2.17: **1211 passed, 1 skipped**.
 T5.2a (on master, 2026-06-12, PR #12) built the action-tier enforcement core (`agent/` package): Tier enum + ToolSpec/CheckSpec/LedgerEntry/ProposalArtifact/RunBudget schemas; tool registry (8 tools: 4 Tier-0 read-only, 4 Tier-1 staging, zero Tier-2-executing); justification gate (heuristic backstop + ledger write BEFORE allow); append-only hash-chained justification ledger (reuses `canonical.py` primitives); Tier-2 proposal artifact + StagingStore (CLI-first approval mechanism); deterministic executor framework (`test_noop` hermetic handler + documented NotImplemented stubs for `seal`/`emit`, deferred T5.3); RunBudget with BudgetExceededSignal routing to invariant-7 non-blocking path. CheckSpec schema is v0/PROVISIONAL — 14 entries spanning E1/E2/E3/E4/NO_GST_REG/COMPLETENESS/SEQ_GAP/DUP_CLAIM/declared_A/declared_B/gst_amount_mismatch/correct_period/total_inconsistency/reg11_supplier_gst_absent; NOT wired to any consumer; Collin ratifies schema after T2.18 lands. Zero `anthropic` import in `agent/`; stdlib only. 89 new tests (T-1 through T-10). Test state after T5.2a: **1328 passed, 1 skipped**.
 T5.2b (on master, 2026-06-12, PR #13) added the SDK integration surface: `agent/hooks.py` (`make_hooks(ledger)` → PreToolUse/PostToolUse callbacks; Tier-3 → deny tool-not-found; Tier-1 → justification gate with ledger write BEFORE allow; Tier-0 → always allow + ledger entry; PostToolUse → audit_log separate from sealed chain, whether execution outcomes enter the sealed ledger deferred to T5.3); `agent/harness.py` (`build_options(ledger, budget)` → ClaudeAgentOptions with Tier-0/1 tools + hooks wired; SDK import deferred); `agent/approve_cli.py` (list/show/approve/reject library + argparse CLI over StagingStore + Executor); `agent/ledger.py` extended with `Ledger.from_entries(list[dict])` for sealed-JSON reload; `audit_bundle/seal.py` extended with `agent_ledger=None` parameter — writes `steps/agent-ledger.json` covered by the manifest root-hash. First runtime dependency: `claude-agent-sdk==0.2.99` added to `requirements.txt`. **Cross-platform note**: Linux install verified green in CI (builds from sdist); the CLI binary (`claude`) is only needed at `query()` call time — a T5.3 runtime concern; import-only works without the CLI binary. 44 new tests (T-1 through T-8). **Honest status: cage built + hermetically unit-tested; NO live agent loop; `seal`/`emit` executor handlers are NotImplemented stubs deferred to T5.3. NOT demo-validated.** Current test state: **1372 passed, 1 skipped**.
+T5.1 (on master, 2026-06-12, merge commit `e30f795`) extracted the full GST review pipeline from `run_agent.py` into `engine/review.py` as one atomic callable: `review(client_config, period, inputs) → ReviewResult`. `ReviewInputs` (4 fields: `line_source`, `provider`, `declared_f5`, `analytical_review`) is the forward-compatible source-adapter seam — SAP B1 wired today via `fetch_si_purchase_lines`; a T2.12 CSV/Excel adapter substitutes a different `line_source` callable without changing `review()`'s signature. `ReviewResult` carries 11 fields including `analytical_review_data`. `GateHalt(message, checked)` is a plain serialisable record replacing the live `GateFailure` exception in the result. `run_agent.py` reduced to a thin CLI; no pipeline logic remains there. `review()` is SILENT — caller prints from the returned result. `engine/__init__.py` re-exports `ReviewResult`, `ReviewInputs`, `GateHalt` but intentionally does NOT re-export `review` itself (re-exporting would shadow the `engine.review` submodule attribute and break `patch("engine.review.run_chain", …)` in tests). Import-scan gate extended to bar `orchestrator/` from importing `engine/` (dependency direction: `engine/ → orchestrator/`, never reverse). **Honest qualifier:** behavior-preserving refactor; built + unit-tested (15 new tests in `tests/test_engine_review.py`); stdout content-equivalent to prior inline wiring (same lines, same exit codes; NOT byte-identical interleaving — mid-run progress lines now print after `review()` returns); NOT demo-validated end-to-end (live SBODEMOSG CLI run pending/Terry-supervised); no agent loop (T5.3); nothing customer-facing changes until T2.11. Current test state: **1387 passed, 1 skipped**.
 
 **The three to five most important gaps before commercial deployment**
 
@@ -856,7 +857,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b merges): **1372 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.2 sections and footer for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b–T5.1 merges): **1387 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.1, T5.2 sections and footer for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -1484,7 +1485,113 @@ DONE = merged to master, deterministic, unit-tested, demo-validated.
 
 ### Test state
 
-**18 tests** in `tests/test_check_period_fluctuation.py` (computation). **13 tests** in `tests/test_analytical_review_integration.py` (T2.17b integration). Master total after T2.16+T2.17 merges: **1211 passed, 1 skipped**. Current master total after T2.19 + T5.2a + T5.2b: **1372 passed, 1 skipped** — see T5.2 section below.
+**18 tests** in `tests/test_check_period_fluctuation.py` (computation). **13 tests** in `tests/test_analytical_review_integration.py` (T2.17b integration). Master total after T2.16+T2.17 merges: **1211 passed, 1 skipped**. Current master total after T2.19 + T5.2a + T5.2b + T5.1: **1387 passed, 1 skipped** — see T5.1 and T5.2 sections below.
+
+---
+
+## T5.1 — Engine seam (engine/review.py) (on master; behavior-preserving refactor; unit-tested; NOT demo-validated)
+
+### Status
+
+T5.1 is merged to `master` (2026-06-12, commit `134d8db`, merge commit `e30f795`, from branch
+`t5.1-engine-seam`).
+
+**Honest status:** behavior-preserving refactor; built + unit-tested (15 new tests); stdout
+content-equivalent to the prior inline wiring (NOT byte-identical interleaving — mid-run
+progress lines now print after `review()` returns rather than mid-pipeline). NOT demo-validated
+end-to-end (a live SBODEMOSG CLI run under Terry supervision is pending). No agent loop (T5.3).
+Nothing customer-facing changes; `show_ai_candidates` and `validation_status` are unaffected;
+T2.11 remains the binding constraint.
+
+### What T5.1 adds
+
+**`engine/` package** — wraps the full GST review pipeline as one atomic callable.
+
+**Public contract:**
+
+```python
+from engine.review import review          # must import directly; NOT re-exported from engine
+from engine import ReviewResult, ReviewInputs, GateHalt  # dataclasses re-exported for convenience
+
+review(client_config: ClientConfig, period: dict, inputs: ReviewInputs) -> ReviewResult
+```
+
+**`ReviewResult` (11 fields):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `status` | `str` | `"completed"` or `"halted"` |
+| `compile_output` | `dict \| None` | CompileOutput from `run_chain`; None on halted |
+| `gate_results` | `dict \| None` | Gate results from `run_chain`; None on halted |
+| `reasoning_artefact` | `dict \| None` | From `run_reg2627_pass`; may carry `status="errored"` (non-blocking); None on halted |
+| `document_candidates` | `list \| None` | From `run_documents_pass`; None when no provider or halted |
+| `analytical_review_data` | `dict \| None` | From `run_analytical_review_pass`; None when `inputs.analytical_review=False` or halted |
+| `report_pdf_path` | `Path \| None` | Intermediate PDF path; None on halted |
+| `bundle_dir` | `Path \| None` | Sealed bundle dir; None on halted |
+| `run_started_at` | `str` | ISO-8601 UTC; always set |
+| `run_completed_at` | `str \| None` | ISO-8601 UTC; None on halted |
+| `gate_failure` | `GateHalt \| None` | Set on halted; None on completed |
+
+**`ReviewInputs` (4 fields — forward-compatible source-adapter seam for T2.12):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `line_source` | `Callable[[], list[dict]]` | Returns purchase-invoice line dicts for the period. Today wraps `fetch_si_purchase_lines` (SAP B1 path only); a T2.12 CSV/Excel adapter substitutes a different callable without changing `review()`'s signature |
+| `provider` | `DocumentProvider \| None` | When not None, `run_documents_pass` runs |
+| `declared_f5` | `dict \| None` | From `load_declared_f5()`; wires Check A/B |
+| `analytical_review` | `bool` | When True, `run_analytical_review_pass` is called |
+
+**SAP wired only:** `line_source` today wraps `fetch_si_purchase_lines` via `reasoning/sap_lines.py`. Deep source substitution (CSV/Excel adapter) is T2.12; `ReviewInputs` is the seam.
+
+**`GateHalt` (2 fields):** `message: str`, `checked: dict` — plain serialisable dataclass. Extracted from `GateFailure` so `ReviewResult` carries no live exception object.
+
+**Pipeline composition (unchanged from prior `run_agent.py` inline wiring):**
+```
+run_chain → run_reg2627_pass → (run_documents_pass) → (run_analytical_review_pass)
+          → build_report / render_pdf → seal_bundle
+```
+
+`review()` is **SILENT** — it never prints to stdout or stderr. The caller (`run_agent.py` thin CLI) reads from the returned `ReviewResult` and is responsible for all terminal output.
+
+**`run_agent.py` reduced to a thin CLI:** Parses arguments, loads config, builds a `ReviewInputs` descriptor, calls `review()`, then prints results from the returned `ReviewResult`. All pipeline logic removed from `run_agent.py`.
+
+**`engine/__init__.py` — no re-export of `review`:** `ReviewResult`, `ReviewInputs`, and `GateHalt` are re-exported as convenience imports. `review` is intentionally absent from the package namespace: re-exporting it would set `engine.review = <function>`, shadowing the `engine.review` submodule attribute and breaking `patch("engine.review.run_chain", …)` in tests.
+
+**Import-scan gate extended (already live in `docs/merge-gates.md`):** Gate a Check 2 bars `orchestrator/` from importing `engine/`. Dependency direction: `engine/ → orchestrator/`, never reverse. CI import-scan enforces this.
+
+### Honest qualifier (mandatory)
+
+- Behavior-preserving refactor — no logic changes to chain/gates/report/seal/reasoning.
+- Built + unit-tested (15 new tests in `tests/test_engine_review.py`).
+- Stdout content-equivalent to prior inline wiring (same lines, same exit codes). Mid-run progress lines now print after `review()` returns — NOT byte-identical interleaving; existing substring-based e2e tests pass unchanged.
+- **NOT demo-validated end-to-end.** A live SBODEMOSG CLI run (`python run_agent.py --client sbodemosg --period …`) under Terry supervision is pending.
+- No agent loop — that is T5.3.
+- Nothing customer-facing changes. `show_ai_candidates` and `validation_status` are unaffected. T2.11 remains the binding constraint for reasoning-layer candidates. T2.12 remains the home for deep source-adapter substitution.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `engine/__init__.py` | New package file — re-exports `ReviewResult`, `ReviewInputs`, `GateHalt`; does NOT re-export `review` (submodule-shadow avoidance) |
+| `engine/review.py` | New file — `review()` entry point; `ReviewResult`, `ReviewInputs`, `GateHalt` dataclasses; pipeline composition |
+| `run_agent.py` | Refactored to thin CLI — delegates to `engine.review.review()`; all pipeline code removed |
+| `docs/merge-gates.md` | Gate a Check 2 extended to include `engine/` in `orchestrator/` forbidden-imports list (already updated in T5.1 build PR; verified correct — no further change required) |
+
+### Test state
+
+**15 new tests** in `tests/test_engine_review.py` (T1–T5):
+
+| Class | Tests | Coverage |
+|---|---|---|
+| `TestCompositionOrder` | 2 | chain → reasoning → report → seal order; GateFailure stops before reasoning |
+| `TestReviewResultShapeCompleted` | 2 | All 11 fields populated on completed run; `analytical_review_data` forwarded when `inputs.analytical_review=True` |
+| `TestHaltedPath` | 7 | `status="halted"`; `bundle_dir`/`compile_output`/`gate_results` all None; `gate_failure.message`/`checked`; `GateHalt` is a plain serialisable dataclass; `run_started_at` set / `run_completed_at` None |
+| `TestReasoningFailureNonBlocking` | 2 | Errored artefact → completed + bundle sealed; errored artefact forwarded to `seal_bundle` |
+| `TestBehaviorEquivalence` | 2 | `seal_bundle` receives correct `compile_output`/`gate_results`/`period`/timestamps; `declared_f5` forwarded when supplied |
+
+`tests/test_run_agent_e2e.py` (3 pre-existing tests): patch targets updated from `run_agent.run_chain`/`render_pdf`/`_REPORTS_DIR` → `engine.review.run_chain`/`render_pdf`/`_REPORTS_DIR`; same 3 tests pass unchanged (behavior-equivalence confirmed).
+
+Master total after T5.1: **1387 passed, 1 skipped**.
 
 ---
 
@@ -2732,3 +2839,4 @@ gate definition corrected to import-only regex (see `docs/merge-gates.md`); 1026
  Updated 2026-06-10 (T2.19 tax code normalization layer — `normalize_vat_group()`, `tax_code_mappings`/`source_system` in `ClientConfig`, audit allow-list update, committed on branch `t2.2-vat-discovery` (commits `47e31a0`/`19a6f86`), 28 new tests, validated on synthetic fixtures only, Stage 3 pending; same commits also fixed a PDF test-fixture infrastructure gap — 209 pre-existing `FileNotFoundError` failures from a `.gitignore` `*.pdf` rule excluding `tests/fixtures/documents/*.pdf`, resolved via a negation rule + committing the 8 PDFs + new `.gitattributes` (`*.pdf binary`); exec summary and test count updated 1161 → 1184; Appendix C #30 added; see T2.19 roadmap entry).*
 Updated 2026-06-11 (D8: T2.16 + T2.17 annual analytical review — TP/TS ratio pass (ASK 1.3d, `orchestrator/check_analytical_review.py`, `run_analytical_review_pass()`), period-over-period fluctuation (ASK 1.3a, `orchestrator/check_period_fluctuation.py`, `detect_period_fluctuations()`), opt-in `--analytical-review` flag, Annual Analytical Review report section; T2.16 demo-validated on SBODEMOSG (live FY ratio, box-isolation, >1.2 flag-fire via crafted input, RC/OVR approximation caveat Boxes 14–16 not computed); T2.17b chain/report integration (PR #7) demo-validated on SBODEMOSG (live FY render, exactly 4 candidates Q1→Q2/Q3, Q4 all-zero excluded, box-isolation); ±50% non-regulatory surfacing threshold; surfaces candidates, never asserts; NOT real-client validated; 50 new tests (19 + 18 + 13); test count 1161 → 1211; T2.16 + T2.17 sections added to STATE; exec summary updated; T2.16 + T2.17 roadmap entries DONE).*
 Updated 2026-06-12 (D9: T5.2 post-cage docs-sync — T5.2a/T5.2b agent/ cage section added (registry/tiers/justification/ledger/proposals/executor/budget; CheckSpec v0/PROVISIONAL 14 entries; hooks/harness/approve_cli; Ledger.from_entries; seal.py agent-ledger.json integration); first runtime dep `claude-agent-sdk==0.2.99` documented with cross-platform note; honest status: cage built + hermetically unit-tested, NO live loop, seal/emit stubs deferred T5.3; exec summary updated; T1.5 master total updated 1211 → 1372; T2.17 test count line updated; T5.2 roadmap entry marked DONE; T5.2c + T5.8 + input-surface note added to roadmap; merge-gates.md Gate a extended to cover `agent/` + explicit agent/-allowed note + Gate b flake8 + Gate e agentic-cage invariants 1/2/3/7 graduated; CI import-scan step added to `.github/workflows/ci.yml`; `knowledge-base/sg-tax-code-mappings.md` checked — no change required, cage does not affect accounting-domain routing).*
+Updated 2026-06-12 (D10: T5.1 engine-seam docs-sync — T5.1 section added (`engine/` package; `review(client_config, period, inputs) → ReviewResult` contract; `ReviewResult` 11 fields incl. `analytical_review_data`; `ReviewInputs` 4 fields / forward-compatible source-adapter seam / SAP wired only / deep substitution is T2.12; `GateHalt(message, checked)` plain serialisable record; `run_agent.py` reduced to thin CLI; `review()` is SILENT; `engine/__init__` no-re-export-of-`review` note; import-scan extension barring `orchestrator/` from importing `engine/`; honest qualifier: behavior-preserving refactor, built+unit-tested, content-equivalent stdout, NOT demo-validated, no agent loop, T2.12/T2.11 caveats); exec summary updated; T1.5 master total updated 1372 → 1387; T2.17 test count line updated; `docs/merge-gates.md` checked — already correct (Gate a Check 2 already includes `engine/`), no change required; `knowledge-base/sg-tax-code-mappings.md` checked — no change required, seam is packaging only and does not touch VatGroup→F5-box routing, zero-rating, or accounting-domain content; T5.1 roadmap entry DONE; roadmap build-state snapshot updated; D10 added to roadmap docs tasks).*
