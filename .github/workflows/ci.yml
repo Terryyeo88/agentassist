@@ -50,6 +50,19 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
+    # Enforce the orchestrator/ import-isolation rule: orchestrator/ must not import
+    # anthropic, reasoning, documents, or agent. Mirrors docs/merge-gates.md Gate a.
+    # agent/ is ALLOWED the SDK (lazy) — this check is scoped to orchestrator/ only.
+    - name: Import-scan — orchestrator/ must not import anthropic, reasoning, documents, or agent
+      run: |
+        if grep -rnE "^[[:space:]]*(import[[:space:]]+anthropic|from[[:space:]]+anthropic[[:space:]]+import)" orchestrator/; then
+          echo "FAIL: anthropic import found in orchestrator/"; exit 1
+        fi
+        if grep -rnE "^[[:space:]]*(import[[:space:]]+(reasoning|documents|agent)|from[[:space:]]+(reasoning|documents|agent)[[:space:]]+import)" orchestrator/; then
+          echo "FAIL: reasoning/documents/agent import found in orchestrator/"; exit 1
+        fi
+        echo "PASS: orchestrator/ import-scan clean"
+
     # Run the full pytest test suite.
     # ANTHROPIC_API_KEY is injected from GitHub Secrets so tests that reference
     # the Anthropic API do not fail with a "key not set" error.

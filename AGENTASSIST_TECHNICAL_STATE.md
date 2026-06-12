@@ -91,7 +91,9 @@ run produces a sealed, tamper-evident bundle under `audit/<client_id>/`.
 
 Test 3 capability is now validated at 10/10 on SBODEMOSG Q3 2024. T2.7 (on master) added the Reg 26/27 reasoning pass — built and flag-gated, unvalidated pending T2.11. T2.8 (on master) added the source-document cross-reference pre-pass — built and flag-gated, B1 attachment byte-download unverified (upload path working), unvalidated pending T2.11. T2.9 (on master, 2026-06-09) added declared-vs-computed F5 checks (`orchestrator/check_declared_f5.py`): Check A (declared internal consistency) + Check B (declared-vs-computed per independent box, `--declared-f5` flag, off by default); $1.00 per-box tolerance is a **materiality floor** grounded in IRAS ASK Annual Review Guide s10.1(d)(iii) fn33 — NOT a confirmed IRAS F5 filing rounding convention (the convention could not be verified against IRAS source); findings not gates; does not affect F5 boxes. T2.9-V (on master, 2026-06-10) validated the declared-vs-computed mechanism end-to-end on SBODEMOSG Q3 2024: three isolated fixtures (Check A isolation, Check B isolation, control), 22 assertions, box-isolation held, report section renders (Check A/B findings in PDF/text when `--declared-f5` supplied with divergences; Section 6 "Not Examined" retains the placeholder when absent — correct behaviour). **$1.00 tolerance remains a materiality floor, NOT a confirmed IRAS F5 rounding convention — rounding-convention confirmation is a pending cousin task; a surfaced divergence is a candidate, not a confirmed discrepancy.** T2.13 (on master, 2026-06-09) built and blank-labelled the Reg 26/27 validation dataset (`reg2627-representative-v1.json` + `reg2627-adversarial-v1.json`); `expected_candidate` fields are present but empty awaiting independent specialist review; `validation_status` stays `"unvalidated"`; T2.11 remains the binding constraint; `show_ai_candidates` stays `False`. T2.10-V (on master, 2026-06-10) validated the listing-checks detection path end-to-end via crafted-input full-chain: SEQ_GAP (DocNum 8002 truly-absent FLAGGED; 8003 within-range-but-present-company-wide NOT flagged — the period-boundary discriminating case; 8001/8004 not gaps), DUP_CLAIM (dup pair 7001/7002 flagged; near-miss 7003 different NumAtCard not flagged), both Not-Examined lines suppressed independently when findings present, box-isolation held. Live read-only FP check on SBODEMOSG Q3 2024 (1005 sales / 624 purchase headers company-wide): zero SEQ_GAP, zero DUP_CLAIM. **SBODEMOSG is a demo/synthetic DB — NOT real-client validation.** `validation_status` and `show_ai_candidates` unchanged. CI/test-infra self-provisioning (commit 40112ca, 2026-06-10): session-scoped autouse conftest fixture auto-generates gitignored PDF fixtures via `generate_invoices.py` (loaded by file path); `pdfplumber` added to `requirements.txt`; suite verified green on clean checkouts (no API key needed); diagnosis archived at `exploration-notes/infra/ci-fixture-diagnosis-20260610.md`. Report section header renamed to "Invoice Listing Completeness Checks" (commit 958ed3d — internal task ID removed from client-facing PDF; no functional change). Synthetic demo scenario committed at `exploration-notes/demo-scenario/` (commit 8b60d87): crafted SEQ_GAP/DUP_CLAIM/declared-F5 injections over a live SBODEMOSG Q3 2024 run, 10 self-verification assertions, disclosure README. **SYNTHETIC showcase — NOT real-client validation.** Check A float-robustness (commit 40c9024): declared-F5 internal-consistency comparisons (Box 4 == Box 1+Box 2+Box 3; Box 8 == Box 6−Box 7) now use cent-quantized `Decimal` comparison (`ROUND_HALF_UP`) instead of exact float equality — eliminates IEEE-754 sub-cent false positives; off-by-one-cent still flags; Check B and its $1.00 tolerance unchanged; 5 new `[A-FP]` tests. Report styling normalized (commit ae76578, merged via PR #4 as `d9c670c`): shared style palette in `report/render.py` — redundant `_META` removed, AI heading rhythm normalized, duplicated AI `TableStyle` blocks replaced by `_ai_table_style()` helper; content invariant (byte-identical text extraction); client-visible change: minor spacing only. 
 T2.19 (committed 2026-06-10 on branch `t2.2-vat-discovery`, commits `47e31a0`/`19a6f86`) added a tax code normalization layer: `normalize_vat_group()` in `sap_b1_server.py` translates source-system tax codes (e.g. Xero `OUTPUT`/`INPUT`) to canonical AgentAssist VatGroup codes (`SO`/`SI`) before F5-box routing or E1–E4 detection; `tax_code_mappings`/`source_system` added to `ClientConfig` (validated at load time) and to the audit-bundle allow-list. 28 new synthetic-fixture tests, zero network calls. SAP B1 clients unaffected — `sbodemosg.yaml` carries no mappings, so `normalize_vat_group()` is a no-op passthrough and all baseline figures are unchanged. **Validated on synthetic fixtures only (`tests/test_tax_code_normalization.py`, `tests/fixtures/chain-run-normalization-sample.json`); not yet tested against a real non-SAP-B1 client.** The same pair of commits also fixed a PDF test-fixture infrastructure gap: a fresh-checkout pytest run found 209 pre-existing `FileNotFoundError` failures because the 8 generated fixture PDFs (`tests/fixtures/documents/INV-3001.pdf`…`INV-3008.pdf`) were excluded by a blanket `*.pdf` rule in `.gitignore` — this appears to contradict the "verified green on clean checkouts" claim above for commit 40112ca. Fixed by adding a `!tests/fixtures/documents/*.pdf` negation to `.gitignore` and committing the 8 PDFs, plus a new `.gitattributes` (`*.pdf binary`) to prevent Git CRLF corruption of the binary fixtures under `core.autocrlf=true`. Current test state: **1184 passed, 0 failed, 1 skipped**.
-T2.16 (on master, 2026-06-11) added the annual analytical review TP/TS ratio pass (`orchestrator/check_analytical_review.py`): FY TP/TS ratio (Box 5 ÷ Box 4 > 1.2), opt-in `--analytical-review` flag, Annual Analytical Review report section; demo-validated on SBODEMOSG (live FY ratio, box-isolation, >1.2 flag-fire via crafted input); RC/OVR approximation caveat (Boxes 14–16 not computed); NOT real-client validated; findings not gates. T2.17 (on master, 2026-06-11) added period-over-period fluctuation detection (`orchestrator/check_period_fluctuation.py`): QoQ movements in Boxes 1/2/3/5, ±50% non-regulatory surfacing threshold; wired into the Annual Analytical Review section (T2.17b, PR #7); demo-validated on SBODEMOSG (live FY render, Q4 all-zero excluded, box-isolation); surfaces candidates, never asserts; NOT real-client validated. Current test state: **1211 passed, 1 skipped**.
+T2.16 (on master, 2026-06-11) added the annual analytical review TP/TS ratio pass (`orchestrator/check_analytical_review.py`): FY TP/TS ratio (Box 5 ÷ Box 4 > 1.2), opt-in `--analytical-review` flag, Annual Analytical Review report section; demo-validated on SBODEMOSG (live FY ratio, box-isolation, >1.2 flag-fire via crafted input); RC/OVR approximation caveat (Boxes 14–16 not computed); NOT real-client validated; findings not gates. T2.17 (on master, 2026-06-11) added period-over-period fluctuation detection (`orchestrator/check_period_fluctuation.py`): QoQ movements in Boxes 1/2/3/5, ±50% non-regulatory surfacing threshold; wired into the Annual Analytical Review section (T2.17b, PR #7); demo-validated on SBODEMOSG (live FY render, Q4 all-zero excluded, box-isolation); surfaces candidates, never asserts; NOT real-client validated. Test state after T2.16+T2.17: **1211 passed, 1 skipped**.
+T5.2a (on master, 2026-06-12, PR #12) built the action-tier enforcement core (`agent/` package): Tier enum + ToolSpec/CheckSpec/LedgerEntry/ProposalArtifact/RunBudget schemas; tool registry (8 tools: 4 Tier-0 read-only, 4 Tier-1 staging, zero Tier-2-executing); justification gate (heuristic backstop + ledger write BEFORE allow); append-only hash-chained justification ledger (reuses `canonical.py` primitives); Tier-2 proposal artifact + StagingStore (CLI-first approval mechanism); deterministic executor framework (`test_noop` hermetic handler + documented NotImplemented stubs for `seal`/`emit`, deferred T5.3); RunBudget with BudgetExceededSignal routing to invariant-7 non-blocking path. CheckSpec schema is v0/PROVISIONAL — 14 entries spanning E1/E2/E3/E4/NO_GST_REG/COMPLETENESS/SEQ_GAP/DUP_CLAIM/declared_A/declared_B/gst_amount_mismatch/correct_period/total_inconsistency/reg11_supplier_gst_absent; NOT wired to any consumer; Collin ratifies schema after T2.18 lands. Zero `anthropic` import in `agent/`; stdlib only. 89 new tests (T-1 through T-10). Test state after T5.2a: **1328 passed, 1 skipped**.
+T5.2b (on master, 2026-06-12, PR #13) added the SDK integration surface: `agent/hooks.py` (`make_hooks(ledger)` → PreToolUse/PostToolUse callbacks; Tier-3 → deny tool-not-found; Tier-1 → justification gate with ledger write BEFORE allow; Tier-0 → always allow + ledger entry; PostToolUse → audit_log separate from sealed chain, whether execution outcomes enter the sealed ledger deferred to T5.3); `agent/harness.py` (`build_options(ledger, budget)` → ClaudeAgentOptions with Tier-0/1 tools + hooks wired; SDK import deferred); `agent/approve_cli.py` (list/show/approve/reject library + argparse CLI over StagingStore + Executor); `agent/ledger.py` extended with `Ledger.from_entries(list[dict])` for sealed-JSON reload; `audit_bundle/seal.py` extended with `agent_ledger=None` parameter — writes `steps/agent-ledger.json` covered by the manifest root-hash. First runtime dependency: `claude-agent-sdk==0.2.99` added to `requirements.txt`. **Cross-platform note**: Linux install verified green in CI (builds from sdist); the CLI binary (`claude`) is only needed at `query()` call time — a T5.3 runtime concern; import-only works without the CLI binary. 44 new tests (T-1 through T-8). **Honest status: cage built + hermetically unit-tested; NO live agent loop; `seal`/`emit` executor handlers are NotImplemented stubs deferred to T5.3. NOT demo-validated.** Current test state: **1372 passed, 1 skipped**.
 
 **The three to five most important gaps before commercial deployment**
 
@@ -854,7 +856,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17 merges): **1211 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17 sections and D8 footer entry for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b merges): **1372 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.2 sections and footer for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -1482,7 +1484,106 @@ DONE = merged to master, deterministic, unit-tested, demo-validated.
 
 ### Test state
 
-**18 tests** in `tests/test_check_period_fluctuation.py` (computation). **13 tests** in `tests/test_analytical_review_integration.py` (T2.17b integration). Master total after T2.16+T2.17 merges: **1211 passed, 1 skipped**.
+**18 tests** in `tests/test_check_period_fluctuation.py` (computation). **13 tests** in `tests/test_analytical_review_integration.py` (T2.17b integration). Master total after T2.16+T2.17 merges: **1211 passed, 1 skipped**. Current master total after T2.19 + T5.2a + T5.2b: **1372 passed, 1 skipped** — see T5.2 section below.
+
+---
+
+## T5.2 — Action-tier framework + justification ledger (on master; cage built + hermetically unit-tested; T5.3 deferred)
+
+### Status
+
+T5.2a merged to `master` (2026-06-12, PR #12 from branch `t5.2a-tier-framework-core`).
+T5.2b merged to `master` (2026-06-12, PR #13 from branch `t5.2b-sdk-integration`).
+
+**Honest status:** cage built + hermetically unit-tested; **NO live agent loop**; `seal` and
+`emit` executor handlers are NotImplemented stubs deferred to T5.3. NOT demo-validated.
+No live SAP, no live model calls in any test.
+
+### What T5.2a adds — pure-Python enforcement core
+
+Package: `agent/` — stdlib only, zero `anthropic` import in the package itself.
+
+| File | Role |
+|---|---|
+| `agent/schemas.py` | Data model: `Tier` enum (0/1/2/3); `ToolSpec`, `CheckSpec`, `LedgerEntry`, `ProposalArtifact`, `RunBudget` dataclasses. No logic, no side-effects on import. |
+| `agent/registry.py` | `REGISTRY` (dict[str, ToolSpec]) — 8 tools (4 Tier-0, 4 Tier-1; zero Tier-2-executing). `CHECK_REGISTRY` (dict[str, CheckSpec]) — 14 entries, v0/PROVISIONAL. `get_tier(name)` returns `Tier.THREE` for any absent name. `allowed_tools()` returns Tier-0 + Tier-1 tools only. |
+| `agent/justification.py` | `validate_justification(text)` — heuristic gate: rejects absent, trivially short, or obviously generic justifications. Backstop to the system prompt rule; not a semantic checker. |
+| `agent/ledger.py` | `Ledger` — append-only hash-chained justification ledger. Reuses `audit_bundle/canonical.py` primitives. Each `LedgerEntry` carries `prev_hash` + `entry_hash`; genesis sentinel `sha256:000…`. `append(entry)` and `verify()`. Extended in T5.2b with `Ledger.from_entries(list[dict])` for sealed-JSON reload. |
+| `agent/proposals.py` | `StagingStore` — in-memory dict[str, ProposalArtifact] keyed by `proposal_id`. `add_proposal`, `get_proposal`, `pending_proposals`, `approve`, `reject`. Approval dispatches to the executor; rejection marks the artifact. |
+| `agent/executor.py` | `Executor` — deterministic Tier-2 executor framework. `register_handler(action, fn)` + `dispatch(proposal_artifact)`. `test_noop` handler ships hermetically for tests. `seal` and `emit` handlers are **NotImplemented stubs** — deferred to T5.3 (require live chain + real bundle path). |
+| `agent/budget.py` | `RunBudget(max_turns, cost_cap_usd)` + `BudgetExceededSignal`. `check_and_accrue(turns, cost)` raises `BudgetExceededSignal` when exceeded. Invariant 7 routing: signal caught above the seal call, not inside it. Cost per run written to the ledger for per-engagement pricing audits. |
+| `agent/__init__.py` | Re-exports public surface: `Tier`, `ToolSpec`, `CheckSpec`, `LedgerEntry`, `ProposalArtifact`, `RunBudget`, `Ledger`, `StagingStore`, `Executor`, `get_tier`, `allowed_tools`. |
+
+**Tool registry (8 tools):**
+
+| Tool name | Tier | Description |
+|---|---|---|
+| `read_sap_invoices` | 0 — Observe | SAP B1 sales invoice listing (read-only) |
+| `read_sap_purchase_invoices` | 0 — Observe | SAP B1 purchase invoice listing (read-only) |
+| `read_ledger` | 0 — Observe | Justification ledger entries (read-only) |
+| `read_kb_slice` | 0 — Observe | Knowledge-base slice by name (read-only) |
+| `run_review_chain` | 1 — Staging | Full deterministic audit chain as one atomic tool (fetch→compile, all gates). Justification required. |
+| `run_reg2627_pass` | 1 — Staging | Reg 26/27 disallowed input-tax candidate pass. Justification required. |
+| `draft_report_section` | 1 — Staging | Draft report section in staging; does not seal or emit. Justification required. |
+| `propose_action` | 1 — Staging | Only path to Tier-2 effects: emits a ProposalArtifact for human approval. Justification required. |
+
+No Tier-2-executing tool exists in the registry. `propose_action` is the only path to Tier 2; the deterministic executor fires only after human approval.
+
+**Check registry — v0/PROVISIONAL:**
+
+14 CheckSpec entries: E1, E2, E3, E4, NO_GST_REG, COMPLETENESS, SEQ_GAP, DUP_CLAIM,
+declared_A, declared_B, gst_amount_mismatch, correct_period, total_inconsistency,
+reg11_supplier_gst_absent. **Not wired to any consumer.** Collin must ratify the schema
+after T2.18 (config scheme block) lands — check_id/iras_basis will be reconciled against
+the canonical IRAS VatGroup remap and T2.18 config_keys then (additive, non-breaking).
+The status constant `CHECKSPEC_STATUS = "v0/PROVISIONAL"` in `agent/registry.py` signals
+the non-frozen contract until T5.2c.
+
+**Test state (T5.2a):** 89 new tests (T-1 through T-10) in 7 test files
+(`test_agent_registry.py`, `test_agent_justification.py`, `test_agent_ledger.py`,
+`test_agent_proposals.py`, `test_agent_executor.py`, `test_agent_budget.py`,
+`test_agent_checkspec.py`). All no-live-SAP, no-live-Anthropic-API. Master total
+after T5.2a: **1328 passed, 1 skipped**.
+
+### What T5.2b adds — SDK integration surface
+
+| File | Role |
+|---|---|
+| `agent/hooks.py` | `make_hooks(ledger)` → `(pre_tool_use_cb, post_tool_use_cb, audit_log)`. PreToolUse: Tier-3 → deny "tool-not-found" + ledger entry blocked; Tier-1 → `validate_justification` → ledger write BEFORE allow/deny; Tier-0 → always allow + ledger entry. PostToolUse → `audit_log` (plain list[dict]; SEPARATE from the hash-chained ledger — whether execution outcomes enter the sealed chain is a T5.3 decision). SDK import (`HookContext`, `HookJSONOutput`) deferred via `TYPE_CHECKING` so `agent/` is importable without `claude-agent-sdk` installed. |
+| `agent/harness.py` | `build_options(ledger, budget, *, system_prompt="")` → `ClaudeAgentOptions`. Wires `allowed_tools` (Tier-0/1 names from registry), hooks (PreToolUse + PostToolUse), `max_turns` from `RunBudget`. SDK import deferred inside `build_options()` — pure-core test environments do not require the SDK. Does NOT call `query()`; that is T5.3's job. |
+| `agent/approve_cli.py` | `list_pending(store)`, `show_proposal(store, id)`, `approve_proposal(store, executor, id)`, `reject_proposal(store, id)` library functions + argparse `main()` CLI. Approval dispatches the deterministic executor; rejection marks the proposal. |
+| `agent/ledger.py` (amended) | `Ledger.from_entries(list[dict])` class method — reconstructs a `Ledger` from a list of raw dict entries (e.g. loaded from the sealed `steps/agent-ledger.json`). Enables post-seal `Ledger.verify()` on the reconstructed object. |
+| `audit_bundle/seal.py` (amended) | `agent_ledger=None` parameter. When an `agent/ledger.Ledger` is supplied, `seal_bundle` serialises it via `canonical_json` and writes `steps/agent-ledger.json`, covered by the manifest root-hash. Backward-compatible — existing callers unaffected when parameter absent. |
+
+**First runtime dependency:** `claude-agent-sdk==0.2.99` added to `requirements.txt`.
+
+**Cross-platform note:** Linux install verified green in CI (builds from sdist). The CLI
+binary (`claude`) is only needed at `query()` call time — a T5.3 runtime concern. Import-only
+(hooks, harness, types) works without the CLI binary. Windows wheel is platform-specific; CI
+runs on `ubuntu-latest`.
+
+**Test state (T5.2b):** 44 new tests (T-1 through T-8) in 4 test files
+(`test_t52b_hooks.py`, `test_t52b_ledger_seal.py`, `test_t52b_registry.py`,
+`test_t52b_approve_cli.py`). All hermetic — synthetic SDK events, mocked SDK, no live model.
+Notable: T-7 verifies the Ledger seals into the bundle AND that the reconstructed
+`Ledger.from_entries()` object passes `Ledger.verify()` with tamper detection on both paths.
+Master total after T5.2b (including flake8 fix `bb73de6`): **1372 passed, 1 skipped**.
+
+**Flake8 lesson (bb73de6 fix commit):** A `nonlocal` declaration on a variable that was
+only read (not assigned) in the inner scope triggered F824 ("undefined name in `__all__` or
+similar"). The test passed pytest locally but blocked CI's Pass 1 (`--select=E9,F63,F7,F82`).
+Lesson: local pre-merge gates must run `flake8 --select=E9,F63,F7,F82` in addition to pytest.
+Codified in `docs/merge-gates.md` Gate b.
+
+### Deferred to T5.3 (honest status)
+
+| Stub / gap | Where | Why deferred |
+|---|---|---|
+| `seal` executor handler | `agent/executor.py` | Requires live `seal_bundle` call + real bundle path; T5.3 wires agent loop to chain |
+| `emit` executor handler | `agent/executor.py` | Requires PDF path + send mechanism; T5.3 scope |
+| `query()` call | (not yet in any file) | T5.3 builds the actual agent loop using `build_options` from T5.2b |
+| PostToolUse → sealed chain | `agent/hooks.py` | Whether execution outcomes enter the hash-chained ledger is a T5.3 architectural decision |
+| Live model validation | — | No live-model run in any T5.2 test; T5.7 eval harness gates "validated" status |
 
 ---
 
@@ -2630,3 +2731,4 @@ noted; #24 updated to on-master; T2.7/T2.8 BRANCH ONLY → on master throughout;
 gate definition corrected to import-only regex (see `docs/merge-gates.md`); 1026 tests). Updated 2026-06-10 (D6 doc-sync for T2.10-V — T2.10 validation subsection, crafted-chain test, live FP check, section renders, test count 1104 → 1156; see D6 roadmap entry). Updated 2026-06-10 (D7: CI self-provisioning — conftest auto-generates gitignored PDF fixtures via `generate_invoices.py`, `pdfplumber` added to `requirements.txt`, suite green on clean checkouts, diagnosis at `exploration-notes/infra/ci-fixture-diagnosis-20260610.md`; report section heading renamed to "Invoice Listing Completeness Checks" (internal task ID removed, commit 958ed3d); synthetic demo scenario at `exploration-notes/demo-scenario/` (SYNTHETIC — NOT real-client validation, commit 8b60d87, 10 self-verification assertions, disclosure README); Check A float-robustness — cent-quantized `Decimal` comparison eliminates IEEE-754 sub-cent false positives, off-by-one-cent still flags, Check B/$1.00 tolerance unchanged, 5 new `[A-FP]` tests (commit 40c9024); report styling normalized — shared `_ai_table_style()` helper, redundant `_META` removed, content invariant (commit ae76578, merged PR #4); test count 1156 → 1161; repo tree updated with `infra/` and `demo-scenario/`; T1.5 master total updated; Check A float-robustness subsection added to T2.9; report styling section added). 
  Updated 2026-06-10 (T2.19 tax code normalization layer — `normalize_vat_group()`, `tax_code_mappings`/`source_system` in `ClientConfig`, audit allow-list update, committed on branch `t2.2-vat-discovery` (commits `47e31a0`/`19a6f86`), 28 new tests, validated on synthetic fixtures only, Stage 3 pending; same commits also fixed a PDF test-fixture infrastructure gap — 209 pre-existing `FileNotFoundError` failures from a `.gitignore` `*.pdf` rule excluding `tests/fixtures/documents/*.pdf`, resolved via a negation rule + committing the 8 PDFs + new `.gitattributes` (`*.pdf binary`); exec summary and test count updated 1161 → 1184; Appendix C #30 added; see T2.19 roadmap entry).*
 Updated 2026-06-11 (D8: T2.16 + T2.17 annual analytical review — TP/TS ratio pass (ASK 1.3d, `orchestrator/check_analytical_review.py`, `run_analytical_review_pass()`), period-over-period fluctuation (ASK 1.3a, `orchestrator/check_period_fluctuation.py`, `detect_period_fluctuations()`), opt-in `--analytical-review` flag, Annual Analytical Review report section; T2.16 demo-validated on SBODEMOSG (live FY ratio, box-isolation, >1.2 flag-fire via crafted input, RC/OVR approximation caveat Boxes 14–16 not computed); T2.17b chain/report integration (PR #7) demo-validated on SBODEMOSG (live FY render, exactly 4 candidates Q1→Q2/Q3, Q4 all-zero excluded, box-isolation); ±50% non-regulatory surfacing threshold; surfaces candidates, never asserts; NOT real-client validated; 50 new tests (19 + 18 + 13); test count 1161 → 1211; T2.16 + T2.17 sections added to STATE; exec summary updated; T2.16 + T2.17 roadmap entries DONE).*
+Updated 2026-06-12 (D9: T5.2 post-cage docs-sync — T5.2a/T5.2b agent/ cage section added (registry/tiers/justification/ledger/proposals/executor/budget; CheckSpec v0/PROVISIONAL 14 entries; hooks/harness/approve_cli; Ledger.from_entries; seal.py agent-ledger.json integration); first runtime dep `claude-agent-sdk==0.2.99` documented with cross-platform note; honest status: cage built + hermetically unit-tested, NO live loop, seal/emit stubs deferred T5.3; exec summary updated; T1.5 master total updated 1211 → 1372; T2.17 test count line updated; T5.2 roadmap entry marked DONE; T5.2c + T5.8 + input-surface note added to roadmap; merge-gates.md Gate a extended to cover `agent/` + explicit agent/-allowed note + Gate b flake8 + Gate e agentic-cage invariants 1/2/3/7 graduated; CI import-scan step added to `.github/workflows/ci.yml`; `knowledge-base/sg-tax-code-mappings.md` checked — no change required, cage does not affect accounting-domain routing).*
