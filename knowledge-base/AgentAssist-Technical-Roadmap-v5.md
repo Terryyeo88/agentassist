@@ -70,8 +70,18 @@ Non-blocking for the first 1–2 friendly pilots; real problems at 5+ clients or
 ### T2.1 — Manual journal entry support — PLANNED
 Effort 1–1.5 wk. Owner Collin. Add `JournalEntries` queries; filter GST-relevant accounts via per-client `gst_accounts` config; per-line classification where account context is GST-input/output. Hardest part: identifying GST-relevant journal lines (inferred from GL account). Out of scope: adjusting journals that re-classify GST across boxes.
 
-### T2.2 — Custom VatGroup discovery and reporting — PLANNED
+### T2.2 — Custom VatGroup discovery and reporting — PLANNED (sequenced behind T2.20)
 Effort 1 wk. Owner Collin. Enumerate the VatGroup codes actually present in the client's transaction data, classify against the 18-code standard set, and surface unknowns with sample DocNums/counterparties — the independent completeness check that catches codes the client forgot or never declared. The enumeration produces a client-confirmation worksheet; the client declares the intended treatment of each custom/unknown code; those client-declared treatments persist to per-client config. Treatment is CLIENT-DECLARED, not auto-classified — intended treatment of a custom code cannot be inferred from data (self-report is authoritative for treatment; enumeration is authoritative for completeness). Thin slice of the future T2.12 normalization adapter.
+
+**Sequencing note (T2.20, 2026-06-12):** this entry's "18-code standard set" is
+the pre-Annex-E vocabulary. T2.20's discovery audit
+(`exploration-notes/t2.20/vocabulary-migration-inventory.md`) found that 20 of
+the 35 IRAS Annex E GST Category Codes either have no equivalent in the
+18-code set or collide with an existing code under a different meaning. Do not
+scope T2.2 against "the 18-code standard set" until the Annex E migration
+(tentatively T2.21) has landed or has been explicitly deferred — otherwise
+T2.2's classification step will need rework against whatever vocabulary T2.21
+produces.
 
 ### T2.3 — Automated evaluation harness — PLANNED (durability mechanism for the headline reliability claim)
 Effort 2–3 wk. Owner Terry. Given stored prompt + reference output, invoke the Claude API directly, capture response, compute a scoring vector; run as CI on every meaningful change. Scoring uses structural checks, not text comparison. Protects the 30/30 across model upgrades and prompt/KB edits. T2.11 builds on it for the reasoning-layer basket.
@@ -260,6 +270,60 @@ Committed 2026-06-10 on branch `t2.2-vat-discovery` (commits `47e31a0`, `19a6f86
 **What it enables:** onboarding a Xero, MYOB, or QuickBooks client requires only adding a `tax_code_mappings` block (source code → canonical VatGroup) and `source_system` to that client's YAML — no code changes to `sap_b1_server.py`, `orchestrator/`, or `report/`.
 
 **Honest qualifier:** validated on synthetic fixtures only (Stage 1 + Stage 2). Not yet tested against a real non-SAP-B1 client engagement — Stage 3 (live injection against an actual Xero/MYOB/QuickBooks export) is pending the first such engagement. The same pair of commits also resolved the 209 pre-existing PDF-fixture test failures (see build-state snapshot above); suite total: **1184 passed, 0 failed, 1 skipped**.
+
+### T2.20 — Annex E vocabulary migration: discovery audit — DONE (2026-06-12)
+Owner Collin. Read-only discovery audit for "Option C" — migrating
+AgentAssist's internal VatGroup vocabulary from the current 18-code SAP B1 set
+to the 35-code IRAS Annex E GST Category Code set, per the e-Tax Guide
+*"Adopting GST InvoiceNow Requirement for GST-Registered Businesses"* (Second
+Edition, 9 Mar 2026), Annex E. No source files changed. Artefact:
+`exploration-notes/t2.20/vocabulary-migration-inventory.md`.
+
+**Findings:**
+- The 18-code vocabulary is carried in **≥7 independently-maintained
+  locations** (sap_b1_server.py's `F5_BOX_MAPPING` + `_vg_category`,
+  run_baseline_tests.py's three reference structures, system-prompts/base.md's
+  two tables, report/routing.py's frozensets, report/sections.py's
+  `_BOX_VATGROUPS` + judgment literals, config/loader.py's
+  `_STANDARD_VAT_GROUPS`, knowledge-base/sg-tax-code-mappings.md). Only
+  `F5_BOX_MAPPING` plus two module-level sets (`_E2_ZERO_RATE_CODES`,
+  `_STANDARD_RATE_SALES`) form the single shared core consumed by Tools
+  12/13/14 — everything else is documentation, an audit-not-partner reference
+  re-implementation, or an independent partial duplicate that can drift.
+- Code-by-code Annex E mapping: of 35 Annex E codes, **13 are direct
+  carryovers** (DS, ZR, ES33, ESN33, OS, IM, ME, IGDS, ZP, BL, EP, OP, NR),
+  **2 are renames** (SO→SR, SI→TX), **2 are NAME COLLISIONS** with the current
+  codes of the same name but conflicting box-treatment semantics (TX-N33,
+  TX-RE), and **18 have no current equivalent** (Customer Accounting,
+  Overseas Vendor Registration/Low-Value-Goods, and reverse-charge families,
+  plus `NA`/`NG`/`TXNA`/`TXRC-TS` pending IRAS-text confirmation). One current
+  code (TX-E33) has no target in the given Annex E list.
+- **T2.18 dependency:** T2.18 as currently scoped (MES/IGDS/reverse-charge
+  flags + `actively_makes_exempt_supplies` promotion) is necessary but not
+  sufficient for Option C — it unblocks `ME`/`IGDS` validation and is a
+  building block for the `TX-RE`/`IM-RE`/`TXRC-RE` residual-input-tax family,
+  but the Customer Accounting and OVR/LVG families (8 codes) need either an
+  extended T2.18 scope or a "manual review" fallback. Recommend sequencing
+  T2.18 immediately before/with the build task (tentatively T2.21).
+- Surfaced two pre-existing drift bugs (not fixed, per task scope):
+  `system-prompts/base.md`'s E2 condition set and `report/routing.py`'s
+  `_ZERO_RATED_VGS` are both missing `ZP`, added to the production E2 set in
+  T2.10 but never propagated to these two locations. Also a 3-way `TX-RE`
+  label inconsistency (`_vg_category` says "Tourist refund — retail";
+  `KNOWN_VATGROUPS`/base.md say "Residual input tax") that becomes load-bearing
+  (not just inconsistent) once Annex E's `TX-RE` semantics are adopted.
+- Test fixture impact: 7 JSON fixtures + `generate_invoices.py` carry
+  hardcoded VatGroup strings (`SI` alone appears ~265 times across the
+  reg2627 fixture family); the 18+2 codes with no current equivalent have
+  zero existing fixture coverage.
+- First-pass effort estimate for the build task: **~9-13.5 days excl. T2.18,
+  ~11-17.5 days incl. T2.18** — explicitly a first-pass estimate, subject to
+  revision once the IRAS Annex E text is consulted directly. Recommends a
+  follow-on task (T2.22) for genuine transaction-level detection logic for
+  the 13 Customer-Accounting/OVR/reverse-charge codes that no client-level
+  config flag can resolve.
+
+See T2.2 (above) for the resulting sequencing note.
 
 ---
 
