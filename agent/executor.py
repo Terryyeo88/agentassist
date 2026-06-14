@@ -9,18 +9,24 @@ Handler contract:
     Handlers are plain Python functions. They may raise NotImplementedError
     for deferred actions (T5.3), or ExecutorError for hard failures.
 
-Built-in handlers:
+Built-in handlers (_DEFAULT_HANDLERS, intentionally left as-is):
     test_noop       — hermetic test handler; always succeeds; no side effects.
-    seal_bundle     — DEFERRED to T5.3 (NotImplemented stub).
-    emit_final_pdf  — DEFERRED to T5.3 (NotImplemented stub).
+    seal_bundle     — NotImplemented stub (default).
+    emit_final_pdf  — NotImplemented stub (default).
 
-Real seal/emit handlers are explicitly deferred to T5.3. The stubs are
-documented here so T5.3 knows exactly where to fill them in.
+Real Tier-2 handlers (T5.3 Slice 1) are supplied via ``make_tier2_handlers`` and
+passed through the ``extra_handlers`` ctor arg — the defaults are NOT edited, so
+an Executor built without extra_handlers still raises NotImplementedError for
+seal/emit. SEALED-CHAIN DECISION (locked): a Tier-2 execution outcome
+(seal/emit, post human approval) APPENDS to the SEALED hash-chained agent-ledger
+and is handed to the bound seal/emit callable so it is sealed into the bundle.
+Tier-0 routine reads stay in the separate, unsealed audit_log (agent/hooks.py).
 
 Public API:
     Executor                — dispatcher with staging store + handler registry
     ExecutionResult         — returned by a successful dispatch
     ExecutorError           — raised for approval-state failures and unknown actions
+    make_tier2_handlers     — build approved-only seal/emit handlers bound to a Ledger
 
 Zero anthropic import. Stdlib only.
 """
@@ -29,6 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from agent.ledger import Ledger
 from agent.proposals import ProposalArtifact, StagingStore
 from agent.schemas import Tier
 
@@ -149,3 +156,69 @@ class Executor:
             )
 
         return handler(artifact)
+
+
+# ---------------------------------------------------------------------------
+# Tier-2 handlers (T5.3 Slice 1) — seal / emit, approved-only, sealed-chain
+# ---------------------------------------------------------------------------
+
+def make_tier2_handlers(
+    ledger: Ledger,
+    *,
+    seal_fn: Callable[..., object],
+    emit_fn: Callable[..., object],
+) -> dict[str, Callable[[ProposalArtifact], ExecutionResult]]:
+    """Build the real seal/emit Tier-2 handlers, bound to *ledger*.
+
+    Pass the returned dict as ``Executor(extra_handlers=...)``; it overrides the
+    NotImplemented defaults without editing ``_DEFAULT_HANDLERS``. The Executor
+    guarantees these fire ONLY for proposals already in status="approved".
+
+    On execution, each handler:
+      1. Appends the Tier-2 execution OUTCOME to the SEALED hash-chained ledger
+         (tool_name=action, tier=2, outcome="executed") BEFORE invoking the bound
+         callable — so the outcome entry is captured when the bundle is sealed.
+      2. Invokes the bound callable as ``fn(proposal=..., ledger=ledger)``. The
+         callable performs the real side effect (seal_bundle / emit) and receives
+         the ledger so it can seal those entries into the bundle.
+
+    Args:
+        ledger:  The agent Ledger that is sealed into the bundle.
+        seal_fn: Bound callable performing the bundle seal. Receives the proposal
+                 and ledger; returns a value used as ExecutionResult.detail.
+        emit_fn: Bound callable performing the final-PDF emit, same contract.
+
+    Returns:
+        {"seal_bundle": <handler>, "emit_final_pdf": <handler>}.
+    """
+
+    def _make(action: str, fn: Callable[..., object]) -> Callable[[ProposalArtifact], ExecutionResult]:
+        def _handler(proposal: ProposalArtifact) -> ExecutionResult:
+            # Sealed-chain decision: record the Tier-2 execution outcome on the
+            # hash-chained ledger before the side effect seals it into the bundle.
+            ledger.append(
+                tool_name=action,
+                tier=Tier.TWO,
+                justification=proposal.justification,
+                call_params={
+                    "proposal_id": proposal.proposal_id,
+                    "evidence_refs": proposal.evidence_refs,
+                    "inputs_hash": proposal.inputs_hash,
+                },
+                outcome="executed",
+                blocked_reason=None,
+            )
+            detail = fn(proposal=proposal, ledger=ledger)
+            return ExecutionResult(
+                proposal_id=proposal.proposal_id,
+                action=proposal.action,
+                success=True,
+                detail=None if detail is None else str(detail),
+            )
+
+        return _handler
+
+    return {
+        "seal_bundle": _make("seal_bundle", seal_fn),
+        "emit_final_pdf": _make("emit_final_pdf", emit_fn),
+    }

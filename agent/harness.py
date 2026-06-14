@@ -18,7 +18,7 @@ Zero live model. Zero live SAP. Zero network I/O.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from agent.budget import RunBudget
 from agent.hooks import make_hooks
@@ -26,7 +26,7 @@ from agent.ledger import Ledger
 from agent.registry import allowed_tools
 
 if TYPE_CHECKING:
-    from claude_agent_sdk import ClaudeAgentOptions  # noqa: PLC0415
+    from claude_agent_sdk import ClaudeAgentOptions, McpSdkServerConfig  # noqa: PLC0415
 
 
 def build_options(
@@ -34,6 +34,7 @@ def build_options(
     budget: RunBudget,
     *,
     system_prompt: str = "",
+    engine_server: "Optional[McpSdkServerConfig]" = None,
 ) -> "ClaudeAgentOptions":
     """Assemble and return a ClaudeAgentOptions instance for one agent run.
 
@@ -43,6 +44,13 @@ def build_options(
         system_prompt: Optional system prompt string.  Passed as-is to the SDK;
                        the T5.3 caller is expected to supply the domain-specific
                        audit-agent instructions here.
+        engine_server: Optional in-process MCP server (from
+                       agent.engine_tool.make_engine_server) exposing the single
+                       atomic engine tool.  When provided, it is wired into
+                       mcp_servers and its qualified tool name
+                       (mcp__engine__run_review_chain) is appended to
+                       allowed_tools.  When None (default) no engine tool is
+                       wired — build_options behaviour is unchanged.
 
     Returns:
         ClaudeAgentOptions with:
@@ -64,8 +72,20 @@ def build_options(
 
     tool_names = [spec.name for spec in allowed_tools()]
 
+    mcp_servers: dict[str, Any] = {}
+    if engine_server is not None:
+        # Wire the single atomic engine tool. Its MCP-namespaced name is added to
+        # allowed_tools; the registry's MCP-aware get_tier resolves it to Tier 1.
+        from agent.engine_tool import (  # noqa: PLC0415
+            ENGINE_SERVER_NAME,
+            ENGINE_TOOL_QUALIFIED,
+        )
+        mcp_servers[ENGINE_SERVER_NAME] = engine_server
+        tool_names.append(ENGINE_TOOL_QUALIFIED)
+
     return ClaudeAgentOptions(
         allowed_tools=tool_names,
+        mcp_servers=mcp_servers,
         hooks={
             "PreToolUse": [HookMatcher(hooks=[pre_cb])],
             "PostToolUse": [HookMatcher(hooks=[post_cb])],
