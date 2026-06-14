@@ -54,10 +54,14 @@ def make_hooks(
                                each entry is a plain dict with tool_name,
                                tool_input, tool_response, tool_use_id.
 
-    NOTE — execution outcomes vs the sealed chain:
-        audit_log entries are NOT part of the hash-chained ledger.  The ledger
-        records allow/block decisions (permission layer).  Whether execution
-        outcomes should also be sealed into the hash chain is deferred to T5.3.
+    SEALED-CHAIN ROUTING (locked, T5.3):
+        audit_log entries are NOT part of the hash-chained ledger.  PostToolUse
+        records Tier-0 routine reads (and Tier-1 staging work) here, UNSEALED.
+        Tier-2 outcome-bearing executions (seal/emit, post human approval) are
+        the ONLY execution outcomes that append to the SEALED hash-chained
+        agent-ledger — and that happens in the executor (agent/executor.py::
+        make_tier2_handlers), not in this PostToolUse hook (the agent never
+        invokes a Tier-2 tool; none exist in the registry).
     """
     audit_log: list[dict] = []
 
@@ -124,11 +128,12 @@ def make_hooks(
         tool_use_id: str | None,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        """PostToolUse audit: log execution to audit_log (NOT the ledger).
+        """PostToolUse audit: log execution to audit_log (NOT the sealed ledger).
 
-        T5.3 decision point: whether execution outcomes should be sealed into
-        the hash-chained ledger (alongside permission decisions) is deferred.
-        For now, audit_log provides an in-session execution record.
+        Locked routing (T5.3): Tier-0 routine reads (and Tier-1 staging work)
+        record their execution here in the separate, UNSEALED audit_log. Only
+        Tier-2 post-approval executions append to the sealed hash-chained ledger,
+        and that is done by the executor — never by this hook.
         """
         audit_log.append({
             "tool_name": input["tool_name"],
