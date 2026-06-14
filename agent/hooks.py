@@ -52,7 +52,11 @@ def make_hooks(
             post_tool_use_cb — async HookCallback for PostToolUse events
             audit_log        — mutable list populated by post_tool_use_cb;
                                each entry is a plain dict with tool_name,
-                               tool_input, tool_response, tool_use_id.
+                               tool_input, tool_response, tool_use_id. The SAME
+                               list is also attached to post_tool_use_cb as a
+                               public ``.audit_log`` attribute, so a caller holding
+                               only the callback can recover it without
+                               introspecting its closure.
 
     SEALED-CHAIN ROUTING (locked, T5.3):
         audit_log entries are NOT part of the hash-chained ledger.  PostToolUse
@@ -146,5 +150,12 @@ def make_hooks(
                 "hookEventName": "PostToolUse",
             }
         }
+
+    # Public handle: expose the audit_log on the returned PostToolUse callback so
+    # callers that only hold the callback (e.g. those recovering it from
+    # ClaudeAgentOptions.hooks, where build_options does not surface the list) can
+    # read it WITHOUT introspecting post_tool_use.__closure__. This is additive —
+    # the tuple return shape is unchanged and ``post_tool_use.audit_log is audit_log``.
+    post_tool_use.audit_log = audit_log  # type: ignore[attr-defined]
 
     return pre_tool_use, post_tool_use, audit_log

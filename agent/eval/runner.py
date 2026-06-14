@@ -106,20 +106,14 @@ def _extract_cage(options: Any) -> tuple[Any, Any, list[dict]]:
     """Recover the real (pre_cb, post_cb, audit_log) from build_options' output.
 
     build_options assembles the hooks internally (via agent.hooks.make_hooks) and
-    does not surface the audit_log, so we read it off the PostToolUse callback's
-    closure. agent.hooks.post_tool_use closes over exactly one list — the
-    audit_log it appends execution outcomes to — so this resolution is stable for
-    the make_hooks contract. Driving these closures is precisely "the actual
-    PreToolUse/PostToolUse path" the harness must exercise.
+    does not surface the audit_log in its return, but make_hooks attaches the
+    audit_log to the PostToolUse callback as a PUBLIC ``.audit_log`` handle. We
+    read it off that handle — no closure introspection. Driving these callbacks is
+    precisely "the actual PreToolUse/PostToolUse path" the harness must exercise.
     """
     pre_cb = options.hooks["PreToolUse"][0].hooks[0]
     post_cb = options.hooks["PostToolUse"][0].hooks[0]
-    audit_log: list[dict] = []
-    for cell in (post_cb.__closure__ or ()):
-        val = cell.cell_contents
-        if isinstance(val, list):
-            audit_log = val
-            break
+    audit_log: list[dict] = post_cb.audit_log
     return pre_cb, post_cb, audit_log
 
 
