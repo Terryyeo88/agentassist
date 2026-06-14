@@ -45,6 +45,25 @@ _TOOLS: list[ToolSpec] = [
         tier=Tier.ZERO,
         description="Read a knowledge-base slice by name (read-only).",
     ),
+    # Tier 0 — dossier evidence reads (T5.3 Slice 1; impl in agent/read_tools.py)
+    ToolSpec(
+        name="get_source_document",
+        tier=Tier.ZERO,
+        description=(
+            "Fetch the source invoice PDF path for a doc_num via the document "
+            "provider seam (read-only). Returns None when no PDF is available."
+        ),
+    ),
+    ToolSpec(
+        name="read_vendor_gst_status",
+        tier=Tier.ZERO,
+        description="Look up a vendor's GST-registration status by card name (read-only).",
+    ),
+    ToolSpec(
+        name="read_prior_period_treatment",
+        tier=Tier.ZERO,
+        description="Look up how a finding key was treated in a prior period (read-only).",
+    ),
     # Tier 1 — work in staging; mandatory justification
     ToolSpec(
         name="run_review_chain",
@@ -87,14 +106,34 @@ _TOOLS: list[ToolSpec] = [
 REGISTRY: dict[str, ToolSpec] = {spec.name: spec for spec in _TOOLS}
 
 
+def _strip_mcp_prefix(name: str) -> str:
+    """Resolve an SDK MCP tool name to its bare registry name.
+
+    In-process MCP tools are exposed to the SDK as ``mcp__<server>__<tool>``.
+    The tier/justification cage reasons in bare registry names, so an MCP-
+    namespaced name is mapped back to ``<tool>`` before lookup. Names without
+    the ``mcp__`` prefix are returned unchanged.
+    """
+    if name.startswith("mcp__"):
+        # mcp__<server>__<tool>  ->  <tool>
+        parts = name.split("__", 2)
+        if len(parts) == 3:
+            return parts[2]
+    return name
+
+
 def get_tier(name: str) -> Tier:
     """Return the Tier for a tool name.
+
+    Accepts both bare registry names and SDK MCP-namespaced names
+    (``mcp__<server>__<tool>``), resolving the latter to its registry entry so
+    the justification gate applies to MCP tools too.
 
     Returns Tier.THREE for any name absent from REGISTRY, encoding the
     'structurally impossible' tier as 'absent, not denied' — the tool
     does not exist rather than being blocked at runtime.
     """
-    spec = REGISTRY.get(name)
+    spec = REGISTRY.get(_strip_mcp_prefix(name))
     return spec.tier if spec is not None else Tier.THREE
 
 
