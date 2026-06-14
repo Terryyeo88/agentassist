@@ -2,6 +2,7 @@
 agent/proposals.py — ProposalArtifact construction, validation, and staging store.
 
 Public API:
+    compute_inputs_hash(inputs) -> str  — sha256 anchoring over canonical JSON
     build_proposal(action, justification, evidence_refs, inputs) -> ProposalArtifact
     validate_proposal(artifact)  — raises ProposalValidationError on invalid artifact
     ProposalValidationError      — validation failure
@@ -9,7 +10,9 @@ Public API:
 
 The inputs_hash is sha256( canonical_json(inputs) ) so the proposal is anchored
 to the specific run state at proposal time. This reuses the same hash primitives
-as audit_bundle.canonical — sha256 + canonical JSON.
+as audit_bundle.canonical — sha256 + canonical JSON. ``compute_inputs_hash`` is the
+single anchoring primitive; T5.3 dossiers anchor their inputs_hash through the same
+function so a DossierArtifact and the ProposalArtifact that stages it share one hash.
 
 Zero anthropic import. Stdlib only.
 """
@@ -38,6 +41,16 @@ def _sha256_bytes(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
+def compute_inputs_hash(inputs: dict) -> str:
+    """Return the anchoring hash for an inputs dict: sha256(canonical_json(inputs)).
+
+    The single anchoring primitive shared by build_proposal and T5.3 dossiers, so a
+    DossierArtifact and the ProposalArtifact that stages it carry the same
+    inputs_hash when built from the same inputs dict.
+    """
+    return _sha256_bytes(_canonical_json(inputs))
+
+
 def build_proposal(
     *,
     action: str,
@@ -64,7 +77,7 @@ def build_proposal(
     if not evidence_refs:
         raise ProposalValidationError("evidence_refs must be non-empty")
 
-    inputs_hash = _sha256_bytes(_canonical_json(inputs))
+    inputs_hash = compute_inputs_hash(inputs)
     artifact = ProposalArtifact(
         proposal_id=str(uuid.uuid4()),
         action=action,
