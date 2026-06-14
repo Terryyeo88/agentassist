@@ -27,7 +27,7 @@ import audit_bundle.seal as _seal_mod  # noqa: E402
 from audit_bundle import seal_bundle  # noqa: E402
 from audit_bundle.config_redaction import _ALLOW_LIST, _DENY_ALWAYS  # noqa: E402
 from audit_bundle.verify import verify_bundle  # noqa: E402
-from config.loader import load_client_config  # noqa: E402
+from config.loader import _STANDARD_VAT_GROUPS, load_client_config  # noqa: E402
 
 _CHAIN_RUN_FIXTURE = _REPO_ROOT / "tests" / "fixtures" / "chain-run-sample.json"
 _NORMALIZATION_FIXTURE = (
@@ -155,6 +155,125 @@ def test_source_system_defaults_to_sap_b1(tmp_path):
     _write_config(tmp_path)  # no source_system key at all
     cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
     assert cfg.source_system == "sap_b1"
+
+
+# ---------------------------------------------------------------------------
+# T2.21a — built-in default tax_code_mappings for SAP B1 clients (SO->SR, SI->TX)
+#
+# SOP step 3 (failing test first). Per exploration-notes/t2.21/live-recon-findings.md
+# and the (b') design refinement (built-in-default variant): config/loader.py
+# should apply a default tax_code_mappings = {"SO": "SR", "SI": "TX"} for
+# source_system == "sap_b1" clients that declare no tax_code_mappings of their
+# own — mirroring T2.19's "absent block -> defaults" precedent
+# (test_absent_mapping_block_gives_empty_dict above), without requiring any
+# per-client YAML edits.
+#
+# ClientConfig.tax_code_mappings itself must keep reflecting only what the YAML
+# declares (empty for sbodemosg today — see test_absent_mapping_block_gives_empty_dict,
+# test_sbodemosg_client_has_empty_mappings, test_sbodemosg_bundle_config_passthrough,
+# all of which assert == {}). The SAP-B1 default is exposed via a NEW computed
+# property, ClientConfig.effective_tax_code_mappings, which does not exist yet —
+# every test below fails with AttributeError until it is implemented (next slice).
+# ---------------------------------------------------------------------------
+
+def test_sap_b1_client_with_no_mappings_gets_default_effective_mapping():
+    # sbodemosg.yaml declares no tax_code_mappings (source_system defaults to
+    # "sap_b1") -> effective_tax_code_mappings should be the built-in default.
+    cfg = load_client_config("sbodemosg", check_connectivity=False)
+    assert cfg.tax_code_mappings == {}  # unchanged T2.19 invariant
+    assert cfg.effective_tax_code_mappings == {"SO": "SR", "SI": "TX"}
+
+
+def test_non_sap_b1_client_does_not_get_sap_b1_default_merged(tmp_path):
+    # A Xero client with its own mappings must not pick up the SAP-B1-only
+    # SO->SR / SI->TX default — the default is source_system == "sap_b1" scoped.
+    _write_config(
+        tmp_path,
+        source_system="xero",
+        tax_code_mappings={"OUTPUT": "SO", "INPUT": "SI"},
+    )
+    cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
+    assert cfg.source_system == "xero"
+    assert cfg.effective_tax_code_mappings == {"OUTPUT": "SO", "INPUT": "SI"}
+    assert "SO" not in cfg.effective_tax_code_mappings  # no SAP-B1 default leakage
+    assert "SI" not in cfg.effective_tax_code_mappings
+
+
+def test_sap_b1_client_explicit_mapping_overrides_default_for_that_code(tmp_path):
+    # An explicit tax_code_mappings entry for "SO" on a sap_b1 client overrides
+    # the built-in SO->SR default, while SI still falls back to the default TX.
+    # "ZR" (zero-rated sales) is used as the override target because it is
+    # already a canonical code in _STANDARD_VAT_GROUPS — this isolates the
+    # override/merge semantics from the separate _STANDARD_VAT_GROUPS "SR"/"TX"
+    # question covered below.
+    _write_config(tmp_path, tax_code_mappings={"SO": "ZR"})
+    cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
+    assert cfg.source_system == "sap_b1"
+    assert cfg.tax_code_mappings == {"SO": "ZR"}  # unchanged T2.19 invariant
+    assert cfg.effective_tax_code_mappings == {"SO": "ZR", "SI": "TX"}
+
+
+def test_default_mapping_round_trips_through_f5_box_mapping():
+    # The point of the SO->SR / SI->TX rename is that once BOTH halves of (b')
+    # land (this default mechanism + the F5_BOX_MAPPING vocabulary rename,
+    # a later T2.21 slice), normalize_vat_group() resolves raw SAP B1 codes to
+    # canonical SR/TX, and F5_BOX_MAPPING.get() on those canonical codes returns
+    # the SAME box routing the old SO/SI entries had.
+    #
+    # This test hardcodes the target default mapping {"SO": "SR", "SI": "TX"}
+    # directly (independent of ClientConfig.effective_tax_code_mappings, which
+    # doesn't exist yet) to isolate the SECOND half of the gap: F5_BOX_MAPPING
+    # has no "SR"/"TX" keys yet. Expected to fail at the F5_BOX_MAPPING lookups
+    # below until the F5_BOX_MAPPING vocabulary rename lands.
+    default_mapping = {"SO": "SR", "SI": "TX"}
+
+    assert normalize_vat_group("SO", default_mapping) == "SR"
+    assert normalize_vat_group("SI", default_mapping) == "TX"
+
+    sr_mapping = sap_b1_server.F5_BOX_MAPPING.get("SR")
+    tx_mapping = sap_b1_server.F5_BOX_MAPPING.get("TX")
+    assert sr_mapping is not None, "F5_BOX_MAPPING has no 'SR' key yet (vocabulary rename pending)"
+    assert tx_mapping is not None, "F5_BOX_MAPPING has no 'TX' key yet (vocabulary rename pending)"
+
+    # Once the vocabulary rename lands, SR/TX must carry the SAME routing the
+    # old SO/SI entries had (numerically-unchanged box totals, per
+    # live-recon-findings.md §2).
+    assert sr_mapping == {"lt_box": "box_1_standard_rated_sales", "tt_box": "box_6_output_tax", "side": "sales"}
+    assert tx_mapping == {"lt_box": "box_5_taxable_purchases", "tt_box": "box_7_input_tax", "side": "purchase"}
+
+
+# ---------------------------------------------------------------------------
+# T2.21a — _STANDARD_VAT_GROUPS gap (scope-confirmation flag, see report)
+#
+# Characterization tests: confirm that _STANDARD_VAT_GROUPS (config/loader.py)
+# does not yet contain "SR"/"TX". This documents a constraint on HOW the
+# built-in default must be implemented: if {"SO": "SR", "SI": "TX"} were merged
+# into raw_mappings BEFORE the Step 9 validation loop (which checks every
+# mapping target against _STANDARD_VAT_GROUPS), load_client_config() would
+# raise ValueError("'SR' is not a canonical AgentAssist VatGroup code") for
+# every sap_b1 client — including sbodemosg — as soon as the default is wired
+# in. The default must therefore be exposed via a property computed AFTER Step
+# 9 (over the already-validated tax_code_mappings), as assumed by the tests
+# above — NOT by injecting it into raw_mappings ahead of validation.
+#
+# These two tests currently PASS (they document today's state); they are not
+# part of the "failing tests" deliverable above.
+# ---------------------------------------------------------------------------
+
+def test_standard_vat_groups_does_not_yet_include_sr_or_tx():
+    assert "SR" not in _STANDARD_VAT_GROUPS
+    assert "TX" not in _STANDARD_VAT_GROUPS
+
+
+def test_explicit_sr_target_currently_rejected_by_loader_validation(tmp_path):
+    # If a sap_b1 client's YAML explicitly declared a tax_code_mappings entry
+    # targeting "SR" today (e.g. a forward-looking override), Step 9 validation
+    # would reject it — the same _STANDARD_VAT_GROUPS gap as above, but via the
+    # YAML-declared path rather than the hardcoded default.
+    _write_config(tmp_path, tax_code_mappings={"SO": "SR"})
+    with pytest.raises(ValueError) as exc_info:
+        load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
+    assert "SR" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
