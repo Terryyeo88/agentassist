@@ -66,6 +66,20 @@ _STANDARD_VAT_GROUPS = frozenset({
     "BL", "EP", "OP", "TX-E33", "TX-N33", "TX-RE",     # excluded purchases
 })
 
+# ── SAP B1 built-in default tax_code_mappings (T2.21a) ─────────────────────────
+# Annex E baseline-vocabulary rename: SAP B1's native SO/SI VatGroup codes
+# normalize to the canonical SR/TX codes by default. Applied by
+# ClientConfig.effective_tax_code_mappings for source_system == "sap_b1"
+# clients that declare no tax_code_mappings of their own (or only a partial
+# override) — mirrors T2.19's "absent block -> defaults" precedent without
+# requiring per-client YAML edits.
+#
+# NOTE: "SR"/"TX" are not yet in _STANDARD_VAT_GROUPS or F5_BOX_MAPPING
+# (T2.21b+, not yet landed) — this constant and the property that uses it are
+# deliberately NOT validated against _STANDARD_VAT_GROUPS (see Step 9 below),
+# so this addition does not raise ValueError on load.
+_SAP_B1_DEFAULT_TAX_CODE_MAPPINGS: dict[str, str] = {"SO": "SR", "SI": "TX"}
+
 
 @dataclass
 class ClientConfig:
@@ -101,9 +115,10 @@ class ClientConfig:
                                  "xero", "myob", "quickbooks"). Optional, defaults
                                  to "sap_b1". Used only for logging/display.
         tax_code_mappings:       Source-system tax code (uppercase) -> canonical
-                                 AgentAssist VatGroup code. Empty for SAP B1
-                                 clients, whose VatGroup codes are already
-                                 canonical and pass through unchanged.
+                                 AgentAssist VatGroup code, exactly as declared
+                                 in the client YAML. Empty by default. See
+                                 effective_tax_code_mappings for the mapping
+                                 that callers should actually use.
     """
     client_id: str
     client_name: str
@@ -128,8 +143,27 @@ class ClientConfig:
     show_ai_candidates: bool = False
     # Non-SAP-B1 source system support (logging/display only; see tax_code_mappings).
     source_system: str = "sap_b1"
-    # Source tax code (uppercase) -> canonical VatGroup; empty for SAP B1 clients.
+    # Source tax code (uppercase) -> canonical VatGroup, as declared in the YAML.
     tax_code_mappings: dict = field(default_factory=dict)
+
+    @property
+    def effective_tax_code_mappings(self) -> dict:
+        """tax_code_mappings merged with the built-in SAP B1 default (T2.21a).
+
+        For source_system == "sap_b1", codes not explicitly mapped in
+        tax_code_mappings fall back to the canonical Annex E rename
+        (SO -> SR, SI -> TX); explicit per-code entries in tax_code_mappings
+        override the default for that code. Non-SAP-B1 clients are unaffected
+        — the SAP B1 default is source-system-scoped and tax_code_mappings is
+        returned unchanged.
+
+        This is the mapping callers (e.g. normalize_vat_group()) should use —
+        tax_code_mappings itself continues to reflect only what the YAML
+        declares.
+        """
+        if self.source_system != "sap_b1":
+            return dict(self.tax_code_mappings)
+        return {**_SAP_B1_DEFAULT_TAX_CODE_MAPPINGS, **self.tax_code_mappings}
 
 
 class ConfigError(RuntimeError):

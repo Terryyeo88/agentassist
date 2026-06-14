@@ -213,6 +213,10 @@ def test_sap_b1_client_explicit_mapping_overrides_default_for_that_code(tmp_path
     assert cfg.effective_tax_code_mappings == {"SO": "ZR", "SI": "TX"}
 
 
+@pytest.mark.skip(
+    reason="T2.21b: requires the F5_BOX_MAPPING SR/TX vocabulary rename "
+           "(SR/TX keys do not exist yet)"
+)
 def test_default_mapping_round_trips_through_f5_box_mapping():
     # The point of the SO->SR / SI->TX rename is that once BOTH halves of (b')
     # land (this default mechanism + the F5_BOX_MAPPING vocabulary rename,
