@@ -373,6 +373,53 @@ def _require_field(d: dict, key: str, path: Path, parent: str = "") -> None:
         )
 
 
+def _parse_sap_login_error(resp) -> "tuple[str | None, str]":
+    """Extract (code, message) from a SAP B1 Service Layer error response, robustly.
+
+    The Service Layer nests the failure as ``error.code`` + ``error.message``; the
+    message is a plain string on some builds and ``{"value": ...}`` on others. Falls
+    back to the raw response text when the JSON shape is unexpected.
+    """
+    try:
+        err = resp.json().get("error", {}) or {}
+        code = str(err.get("code", "")).strip() or None
+        msg = err.get("message", "")
+        if isinstance(msg, dict):
+            msg = msg.get("value", "")
+        return code, (str(msg).strip() or resp.text[:300])
+    except Exception:
+        return None, resp.text[:300]
+
+
+def _login_error_hint(code: "str | None") -> str:
+    """Return a remediation hint tailored to the SAP B1 login error *code*.
+
+    The code disambiguates causes the generic "check everything" hint obscured:
+      * -304 ("Fail to NONE-SSO login from SLD") is an SLD/CompanyDB error, NOT a bad
+        password — a wrong password returns -301. On SAP B1 *for HANA* the CompanyDB is
+        the HANA SCHEMA name (the "Database Name" column in the client's Choose Company
+        dialog), not the company display name.
+      * -301 is invalid username/password (watch for an unquoted ``$`` in the .env
+        password, which python-dotenv expands).
+    """
+    if code == "-304":
+        return (
+            "SAP code -304 is an SLD/CompanyDB error, NOT a bad password (a wrong "
+            "password returns -301). Most likely sap_b1.company_db is wrong: on SAP B1 "
+            "for HANA it must be the HANA SCHEMA name (the 'Database Name' column in the "
+            "B1 client's Choose Company dialog), not the company display name. Also "
+            "verify the user is not locked and the company DB is attached to this "
+            "server's SLD."
+        )
+    if code == "-301":
+        return (
+            "SAP code -301 is an invalid username or password. Check username_env_var / "
+            "password_env_var in .env; single-quote any password containing '$' so "
+            "python-dotenv does not expand it (e.g. SAP_PASSWORD='Po...$...')."
+        )
+    return "Check: sap_b1.company_db, username_env_var, password_env_var."
+
+
 def _probe_sap_login(
     service_layer_url: str,
     company_db: str,
@@ -427,16 +474,12 @@ def _probe_sap_login(
         )
 
     if resp.status_code != 200:
-        # SAP B1 Service Layer error responses nest the message at
-        # error.message.value — try that path first, fall back to raw text.
-        try:
-            detail = resp.json()["error"]["message"]["value"]
-        except Exception:
-            detail = resp.text[:300]
+        code, detail = _parse_sap_login_error(resp)
         raise ConfigError(
-            f"SAP B1 login failed (HTTP {resp.status_code}) — endpoint: {login_url}\n"
+            f"SAP B1 login failed (HTTP {resp.status_code}, SAP code {code or '?'}) — "
+            f"endpoint: {login_url}\n"
             f"  SAP error: {detail}\n"
-            f"  Check: sap_b1.company_db, username_env_var, password_env_var."
+            f"  {_login_error_hint(code)}"
         )
 
     # Probe succeeded — log out immediately; this was validation, not a real session.
