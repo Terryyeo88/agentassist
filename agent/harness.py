@@ -35,6 +35,7 @@ def build_options(
     *,
     system_prompt: str = "",
     engine_server: "Optional[McpSdkServerConfig]" = None,
+    attach_hooks: bool = True,
 ) -> "ClaudeAgentOptions":
     """Assemble and return a ClaudeAgentOptions instance for one agent run.
 
@@ -51,6 +52,14 @@ def build_options(
                        (mcp__engine__run_review_chain) is appended to
                        allowed_tools.  When None (default) no engine tool is
                        wired — build_options behaviour is unchanged.
+        attach_hooks:  When True (default) the PreToolUse/PostToolUse ledger hooks
+                       are wired — unchanged behaviour for every existing caller.
+                       When False the returned options carry NO hooks
+                       (``hooks=None``); make_hooks is not called.  This is for
+                       the live case-file loop, whose plain-Python driver is the
+                       SOLE gate (it justification-gates and executes Tier-0 reads
+                       itself) — attaching the SDK hooks too would double-write the
+                       ledger and muddy the COGS / sealed-chain accounting.
 
     Returns:
         ClaudeAgentOptions with:
@@ -68,8 +77,6 @@ def build_options(
     """
     from claude_agent_sdk import ClaudeAgentOptions, HookMatcher  # noqa: PLC0415
 
-    pre_cb, post_cb, _audit_log = make_hooks(ledger)
-
     tool_names = [spec.name for spec in allowed_tools()]
 
     mcp_servers: dict[str, Any] = {}
@@ -83,13 +90,20 @@ def build_options(
         mcp_servers[ENGINE_SERVER_NAME] = engine_server
         tool_names.append(ENGINE_TOOL_QUALIFIED)
 
+    # Hooks are wired only when requested. The hook-free path (attach_hooks=False)
+    # leaves the ledger untouched here — the live loop's driver is the sole gate.
+    hooks_arg = None
+    if attach_hooks:
+        pre_cb, post_cb, _audit_log = make_hooks(ledger)
+        hooks_arg = {
+            "PreToolUse": [HookMatcher(hooks=[pre_cb])],
+            "PostToolUse": [HookMatcher(hooks=[post_cb])],
+        }
+
     return ClaudeAgentOptions(
         allowed_tools=tool_names,
         mcp_servers=mcp_servers,
-        hooks={
-            "PreToolUse": [HookMatcher(hooks=[pre_cb])],
-            "PostToolUse": [HookMatcher(hooks=[post_cb])],
-        },
+        hooks=hooks_arg,
         max_turns=budget.max_turns,
         system_prompt=system_prompt or None,
     )
