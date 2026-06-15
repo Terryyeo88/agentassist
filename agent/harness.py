@@ -35,6 +35,7 @@ def build_options(
     *,
     system_prompt: str = "",
     engine_server: "Optional[McpSdkServerConfig]" = None,
+    reads_server: "Optional[McpSdkServerConfig]" = None,
 ) -> "ClaudeAgentOptions":
     """Assemble and return a ClaudeAgentOptions instance for one agent run.
 
@@ -51,6 +52,15 @@ def build_options(
                        (mcp__engine__run_review_chain) is appended to
                        allowed_tools.  When None (default) no engine tool is
                        wired — build_options behaviour is unchanged.
+        reads_server:  Optional in-process MCP server (from
+                       agent.read_tools_server.make_read_tools_server) exposing the
+                       three Tier-0 reads so a live model can call them.  When
+                       provided, it is wired into mcp_servers and its qualified tool
+                       names (mcp__reads__get_source_document, …) are appended to
+                       allowed_tools; the registry's MCP-aware get_tier resolves each
+                       back to Tier 0 so the PreToolUse hook gates them as reads.
+                       When None (default) no reads server is wired — behaviour is
+                       unchanged.
 
     Returns:
         ClaudeAgentOptions with:
@@ -82,6 +92,17 @@ def build_options(
         )
         mcp_servers[ENGINE_SERVER_NAME] = engine_server
         tool_names.append(ENGINE_TOOL_QUALIFIED)
+
+    if reads_server is not None:
+        # Wire the three Tier-0 reads as MCP tools. Their MCP-namespaced names are
+        # added to allowed_tools; the registry's MCP-aware get_tier resolves each to
+        # Tier 0, so the PreToolUse hook gates them as reads (allow + ledger).
+        from agent.read_tools_server import (  # noqa: PLC0415
+            READS_SERVER_NAME,
+            READ_TOOLS_QUALIFIED,
+        )
+        mcp_servers[READS_SERVER_NAME] = reads_server
+        tool_names.extend(READ_TOOLS_QUALIFIED)
 
     return ClaudeAgentOptions(
         allowed_tools=tool_names,
