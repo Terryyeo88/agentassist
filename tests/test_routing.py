@@ -10,7 +10,7 @@ class TestRoute:
     # ── E1 ────────────────────────────────────────────────────────────────────
 
     def test_e1_routes_to_template_2(self):
-        assert route("E1", "SO")["number"] == 2
+        assert route("E1", "SR")["number"] == 2
 
     def test_e1_ds_routes_to_template_2(self):
         assert route("E1", "DS")["number"] == 2
@@ -29,6 +29,13 @@ class TestRoute:
     def test_e2_os_routes_to_template_3(self):
         assert route("E2", "OS")["number"] == 3
 
+    def test_e2_zp_routes_to_template_3(self):
+        # T2.21b / T2.20 Section 0 finding #2: ZP is zero-rated and belongs in
+        # _ZERO_RATED_VGS alongside ZR/OS. Expected to fail today: _ZERO_RATED_VGS
+        # is frozenset({"ZR", "OS"}), so "ZP" falls through to the Template 1
+        # default in _template_number.
+        assert route("E2", "ZP")["number"] == 3
+
     def test_e2_es33_defaults_to_template_5(self):
         assert route("E2", "ES33")["number"] == 5
 
@@ -43,20 +50,20 @@ class TestRoute:
 
     # ── E3 / E4 ──────────────────────────────────────────────────────────────
 
-    def test_e3_so_routes_to_template_2(self):
-        assert route("E3", "SO")["number"] == 2
+    def test_e3_sr_routes_to_template_2(self):
+        assert route("E3", "SR")["number"] == 2
 
     def test_e3_ds_routes_to_template_2(self):
         assert route("E3", "DS")["number"] == 2
 
-    def test_e3_si_routes_to_template_6(self):
-        assert route("E3", "SI")["number"] == 6
+    def test_e3_tx_routes_to_template_6(self):
+        assert route("E3", "TX")["number"] == 6
 
-    def test_e4_so_routes_to_template_2(self):
-        assert route("E4", "SO")["number"] == 2
+    def test_e4_sr_routes_to_template_2(self):
+        assert route("E4", "SR")["number"] == 2
 
-    def test_e4_si_routes_to_template_6(self):
-        assert route("E4", "SI")["number"] == 6
+    def test_e4_tx_routes_to_template_6(self):
+        assert route("E4", "TX")["number"] == 6
 
     # ── NO_GST_REG / COMPLETENESS / unknown ──────────────────────────────────
 
@@ -72,11 +79,11 @@ class TestRoute:
     # ── TemplateRef shape ────────────────────────────────────────────────────
 
     def test_template_ref_label_is_non_empty(self):
-        ref = route("E1", "SO")
+        ref = route("E1", "SR")
         assert ref["label"] != ""
 
     def test_template_ref_label_for_e1_mentions_standard_rated(self):
-        ref = route("E1", "SO")
+        ref = route("E1", "SR")
         assert "3A" in ref["label"] or "Standard-rated" in ref["label"]
 
     def test_none_vat_group_does_not_raise(self):
@@ -89,7 +96,7 @@ class TestAppendix1For:
     # ── E1 ────────────────────────────────────────────────────────────────────
 
     def test_e1_returns_wrong_classification_string(self):
-        result = appendix1_for("E1", "SO")
+        result = appendix1_for("E1", "SR")
         assert result == APPENDIX1_WORDING["E1"]
         assert "Wrong classification" in result
 
@@ -104,6 +111,12 @@ class TestAppendix1For:
 
     def test_e2_zr_and_os_return_identical_string(self):
         assert appendix1_for("E2", "ZR") == appendix1_for("E2", "OS")
+
+    def test_e2_zp_returns_e2_zr_wording(self):
+        # T2.21b / T2.20 Section 0 finding #2: ZP shares the zero-rated
+        # Appendix 1 wording with ZR/OS. Expected to fail today:
+        # _appendix1_key falls through to "UNKNOWN_VATGROUP" for ZP.
+        assert appendix1_for("E2", "ZP") == APPENDIX1_WORDING["E2_ZR"]
 
     # ── E2 — exempt ──────────────────────────────────────────────────────────
 

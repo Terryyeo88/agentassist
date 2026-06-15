@@ -849,77 +849,77 @@
         "doc_date": "2024-07-02",
         "card_name": "SG Electronics",
         "doc_currency": "USD",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 964,
         "doc_date": "2024-07-09",
         "card_name": "Aquent Systems",
         "doc_currency": "USD",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 965,
         "doc_date": "2024-07-09",
         "card_name": "Aquent Systems",
         "doc_currency": "USD",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 967,
         "doc_date": "2024-07-28",
         "card_name": "ADA Technologies",
         "doc_currency": "EUR",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 967,
         "doc_date": "2024-07-28",
         "card_name": "ADA Technologies",
         "doc_currency": "EUR",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 971,
         "doc_date": "2024-07-24",
         "card_name": "ADA Technologies",
         "doc_currency": "EUR",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "card_name": "SG Electronics",
         "doc_currency": "USD",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "card_name": "SG Electronics",
         "doc_currency": "USD",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "card_name": "SG Electronics",
         "doc_currency": "USD",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 977,
         "doc_date": "2024-07-29",
         "card_name": "Aquent Systems",
         "doc_currency": "USD",
-        "vat_group": "SO"
+        "vat_group": "SR"
       },
       {
         "doc_num": 982,
         "doc_date": "2024-08-03",
         "card_name": "ADA Technologies",
         "doc_currency": "EUR",
-        "vat_group": "SO"
+        "vat_group": "SR"
       }
     ],
     "record_counts": {
@@ -940,7 +940,7 @@
         "doc_date": "2024-08-01",
         "card_name": "River Inc",
         "type": "sales_credit_note",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total_applied": -1000.0,
         "tax_total_applied": -70.0
       },
@@ -949,7 +949,7 @@
         "doc_date": "2024-08-01",
         "card_name": "Acme Associates",
         "type": "purchase_credit_note",
-        "vat_group": "SI",
+        "vat_group": "TX",
         "line_total_applied": -500.0,
         "tax_total_applied": -35.0
       }
@@ -963,7 +963,7 @@
     },
     "expected_rate": 0.07,
     "vatgroup_inventory": {
-      "SO": {
+      "SR": {
         "gst_category": "Standard-rated output (sales)",
         "side": "sales",
         "lt_box": "box_1_standard_rated_sales",
@@ -995,7 +995,7 @@
         "doc_count": 2,
         "known_to_mapping": true
       },
-      "SI": {
+      "TX": {
         "gst_category": "Standard-rated input (purchases)",
         "side": "purchase",
         "lt_box": "box_5_taxable_purchases",
@@ -1042,121 +1042,121 @@
         "doc_date": "2024-07-02",
         "doc_currency": "USD",
         "card_name": "SG Electronics",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 1057.5,
         "tax_total": 74.03,
         "error_code": "E1",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 964,
         "doc_date": "2024-07-09",
         "doc_currency": "USD",
         "card_name": "Aquent Systems",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 5250.0,
         "tax_total": 367.5,
         "error_code": "E1",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 965,
         "doc_date": "2024-07-09",
         "doc_currency": "USD",
         "card_name": "Aquent Systems",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 367.5,
         "tax_total": 25.73,
         "error_code": "E1",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 967,
         "doc_date": "2024-07-28",
         "doc_currency": "EUR",
         "card_name": "ADA Technologies",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 3550.0,
         "tax_total": 248.5,
         "error_code": "E1",
-        "description": "FX invoice (EUR) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 967,
         "doc_date": "2024-07-28",
         "doc_currency": "EUR",
         "card_name": "ADA Technologies",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 300.0,
         "tax_total": 21.0,
         "error_code": "E1",
-        "description": "FX invoice (EUR) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 971,
         "doc_date": "2024-07-24",
         "doc_currency": "EUR",
         "card_name": "ADA Technologies",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 66.45,
         "tax_total": 4.65,
         "error_code": "E1",
-        "description": "FX invoice (EUR) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "doc_currency": "USD",
         "card_name": "SG Electronics",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 540.0,
         "tax_total": 37.8,
         "error_code": "E1",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "doc_currency": "USD",
         "card_name": "SG Electronics",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 236.25,
         "tax_total": 16.54,
         "error_code": "E1",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "doc_currency": "USD",
         "card_name": "SG Electronics",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 35310.0,
         "tax_total": 2471.7,
         "error_code": "E1",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 977,
         "doc_date": "2024-07-29",
         "doc_currency": "USD",
         "card_name": "Aquent Systems",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 775.4,
         "tax_total": 54.28,
         "error_code": "E1",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 982,
         "doc_date": "2024-08-03",
         "doc_currency": "EUR",
         "card_name": "ADA Technologies",
-        "vat_group": "SO",
+        "vat_group": "SR",
         "line_total": 24850.0,
         "tax_total": 1739.5,
         "error_code": "E1",
-        "description": "FX invoice (EUR) with SO code — should likely be ZR for overseas sales"
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales"
       },
       {
         "doc_num": 605,
@@ -1217,7 +1217,7 @@
         "doc_num": 958,
         "doc_date": "2024-07-02",
         "card_name": "SG Electronics",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1226,7 +1226,7 @@
         "doc_num": 964,
         "doc_date": "2024-07-09",
         "card_name": "Aquent Systems",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1235,7 +1235,7 @@
         "doc_num": 965,
         "doc_date": "2024-07-09",
         "card_name": "Aquent Systems",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1244,7 +1244,7 @@
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "card_name": "SG Electronics",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1253,7 +1253,7 @@
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "card_name": "SG Electronics",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1262,7 +1262,7 @@
         "doc_num": 974,
         "doc_date": "2024-07-11",
         "card_name": "SG Electronics",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1307,7 +1307,7 @@
         "doc_num": 971,
         "doc_date": "2024-07-24",
         "card_name": "ADA Technologies",
-        "description": "FX invoice (EUR) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1316,7 +1316,7 @@
         "doc_num": 967,
         "doc_date": "2024-07-28",
         "card_name": "ADA Technologies",
-        "description": "FX invoice (EUR) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1325,7 +1325,7 @@
         "doc_num": 967,
         "doc_date": "2024-07-28",
         "card_name": "ADA Technologies",
-        "description": "FX invoice (EUR) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1334,7 +1334,7 @@
         "doc_num": 977,
         "doc_date": "2024-07-29",
         "card_name": "Aquent Systems",
-        "description": "FX invoice (USD) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {
@@ -1343,7 +1343,7 @@
         "doc_num": 982,
         "doc_date": "2024-08-03",
         "card_name": "ADA Technologies",
-        "description": "FX invoice (EUR) with SO code — should likely be ZR for overseas sales",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
         "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale."
       },
       {

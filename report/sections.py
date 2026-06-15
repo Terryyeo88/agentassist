@@ -51,13 +51,13 @@ _SEV_ORDER: dict[str, int] = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 # Derived boxes (box_4, box_8) carry no direct VatGroup contribution.
 
 _BOX_VATGROUPS: dict[str, list[str]] = {
-    "box_1_standard_rated_sales": ["SO", "DS"],
+    "box_1_standard_rated_sales": ["SR", "DS"],
     "box_2_zero_rated_sales":     ["ZR"],
     "box_3_exempt_sales":         ["ES33", "ESN33"],
     "box_4_total_sales":          [],   # derived: box_1 + box_2 + box_3
-    "box_5_taxable_purchases":    ["SI", "ZP", "IM", "IGDS", "ME"],
-    "box_6_output_tax":           ["SO", "DS"],
-    "box_7_input_tax":            ["SI", "IM", "IGDS"],
+    "box_5_taxable_purchases":    ["TX", "ZP", "IM", "IGDS", "ME"],
+    "box_6_output_tax":           ["SR", "DS"],
+    "box_7_input_tax":            ["TX", "IM", "IGDS"],
     "box_8_net_gst":              [],   # derived: box_6 - box_7
 }
 
@@ -616,7 +616,7 @@ def build_judgment_section(
             group_id="export-evidence",
             display_title="Export Evidence",
             judgment_question=(
-                "For each FX sales invoice coded as standard-rated (SO/DS): confirm "
+                "For each FX sales invoice coded as standard-rated (SR/DS): confirm "
                 "the supply is a genuine overseas or export sale. If so, the correct "
                 "VatGroup is ZR (zero-rated supply) per IRAS s21(3). Reclassification "
                 "requires a correcting entry and evidence of export (bill of lading, "
