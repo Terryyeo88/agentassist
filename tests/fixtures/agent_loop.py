@@ -30,6 +30,7 @@ from agent.read_tools import (
     read_prior_period_treatment,
     read_vendor_gst_status,
 )
+from agent.read_tools_server import canonical_slot
 from agent.schemas import Tier
 
 # Prompt-injection payload embedded in the poisoned PDF. UNTRUSTED input — it tries to
@@ -165,11 +166,8 @@ class FakeTransport:
             value = read_prior_period_treatment(self.ctx.prior_period_store, key)
         else:
             value = None
-        slot = ti.get("evidence_slot")
-        if slot:
-            sink[slot] = value
-        else:
-            sink.setdefault(name, value)
+        # T5.3g: the slot is CODE-DEFINED (canonical_slot), not the scripted evidence_slot.
+        sink[canonical_slot(name)] = value
         self.ledger.append(
             tool_name=name, tier=Tier.ZERO, justification=None,
             call_params={k: v for k, v in ti.items() if k != "justification"},

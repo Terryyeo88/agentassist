@@ -37,6 +37,9 @@ def build_options(
     engine_server: "Optional[McpSdkServerConfig]" = None,
     reads_server: "Optional[McpSdkServerConfig]" = None,
     attach_hooks: bool = True,
+    tool_allowlist: "Optional[list[str]]" = None,
+    disallowed_tools: "Optional[list[str]]" = None,
+    model: "Optional[str]" = None,
 ) -> "ClaudeAgentOptions":
     """Assemble and return a ClaudeAgentOptions instance for one agent run.
 
@@ -70,6 +73,15 @@ def build_options(
                        SOLE gate (it justification-gates and executes Tier-0 reads
                        itself) — attaching the SDK hooks too would double-write the
                        ledger and muddy the COGS / sealed-chain accounting.
+        tool_allowlist: When given, REPLACES the registry-derived allowed_tools (the
+                       live loop passes only the mcp__reads__* names so the model is
+                       steered to exactly the reads it needs). Default None keeps the
+                       registry-derived list — existing callers unchanged.
+        disallowed_tools: Names to deny outright (e.g. ["ToolSearch"] — a leaked CLI
+                       built-in observed in the T5.3-V run). Not enumerable; the cage
+                       PreToolUse hook (Tier-3 deny) is the real backstop. Default [].
+        model:         Pins the model when given (the run's choice). Default None =
+                       CLI default — existing callers unchanged.
 
     Returns:
         ClaudeAgentOptions with:
@@ -120,10 +132,19 @@ def build_options(
             "PostToolUse": [HookMatcher(hooks=[post_cb])],
         }
 
+    # Tool-schema hardening (T5.3g). When a tool_allowlist is given it REPLACES the
+    # registry-derived allowed_tools — the live loop passes only the mcp__reads__* names
+    # so the model is steered to exactly the reads it needs. disallowed_tools denies
+    # named leaked CLI built-ins (e.g. "ToolSearch"); the cage hook is the real backstop.
+    # model pins the model when given (the run's choice; default None = CLI default).
+    final_allowed = list(tool_allowlist) if tool_allowlist is not None else tool_names
+
     return ClaudeAgentOptions(
-        allowed_tools=tool_names,
+        allowed_tools=final_allowed,
+        disallowed_tools=list(disallowed_tools) if disallowed_tools else [],
         mcp_servers=mcp_servers,
         hooks=hooks_arg,
         max_turns=budget.max_turns,
         system_prompt=system_prompt or None,
+        model=model,
     )
