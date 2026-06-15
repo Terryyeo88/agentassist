@@ -1,0 +1,627 @@
+[
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "823f9029-7dd4-4146-95e8-2d54bd01e314",
+    "tool_name": "run_review_chain",
+    "tier": 1,
+    "justification": "Gather the deterministic GST review findings (full atomic chain) so the agent layer can assemble per-finding case files for human review.",
+    "call_params": {},
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:23:15.853681+00:00",
+    "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "entry_hash": "sha256:5166d742f878e8af98f3bbaa83a08731decb575434e5fe24ddb4f48a458c9bcc"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "9f994612-c01d-4661-ad02-6e481443e3ee",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__get_source_document,mcp__reads__read_vendor_gst_status,mcp__reads__read_prior_period_treatment",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:23:22.327468+00:00",
+    "prev_hash": "sha256:5166d742f878e8af98f3bbaa83a08731decb575434e5fe24ddb4f48a458c9bcc",
+    "entry_hash": "sha256:f9ef18dcfe5a51d5fb652d8c1b0b789f60c2c9fe58db4c9f199ec822e93e1662"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "4ddfdf4a-8a5e-4c25-bc41-f75adcd0bee8",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "get_source_document vendor gst status prior period",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:23:36.778506+00:00",
+    "prev_hash": "sha256:f9ef18dcfe5a51d5fb652d8c1b0b789f60c2c9fe58db4c9f199ec822e93e1662",
+    "entry_hash": "sha256:25d22c43157b9ca5aa210b33d8eadd7f2c813991d170afec5296374996fc0037"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "4ddfdd01-d94a-4291-8154-86eb8eb45ebb",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 605,
+      "evidence_slot": "source_document"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:23:41.102495+00:00",
+    "prev_hash": "sha256:25d22c43157b9ca5aa210b33d8eadd7f2c813991d170afec5296374996fc0037",
+    "entry_hash": "sha256:c42d157150675b10f9533b5672f7270cc6e077dff0043f25e50df7f76c61bd91"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "6b6e4ef9-3c6b-4258-ad6f-53ab34177e49",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Mama Shop Supplies",
+      "evidence_slot": "vendor_gst_status"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:23:41.442617+00:00",
+    "prev_hash": "sha256:c42d157150675b10f9533b5672f7270cc6e077dff0043f25e50df7f76c61bd91",
+    "entry_hash": "sha256:50b1f02eedea6de340e37f2dbbdbfbad7af951d4345555f2da890e507a0724f3"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "c36b57c2-75ba-4405-91af-5069ea658ce5",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "605",
+      "evidence_slot": "source_document"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:23:49.436529+00:00",
+    "prev_hash": "sha256:50b1f02eedea6de340e37f2dbbdbfbad7af951d4345555f2da890e507a0724f3",
+    "entry_hash": "sha256:a833fd3d3d6801171cdf1061842dfe66fe904aea2cc96112f3e871b35cd9c69f"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "c46e3c4d-4a6d-449d-9e54-d52d75569985",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Mama Shop Supplies",
+      "evidence_slot": "prior_period_treatment"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:23:49.705549+00:00",
+    "prev_hash": "sha256:a833fd3d3d6801171cdf1061842dfe66fe904aea2cc96112f3e871b35cd9c69f",
+    "entry_hash": "sha256:5fec64569bf5bc4680786c0709460a128a8e9433d56d8e83cef97a9c4fff052a"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "97343761-30da-4453-8c6d-46b3f3875f1b",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 605,
+      "evidence_slot": "source_document"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:23:58.609932+00:00",
+    "prev_hash": "sha256:5fec64569bf5bc4680786c0709460a128a8e9433d56d8e83cef97a9c4fff052a",
+    "entry_hash": "sha256:838189c25ee6f3cd1ea7d77f7d9065936dbbcf9e691372e8151e2e21071a3bf0"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "1aae94ef-6ab9-4283-995f-de10c086c9c5",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "Mama Shop Supplies",
+      "evidence_slot": "prior_period_treatment"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:23:59.073174+00:00",
+    "prev_hash": "sha256:838189c25ee6f3cd1ea7d77f7d9065936dbbcf9e691372e8151e2e21071a3bf0",
+    "entry_hash": "sha256:a4ce65d4a314307a3da63c7a664c51b699daac35347c2f8b1ae921e7b16ac6d8"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "276dd983-205e-4ad4-943e-5622d38d8319",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "605",
+      "evidence_slot": "prior_period_treatment"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:24:06.357723+00:00",
+    "prev_hash": "sha256:a4ce65d4a314307a3da63c7a664c51b699daac35347c2f8b1ae921e7b16ac6d8",
+    "entry_hash": "sha256:1294abc17118b31c8e120da5ea6d69cdb322f5654133af0035c612e9ea09b887"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "84e81e5a-b55b-45ef-8bf9-aec4f6d02beb",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.341223,
+      "cost_usd_used": 0.341223,
+      "turns_used": 1
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:24:14.924876+00:00",
+    "prev_hash": "sha256:1294abc17118b31c8e120da5ea6d69cdb322f5654133af0035c612e9ea09b887",
+    "entry_hash": "sha256:3df74f6aaa1750861c2418c1cfe201f4a50ec757bd1d0d7d60a721d6b1dc97e4"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "1b1eaf75-5b28-415b-a815-440005cc5765",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__get_source_document,mcp__reads__read_vendor_gst_status,mcp__reads__read_prior_period_treatment",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:24:23.592021+00:00",
+    "prev_hash": "sha256:3df74f6aaa1750861c2418c1cfe201f4a50ec757bd1d0d7d60a721d6b1dc97e4",
+    "entry_hash": "sha256:965320461130761de6141aa263b5b9ce9ba020ae9773af8d84aca654ff85b68d"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "f49a10df-3f0d-4e23-bedc-ca995c15aee8",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "vendor gst status source document prior period treatment",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:24:29.328129+00:00",
+    "prev_hash": "sha256:965320461130761de6141aa263b5b9ce9ba020ae9773af8d84aca654ff85b68d",
+    "entry_hash": "sha256:f27ed62dc1e328158ab2829db1edb6c6ab5e7e491a7dd5bcc32331a728ec455d"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "70ff0357-f751-41df-87a7-074860f019e0",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__read_vendor_gst_status",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:24:35.924318+00:00",
+    "prev_hash": "sha256:f27ed62dc1e328158ab2829db1edb6c6ab5e7e491a7dd5bcc32331a728ec455d",
+    "entry_hash": "sha256:08545ee64c47a1637d6a01319db965b5c2353cfddd4c4795b37005004528c093"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "222b5efa-c7bf-48cb-9278-2e0ccda4986f",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Mama Shop Supplies",
+      "evidence_slot": "vendor_gst_status"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:24:41.500864+00:00",
+    "prev_hash": "sha256:08545ee64c47a1637d6a01319db965b5c2353cfddd4c4795b37005004528c093",
+    "entry_hash": "sha256:c8600003033c5471625708e82d0f4318784ff906653d0a1e118bee98afb9fb09"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "69a3c3f8-ae23-47ef-8fea-17a8ff512c63",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 605,
+      "evidence_slot": "source_document"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:24:49.033263+00:00",
+    "prev_hash": "sha256:c8600003033c5471625708e82d0f4318784ff906653d0a1e118bee98afb9fb09",
+    "entry_hash": "sha256:631db6a40a2d4e37cbb53a432fc6cbec2c666d942dad2cc63ce9a6440468f97c"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "c9f613fb-aa11-4646-905a-2b16985dabb8",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "Mama Shop Supplies",
+      "evidence_slot": "prior_period_treatment"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:24:49.323578+00:00",
+    "prev_hash": "sha256:631db6a40a2d4e37cbb53a432fc6cbec2c666d942dad2cc63ce9a6440468f97c",
+    "entry_hash": "sha256:b1bc78ae1ba422fdabd064fdbe381b189205d1273c9c3a4d286f923628683901"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "8a4cfbe0-7525-4c0c-b30d-ff0e3eeb5e30",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": "\"605\"",
+      "evidence_slot": "source_document"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:24:57.559508+00:00",
+    "prev_hash": "sha256:b1bc78ae1ba422fdabd064fdbe381b189205d1273c9c3a4d286f923628683901",
+    "entry_hash": "sha256:27407f48f93c35cabf03a5e9c51224045bb0d402ae933a0e042535981556d8e5"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "bd4d1d87-db00-4a85-8bc1-f17de0cee602",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "605",
+      "evidence_slot": "prior_period_treatment"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:24:57.779599+00:00",
+    "prev_hash": "sha256:27407f48f93c35cabf03a5e9c51224045bb0d402ae933a0e042535981556d8e5",
+    "entry_hash": "sha256:7973de45898a458e1eeeafc8cc41488414356ce511feeea592c0ab5639ef0eff"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "996cab2e-4581-4a1d-befc-b5be5d25ceeb",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.2061065,
+      "cost_usd_used": 0.5473295,
+      "turns_used": 2
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:25:11.489162+00:00",
+    "prev_hash": "sha256:7973de45898a458e1eeeafc8cc41488414356ce511feeea592c0ab5639ef0eff",
+    "entry_hash": "sha256:72b7d97172a2232b95bd25d461b6b7c62f00474385535b2a385abf59121379d7"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "99abe45e-8f27-457a-b9de-448a37010daa",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__get_source_document,mcp__reads__read_vendor_gst_status,mcp__reads__read_prior_period_treatment",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:25:18.483295+00:00",
+    "prev_hash": "sha256:72b7d97172a2232b95bd25d461b6b7c62f00474385535b2a385abf59121379d7",
+    "entry_hash": "sha256:224e7c820c7794e7e16f782c2888e586cf4d13c0ece9fccf9c84838a86ed6e6f"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "4cc78536-e6b6-4fcc-ac4d-3f0bc483508e",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__get_source_document,mcp__reads__read_vendor_gst_status",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:25:23.056296+00:00",
+    "prev_hash": "sha256:224e7c820c7794e7e16f782c2888e586cf4d13c0ece9fccf9c84838a86ed6e6f",
+    "entry_hash": "sha256:4a04c74e05ed467f21b84a53b6d5f0c885e537b8ed72899d0d7ba490ce74fa92"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "e1d81fd8-16e0-4459-909e-98e48c8713d7",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 605
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:25:29.487211+00:00",
+    "prev_hash": "sha256:4a04c74e05ed467f21b84a53b6d5f0c885e537b8ed72899d0d7ba490ce74fa92",
+    "entry_hash": "sha256:46e14a8a1be604d82899632926cd3d47dfc484c5103a6cdcc7e484d78eb0fde9"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "20c15f9f-7f64-4628-9df5-155cbe16379b",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Mama Shop Supplies"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:25:29.620343+00:00",
+    "prev_hash": "sha256:46e14a8a1be604d82899632926cd3d47dfc484c5103a6cdcc7e484d78eb0fde9",
+    "entry_hash": "sha256:ae669dfeb44fd2a8a5157ea349de8369cd6920cda4388c18474dd12d43286c66"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "6dbd27d4-a98f-4c25-b301-79ae0600bc51",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 605,
+      "evidence_slot": "detect:NO_GST_REG:605"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:25:37.696182+00:00",
+    "prev_hash": "sha256:ae669dfeb44fd2a8a5157ea349de8369cd6920cda4388c18474dd12d43286c66",
+    "entry_hash": "sha256:24c9938693ed205713b357931e94f0c60fe672669b6d6f47e8b3fa048d41bc25"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "22e5f8c5-2487-49a8-b592-6ab55c7a2ebc",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Mama Shop Supplies",
+      "evidence_slot": "detect:NO_GST_REG:605"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:25:37.973377+00:00",
+    "prev_hash": "sha256:24c9938693ed205713b357931e94f0c60fe672669b6d6f47e8b3fa048d41bc25",
+    "entry_hash": "sha256:1ba0a9634c7fa236d9d2333856d4c545094a5ef922fd06ba1e25696cd0015f82"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "d76bd4e6-596a-41a5-b703-d67f1e1e1bd3",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.16695,
+      "cost_usd_used": 0.7142795,
+      "turns_used": 3
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:25:57.712749+00:00",
+    "prev_hash": "sha256:1ba0a9634c7fa236d9d2333856d4c545094a5ef922fd06ba1e25696cd0015f82",
+    "entry_hash": "sha256:9381c44ec43931f4bd532957b76d3969b6c248ad14512a9f3ad0d8b28cd11e6e"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "ceed9cab-a9d9-4dd1-b981-3df4400bbbd9",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__get_source_document",
+      "max_results": 3
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:26:06.697025+00:00",
+    "prev_hash": "sha256:9381c44ec43931f4bd532957b76d3969b6c248ad14512a9f3ad0d8b28cd11e6e",
+    "entry_hash": "sha256:0b77c2c0be7d43227ebfc9dd05671659e567f0f0352eafda69fca16a9eadbc0a"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "3b576fea-b4ab-43a7-b59a-4bd184c2b802",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "get_source_document gst source",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:26:12.143550+00:00",
+    "prev_hash": "sha256:0b77c2c0be7d43227ebfc9dd05671659e567f0f0352eafda69fca16a9eadbc0a",
+    "entry_hash": "sha256:1d279e24efb49f3890451b8705e4dcd22961e87fa16f346019c53c80456f2ba5"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "ef53c83b-21df-47fb-9328-ea95232d27c1",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 3001,
+      "evidence_slot": "extracted_value"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:26:17.315277+00:00",
+    "prev_hash": "sha256:1d279e24efb49f3890451b8705e4dcd22961e87fa16f346019c53c80456f2ba5",
+    "entry_hash": "sha256:6fa77e122b2671e8d4328d44787256845043bd17e4925a13d633f295834365c6"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "ec7661dd-3651-47dc-b338-47eb84cb5f47",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.1386305,
+      "cost_usd_used": 0.85291,
+      "turns_used": 4
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:26:27.589606+00:00",
+    "prev_hash": "sha256:6fa77e122b2671e8d4328d44787256845043bd17e4925a13d633f295834365c6",
+    "entry_hash": "sha256:1bf5d65ad45a1e3f4847901bc6b9b3ad90dbded09649cb73bc1177ad73df049e"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "08990fc6-a0d4-448f-a801-1aab78db1831",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__get_source_document,mcp__reads__read_vendor_gst_status,mcp__reads__read_prior_period_treatment",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:26:34.991749+00:00",
+    "prev_hash": "sha256:1bf5d65ad45a1e3f4847901bc6b9b3ad90dbded09649cb73bc1177ad73df049e",
+    "entry_hash": "sha256:5e2ab2dbf4c65e52a03b0fe50e3c8ed17b68e5e401f9e85def4d53a76b24c07d"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "d44ed327-b96a-4423-82f0-430df36f5c6f",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__get_source_document",
+      "max_results": 3
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:26:40.137662+00:00",
+    "prev_hash": "sha256:5e2ab2dbf4c65e52a03b0fe50e3c8ed17b68e5e401f9e85def4d53a76b24c07d",
+    "entry_hash": "sha256:fb53ce62b5b8389d05531fa9627ec67997c612678fd9e235e6afe57f038dbe8d"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "57aecf04-eabd-4a04-b2b6-bec5db9da80e",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 3001,
+      "evidence_slot": "invoice_pdf_gst"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:26:48.676399+00:00",
+    "prev_hash": "sha256:fb53ce62b5b8389d05531fa9627ec67997c612678fd9e235e6afe57f038dbe8d",
+    "entry_hash": "sha256:a5e9933a6dedc1e8a33e2b8fd04cdfe1f37197e26af10b6c5d8f44b00f360e13"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "e97ffbc0-ad86-45d4-bb2e-3fc548a86093",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.130438,
+      "cost_usd_used": 0.9833479999999999,
+      "turns_used": 5
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:27:07.188612+00:00",
+    "prev_hash": "sha256:a5e9933a6dedc1e8a33e2b8fd04cdfe1f37197e26af10b6c5d8f44b00f360e13",
+    "entry_hash": "sha256:c219909993825648660e3de399aee30cac3bccfa376787699f83478d9d919a6a"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "c0bb9bdf-0818-4d30-b57e-cdaf36085507",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "select:mcp__reads__get_source_document,mcp__reads__read_vendor_gst_status,mcp__reads__read_prior_period_treatment",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:27:18.973994+00:00",
+    "prev_hash": "sha256:c219909993825648660e3de399aee30cac3bccfa376787699f83478d9d919a6a",
+    "entry_hash": "sha256:d4e650667fc3f143b849b26cae028bcac6a3ab73f74acbcc59b2ad043ee95a5c"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "c22b2676-a78f-4c7d-9a69-bbb161302bad",
+    "tool_name": "ToolSearch",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "query": "get_source_document vendor gst status prior period treatment",
+      "max_results": 5
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'ToolSearch' is not in the agent registry",
+    "timestamp": "2026-06-15T08:27:23.353961+00:00",
+    "prev_hash": "sha256:d4e650667fc3f143b849b26cae028bcac6a3ab73f74acbcc59b2ad043ee95a5c",
+    "entry_hash": "sha256:d1eeeb6617db23f219fb3dd0a515f319647a3a16418b6681d1625b7194fdcc08"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "1ff39b0d-b4a8-487d-b2f3-eea72ece253e",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 3001,
+      "evidence_slot": "gst_amount_mismatch"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:27:32.905803+00:00",
+    "prev_hash": "sha256:d1eeeb6617db23f219fb3dd0a515f319647a3a16418b6681d1625b7194fdcc08",
+    "entry_hash": "sha256:de150c1a56046ebb8b22945bf3f6139c385f6dc0f6cad7feb6eb5f7a7362c646"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "8be517c2-27e5-426f-9a9a-1bb4d92505df",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.101022,
+      "cost_usd_used": 1.0843699999999998,
+      "turns_used": 6
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T08:27:55.036212+00:00",
+    "prev_hash": "sha256:de150c1a56046ebb8b22945bf3f6139c385f6dc0f6cad7feb6eb5f7a7362c646",
+    "entry_hash": "sha256:9503d8823f9de9ff82bea3ccdcaeb67fb5f20e0e69c411848c5a270d8c810688"
+  }
+]
