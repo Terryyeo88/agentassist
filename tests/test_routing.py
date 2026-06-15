@@ -29,6 +29,13 @@ class TestRoute:
     def test_e2_os_routes_to_template_3(self):
         assert route("E2", "OS")["number"] == 3
 
+    def test_e2_zp_routes_to_template_3(self):
+        # T2.21b / T2.20 Section 0 finding #2: ZP is zero-rated and belongs in
+        # _ZERO_RATED_VGS alongside ZR/OS. Expected to fail today: _ZERO_RATED_VGS
+        # is frozenset({"ZR", "OS"}), so "ZP" falls through to the Template 1
+        # default in _template_number.
+        assert route("E2", "ZP")["number"] == 3
+
     def test_e2_es33_defaults_to_template_5(self):
         assert route("E2", "ES33")["number"] == 5
 
@@ -104,6 +111,12 @@ class TestAppendix1For:
 
     def test_e2_zr_and_os_return_identical_string(self):
         assert appendix1_for("E2", "ZR") == appendix1_for("E2", "OS")
+
+    def test_e2_zp_returns_e2_zr_wording(self):
+        # T2.21b / T2.20 Section 0 finding #2: ZP shares the zero-rated
+        # Appendix 1 wording with ZR/OS. Expected to fail today:
+        # _appendix1_key falls through to "UNKNOWN_VATGROUP" for ZP.
+        assert appendix1_for("E2", "ZP") == APPENDIX1_WORDING["E2_ZR"]
 
     # ── E2 — exempt ──────────────────────────────────────────────────────────
 
