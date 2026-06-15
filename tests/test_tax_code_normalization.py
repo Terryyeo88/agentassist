@@ -213,23 +213,21 @@ def test_sap_b1_client_explicit_mapping_overrides_default_for_that_code(tmp_path
     assert cfg.effective_tax_code_mappings == {"SO": "ZR", "SI": "TX"}
 
 
-@pytest.mark.skip(
-    reason="T2.21b: requires the F5_BOX_MAPPING SR/TX vocabulary rename "
-           "(SR/TX keys do not exist yet)"
-)
 def test_default_mapping_round_trips_through_f5_box_mapping():
     # The point of the SO->SR / SI->TX rename is that once BOTH halves of (b')
-    # land (this default mechanism + the F5_BOX_MAPPING vocabulary rename,
-    # a later T2.21 slice), normalize_vat_group() resolves raw SAP B1 codes to
-    # canonical SR/TX, and F5_BOX_MAPPING.get() on those canonical codes returns
-    # the SAME box routing the old SO/SI entries had.
+    # land (T2.21a's effective_tax_code_mappings default + the F5_BOX_MAPPING
+    # vocabulary rename, T2.21b), normalize_vat_group() resolves raw SAP B1
+    # codes to canonical SR/TX, and F5_BOX_MAPPING.get() on those canonical
+    # codes returns the SAME box routing the old SO/SI entries had.
     #
-    # This test hardcodes the target default mapping {"SO": "SR", "SI": "TX"}
-    # directly (independent of ClientConfig.effective_tax_code_mappings, which
-    # doesn't exist yet) to isolate the SECOND half of the gap: F5_BOX_MAPPING
-    # has no "SR"/"TX" keys yet. Expected to fail at the F5_BOX_MAPPING lookups
-    # below until the F5_BOX_MAPPING vocabulary rename lands.
-    default_mapping = {"SO": "SR", "SI": "TX"}
+    # Uses sbodemosg's effective_tax_code_mappings (T2.21a, aa99255) — the
+    # FIRST half of (b') already lands {"SO": "SR", "SI": "TX"}. This test
+    # isolates the SECOND half of the gap: F5_BOX_MAPPING has no "SR"/"TX"
+    # keys yet. Expected to fail at the F5_BOX_MAPPING lookups below until
+    # the F5_BOX_MAPPING vocabulary rename (T2.21b) lands.
+    cfg = load_client_config("sbodemosg", check_connectivity=False)
+    default_mapping = cfg.effective_tax_code_mappings
+    assert default_mapping == {"SO": "SR", "SI": "TX"}
 
     assert normalize_vat_group("SO", default_mapping) == "SR"
     assert normalize_vat_group("SI", default_mapping) == "TX"
@@ -249,7 +247,7 @@ def test_default_mapping_round_trips_through_f5_box_mapping():
 # ---------------------------------------------------------------------------
 # T2.21a — _STANDARD_VAT_GROUPS gap (scope-confirmation flag, see report)
 #
-# Characterization tests: confirm that _STANDARD_VAT_GROUPS (config/loader.py)
+# Characterization test: confirm that _STANDARD_VAT_GROUPS (config/loader.py)
 # does not yet contain "SR"/"TX". This documents a constraint on HOW the
 # built-in default must be implemented: if {"SO": "SR", "SI": "TX"} were merged
 # into raw_mappings BEFORE the Step 9 validation loop (which checks every
@@ -260,8 +258,8 @@ def test_default_mapping_round_trips_through_f5_box_mapping():
 # 9 (over the already-validated tax_code_mappings), as assumed by the tests
 # above — NOT by injecting it into raw_mappings ahead of validation.
 #
-# These two tests currently PASS (they document today's state); they are not
-# part of the "failing tests" deliverable above.
+# This test currently PASSES (it documents today's state); it is not part of
+# the "failing tests" deliverable below.
 # ---------------------------------------------------------------------------
 
 def test_standard_vat_groups_does_not_yet_include_sr_or_tx():
@@ -269,15 +267,82 @@ def test_standard_vat_groups_does_not_yet_include_sr_or_tx():
     assert "TX" not in _STANDARD_VAT_GROUPS
 
 
-def test_explicit_sr_target_currently_rejected_by_loader_validation(tmp_path):
-    # If a sap_b1 client's YAML explicitly declared a tax_code_mappings entry
-    # targeting "SR" today (e.g. a forward-looking override), Step 9 validation
-    # would reject it — the same _STANDARD_VAT_GROUPS gap as above, but via the
-    # YAML-declared path rather than the hardcoded default.
+# ---------------------------------------------------------------------------
+# T2.21b — _STANDARD_VAT_GROUPS core rename (SO->SR, SI->TX)
+#
+# SOP step 3 (failing test first). Per vocabulary-migration-inventory.md
+# Section 2d buckets 1+2 (the 16 in-scope codes: 13 unchanged carryovers + NG
+# + SO->SR/SI->TX), _STANDARD_VAT_GROUPS (config/loader.py:63-67) must drop
+# "SO"/"SI" and add "SR"/"TX" as part of the canonical-vocabulary rename.
+# Expected to fail today: "SR"/"TX" are absent and "SO"/"SI" are still present
+# (see test_standard_vat_groups_does_not_yet_include_sr_or_tx above).
+# ---------------------------------------------------------------------------
+
+def test_standard_vat_groups_includes_sr_and_tx_not_so_or_si():
+    assert "SR" in _STANDARD_VAT_GROUPS
+    assert "TX" in _STANDARD_VAT_GROUPS
+    assert "SO" not in _STANDARD_VAT_GROUPS
+    assert "SI" not in _STANDARD_VAT_GROUPS
+
+
+# ---------------------------------------------------------------------------
+# T2.21b — inversion of T2.19/T2.21a's "SR currently rejected" characterization
+#
+# NOTE: this REPLACES test_explicit_sr_target_currently_rejected_by_loader_validation
+# (251f63b). That test asserted Step 9 validation REJECTS a tax_code_mappings
+# entry targeting "SR" — correct only while "SR" is absent from
+# _STANDARD_VAT_GROUPS. Once T2.21b adds "SR"/"TX" to _STANDARD_VAT_GROUPS (the
+# test immediately above), the SAME {"SO": "SR"} mapping must be ACCEPTED, not
+# rejected — "SR" becomes a canonical AgentAssist VatGroup code, and a client
+# may legitimately declare an explicit override targeting it (e.g. to
+# override the SO->SR default for one specific source code).
+#
+# Expected to fail today (ValueError propagates — _STANDARD_VAT_GROUPS does not
+# yet contain "SR", so Step 9 still raises "'SR' is not a canonical AgentAssist
+# VatGroup code").
+# ---------------------------------------------------------------------------
+
+def test_explicit_sr_target_accepted_by_loader_validation(tmp_path):
     _write_config(tmp_path, tax_code_mappings={"SO": "SR"})
-    with pytest.raises(ValueError) as exc_info:
-        load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
-    assert "SR" in str(exc_info.value)
+    cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
+    assert cfg.tax_code_mappings == {"SO": "SR"}
+
+
+# ---------------------------------------------------------------------------
+# T2.21b — _vg_category() core-vocabulary rename + label-drift fixes
+#
+# SOP step 3 (failing tests first). Per vocabulary-migration-inventory.md
+# Section 0 finding #3 and Section 2c items 6/8:
+#   - _vg_category("SR")/("TX") must carry over SO's/SI's current labels under
+#     the new canonical keys. _vg_category() falls back to
+#     "Unknown VatGroup '<vg>'" for any key not in its internal dict, so these
+#     fail today (missing key, not KeyError, because of the .get() fallback).
+#   - _vg_category("ME")'s label ("Minor/miscellaneous exempt (purchases)") is
+#     wrong — Annex E's ME is "Import of goods under the Major Exporter Scheme
+#     ('MES'), A3PL scheme or other approved schemes".
+#   - _vg_category("TX-RE")'s label ("Tourist refund - retail (purchases)") is
+#     wrong — Annex E's TX-RE is "Residual input tax - purchases ... either (a)
+#     attributable to the making of both taxable and exempt supplies; or (b)
+#     incurred for the overall running of the business", matching base.md /
+#     run_baseline_tests.KNOWN_VATGROUPS's "Residual input tax" reading, not
+#     _vg_category's current "Tourist refund" reading.
+# ---------------------------------------------------------------------------
+
+def test_vg_category_sr_and_tx_carry_over_so_and_si_labels():
+    assert sap_b1_server._vg_category("SR") == "Standard-rated output (sales)"
+    assert sap_b1_server._vg_category("TX") == "Standard-rated input (purchases)"
+
+
+def test_vg_category_me_label_reflects_major_exporter_scheme():
+    label = sap_b1_server._vg_category("ME")
+    assert "Major Exporter" in label or "MES" in label
+    assert "Minor" not in label
+
+
+def test_vg_category_tx_re_label_reflects_residual_input_tax():
+    label = sap_b1_server._vg_category("TX-RE")
+    assert "Residual input tax" in label
+    assert "Tourist refund" not in label
 
 
 # ---------------------------------------------------------------------------
@@ -407,17 +472,20 @@ def test_xero_fixture_codes_normalize_to_canonical():
     mappings = fixture["config"]["tax_code_mappings"]
 
     assert fixture["config"]["source_system"] == "xero"
-    assert mappings == {"OUTPUT": "SO", "INPUT": "SI"}
+    # T2.21b: the canonical targets are "SR"/"TX" (SO->SR/SI->TX rename), not
+    # "SO"/"SI". Expected to fail today: the fixture's config block still has
+    # tax_code_mappings == {"OUTPUT": "SO", "INPUT": "SI"}.
+    assert mappings == {"OUTPUT": "SR", "INPUT": "TX"}
 
     # Raw Xero codes are not recognised by F5_BOX_MAPPING on their own ...
     assert sap_b1_server.F5_BOX_MAPPING.get("OUTPUT") is None
     assert sap_b1_server.F5_BOX_MAPPING.get("INPUT") is None
 
     # ... but normalize_vat_group() resolves them to canonical codes that are.
-    assert normalize_vat_group("OUTPUT", mappings) == "SO"
-    assert normalize_vat_group("INPUT", mappings) == "SI"
-    assert sap_b1_server.F5_BOX_MAPPING["SO"]["lt_box"] == "box_1_standard_rated_sales"
-    assert sap_b1_server.F5_BOX_MAPPING["SI"]["lt_box"] == "box_5_taxable_purchases"
+    assert normalize_vat_group("OUTPUT", mappings) == "SR"
+    assert normalize_vat_group("INPUT", mappings) == "TX"
+    assert sap_b1_server.F5_BOX_MAPPING["SR"]["lt_box"] == "box_1_standard_rated_sales"
+    assert sap_b1_server.F5_BOX_MAPPING["TX"]["lt_box"] == "box_5_taxable_purchases"
 
 
 def test_xero_fixture_vatgroup_inventory_uses_xero_codes():
@@ -426,8 +494,8 @@ def test_xero_fixture_vatgroup_inventory_uses_xero_codes():
 
     assert "OUTPUT" in inventory
     assert "INPUT" in inventory
-    assert "SO" not in inventory
-    assert "SI" not in inventory
+    assert "SR" not in inventory
+    assert "TX" not in inventory
     assert inventory["OUTPUT"]["lt_box"] == "box_1_standard_rated_sales"
     assert inventory["INPUT"]["lt_box"] == "box_5_taxable_purchases"
 
