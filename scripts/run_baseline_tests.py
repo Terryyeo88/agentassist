@@ -65,21 +65,44 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 REPORT_FILE = PROJECT_ROOT / "exploration-notes" / "baseline-test-report-v0.json"
 RESULTS_FILE = PROJECT_ROOT / "exploration-notes" / "baseline-test-results.md"
 
+# T2.21b: mirrors sap_b1_server.normalize_vat_group() + ClientConfig's
+# effective_tax_code_mappings (config/loader.py). SBODEMOSG's raw SAP B1
+# VatGroup codes ("SO"/"SI") are normalized to AgentAssist's canonical
+# vocabulary ("SR"/"TX") before matching the box-membership sets below — the
+# same normalization production now applies (T2.21b step G live wiring). The
+# box sets and KNOWN_VATGROUPS below mirror F5_BOX_MAPPING / _vg_category /
+# _STANDARD_RATE_SALES (1.1/1.3/1.6) and are therefore expressed in canonical
+# vocabulary, not raw source-system codes.
+_TAX_CODE_MAPPINGS = _cfg.effective_tax_code_mappings
+
+
+def normalize_vat_group(raw_code: str) -> str:
+    """Translate a raw source-system tax code to its canonical VatGroup.
+
+    Mirrors sap_b1_server.normalize_vat_group() without importing it, to
+    preserve this script's independent-implementation design (see run_test_3
+    docstring).
+    """
+    if not _TAX_CODE_MAPPINGS:
+        return raw_code
+    return _TAX_CODE_MAPPINGS.get(raw_code.strip().upper(), raw_code)
+
+
 # F5 box mappings from sg-tax-code-mappings.md
-SALES_BOX1 = {"SO", "DS"}
+SALES_BOX1 = {"SR", "DS"}
 SALES_BOX2 = {"ZR"}
 SALES_BOX3 = {"ES33", "ESN33"}
 SALES_EXCLUDED = {"OS"}
 
-PURCHASE_BOX5 = {"SI", "ZP", "IM", "IGDS", "ME"}
+PURCHASE_BOX5 = {"TX", "ZP", "IM", "IGDS", "ME"}
 # NR excluded per IRAS para 5.11(o): purchases from non-GST registered traders
-PURCHASE_BOX7 = {"SI", "IM", "IGDS"}
+PURCHASE_BOX7 = {"TX", "IM", "IGDS"}
 PURCHASE_EXCLUDED = {"BL", "EP", "OP", "TX-E33", "TX-N33", "TX-RE"}
 
 # Codes where non-zero VatSum would be an error (E2 check)
 ZERO_RATE_SALES = {"ZR", "OS", "ES33", "ESN33"}  # legacy — kept for reference only
 # Codes where VatSum=0 would be an error (E3 check)
-STANDARD_RATE_CODES = {"SO", "SI"}
+STANDARD_RATE_CODES = {"SR", "TX"}
 
 # Matches _E2_ZERO_RATE_CODES in sap_b1_server.py (NR added in T1.1 Part B).
 # NR with TaxTotal > 0 is a genuine E2: non-taxable purchase carrying GST.
@@ -104,13 +127,14 @@ _RECOMMENDATION = {
 }
 
 KNOWN_VATGROUPS = {
-    "SO": ("Box 1 + Box 6", "Standard-rated output"),
+    "SR": ("Box 1 + Box 6", "Standard-rated output"),
     "DS": ("Box 1 + Box 6", "Deemed supply"),
     "ZR": ("Box 2", "Zero-rated supply"),
     "ES33": ("Box 3", "Exempt supply (Reg 33)"),
     "ESN33": ("Box 3", "Exempt supply (non-Reg 33)"),
     "OS": ("Excluded", "Out of scope"),
-    "SI": ("Box 5 + Box 7", "Standard-rated input"),
+    "NG": ("Excluded", "Supply by non-GST-registered business"),
+    "TX": ("Box 5 + Box 7", "Standard-rated input"),
     "ZP": ("Box 5 only", "Zero-rated purchase"),
     "EP": ("Excluded", "Exempt purchase"),
     "OP": ("Excluded", "Out-of-scope purchase"),
@@ -193,7 +217,7 @@ def extract_lines(docs: list[dict], entity_type: str) -> list[dict]:
                 "DocCurrency": doc.get("DocCurrency", "SGD"),
                 "entity_type": entity_type,
                 "LineNum": line.get("LineNum"),
-                "VatGroup": (line.get("VatGroup") or "").strip(),
+                "VatGroup": normalize_vat_group((line.get("VatGroup") or "").strip()),
                 "LineTotal": safe_float(line.get("LineTotal")),
                 "VatSum": safe_float(line.get("TaxTotal")),  # SAP B1 stores line-level tax in TaxTotal
                 "ItemDescription": line.get("ItemDescription", ""),
@@ -358,12 +382,12 @@ def run_test_2(
 
     vatgroups_found = sorted(seen.values(), key=lambda x: x["code"])
 
-    # Detect FX + SO mismatches (overseas sale coded SO instead of ZR)
+    # Detect FX + SR mismatches (overseas sale coded SR instead of ZR)
     mismatches = []
     for doc in list(invoices) + list(credit_notes):
         if not is_sgd(doc):
             for line in doc.get("DocumentLines", []):
-                vg = (line.get("VatGroup") or "").strip()
+                vg = normalize_vat_group((line.get("VatGroup") or "").strip())
                 if vg in SALES_BOX1:
                     mismatches.append({
                         "DocNum": doc.get("DocNum"),
@@ -385,11 +409,11 @@ def run_test_2(
     notes = (
         f"Found {len(vatgroups_found)} unique VatGroup codes: "
         f"{known_count} known, {unknown_count} unknown/unmapped. "
-        f"{len(mismatches)} FX+SO mismatch(es) detected."
+        f"{len(mismatches)} FX+SR mismatch(es) detected."
     )
 
     print(f"    Unique VatGroups: {[v['code'] for v in vatgroups_found]}")
-    print(f"    FX+SO mismatches: {len(mismatches)}")
+    print(f"    FX+SR mismatches: {len(mismatches)}")
     print(f"    Score: {score}/10")
 
     return {
@@ -416,8 +440,8 @@ def run_test_3(
 
     Known divergences from the MCP tool (documented, not fixed per design principle):
     - E4 threshold: script uses 0.005, MCP tool uses 0.001
-    - E4 purchase scope: script checks SI+IM+IGDS, MCP tool checks SI only
-    - E4 sales scope: script checks SO+DS (SALES_BOX1), MCP tool checks SO only
+    - E4 purchase scope: script checks TX+IM+IGDS, MCP tool checks TX only
+    - E4 sales scope: script checks SR+DS (SALES_BOX1), MCP tool checks SR only
 
     T1.1 additions:
     - Credit note lines checked for E1–E4 (descriptions prefixed "Credit note —")
@@ -427,7 +451,7 @@ def run_test_3(
       demo norm; SAP applied statutory rate at seed time). Retained as a known
       E2 fixture: NR with TaxTotal > 0.01 is a genuine compliance error
       regardless of rate. E2 detection on this line is expected and correct.
-      The 9% rate means this line would also trigger E4 if E4 checks SO/SI
+      The 9% rate means this line would also trigger E4 if E4 checks SR/TX
       only — confirm _E4_STANDARD_RATE_CODES does not include NR to ensure
       no double-flagging.
     """
@@ -445,7 +469,7 @@ def run_test_3(
         is_fx = not is_sgd(doc)
 
         for line in doc.get("DocumentLines", []):
-            vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group((line.get("VatGroup") or "").strip())
             line_num = line.get("LineNum")
             line_total = safe_float(line.get("LineTotal"))
             tax_total = safe_float(line.get("TaxTotal"))
@@ -472,7 +496,7 @@ def run_test_3(
                     "recommendation": _RECOMMENDATION["E2"],
                 })
 
-            if vg in {"SO", "DS"} and line_total > 0.01 and tax_total < 0.01:
+            if vg in {"SR", "DS"} and line_total > 0.01 and tax_total < 0.01:
                 findings.append({**base,
                     "check_type": "E3", "severity": _SEVERITY["E3"],
                     "description": f"VatGroup={vg} (standard-rated) but tax=0 on SGD {line_total:.2f} line",
@@ -497,7 +521,7 @@ def run_test_3(
         card_name = doc.get("CardName", "")
 
         for line in doc.get("DocumentLines", []):
-            vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group((line.get("VatGroup") or "").strip())
             line_num = line.get("LineNum")
             line_total = safe_float(line.get("LineTotal"))
             tax_total = safe_float(line.get("TaxTotal"))
@@ -516,14 +540,14 @@ def run_test_3(
                     "recommendation": _RECOMMENDATION["E2"],
                 })
 
-            if vg == "SI" and line_total > 0.01 and tax_total < 0.01:
+            if vg == "TX" and line_total > 0.01 and tax_total < 0.01:
                 findings.append({**base,
                     "check_type": "E3", "severity": _SEVERITY["E3"],
-                    "description": f"VatGroup=SI (standard-rated input) but tax=0 on SGD {line_total:.2f} line",
+                    "description": f"VatGroup=TX (standard-rated input) but tax=0 on SGD {line_total:.2f} line",
                     "recommendation": _RECOMMENDATION["E3"],
                 })
 
-            if vg in {"SI", "IM", "IGDS"} and line_total > 0.01 and tax_total > 0.01:
+            if vg in {"TX", "IM", "IGDS"} and line_total > 0.01 and tax_total > 0.01:
                 ratio = tax_total / line_total
                 if abs(ratio - DEMO_GST_RATE) > 0.005:
                     findings.append({**base,
@@ -543,7 +567,7 @@ def run_test_3(
         is_fx = not is_sgd(doc)
 
         for line in doc.get("DocumentLines", []):
-            vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group((line.get("VatGroup") or "").strip())
             line_num = line.get("LineNum")
             line_total = safe_float(line.get("LineTotal"))
             tax_total = safe_float(line.get("TaxTotal"))
@@ -570,7 +594,7 @@ def run_test_3(
                     "recommendation": _RECOMMENDATION["E2"],
                 })
 
-            if vg in {"SO", "DS"} and line_total > 0.01 and tax_total < 0.01:
+            if vg in {"SR", "DS"} and line_total > 0.01 and tax_total < 0.01:
                 findings.append({**base,
                     "check_type": "E3", "severity": _SEVERITY["E3"],
                     "description": f"Credit note — VatGroup={vg} but tax=0 on SGD {line_total:.2f} line",
@@ -595,7 +619,7 @@ def run_test_3(
         card_name = doc.get("CardName", "")
 
         for line in doc.get("DocumentLines", []):
-            vg = (line.get("VatGroup") or "").strip()
+            vg = normalize_vat_group((line.get("VatGroup") or "").strip())
             line_num = line.get("LineNum")
             line_total = safe_float(line.get("LineTotal"))
             tax_total = safe_float(line.get("TaxTotal"))
@@ -614,14 +638,14 @@ def run_test_3(
                     "recommendation": _RECOMMENDATION["E2"],
                 })
 
-            if vg == "SI" and line_total > 0.01 and tax_total < 0.01:
+            if vg == "TX" and line_total > 0.01 and tax_total < 0.01:
                 findings.append({**base,
                     "check_type": "E3", "severity": _SEVERITY["E3"],
-                    "description": f"Credit note — VatGroup=SI but tax=0 on SGD {line_total:.2f} line",
+                    "description": f"Credit note — VatGroup=TX but tax=0 on SGD {line_total:.2f} line",
                     "recommendation": _RECOMMENDATION["E3"],
                 })
 
-            if vg in {"SI", "IM", "IGDS"} and line_total > 0.01 and tax_total > 0.01:
+            if vg in {"TX", "IM", "IGDS"} and line_total > 0.01 and tax_total > 0.01:
                 ratio = tax_total / line_total
                 if abs(ratio - DEMO_GST_RATE) > 0.005:
                     findings.append({**base,
@@ -738,7 +762,7 @@ def run_test_3(
     # Retained as a known E2 fixture: NR with TaxTotal > 0.01 is a genuine
     # compliance error regardless of rate. E2 detection on this line is expected
     # and correct. The 9% rate means this line would also trigger E4 if E4 checks
-    # SO/SI only — confirm _E4_STANDARD_RATE_CODES does not include NR to ensure
+    # SR/TX only — confirm _E4_STANDARD_RATE_CODES does not include NR to ensure
     # no double-flagging.
     nr_e2 = [f for f in findings if f.get("check_type") == "E2" and f.get("vat_group") == "NR"]
     if nr_e2:
@@ -857,7 +881,7 @@ FX documents flagged (excluded from boxes): {len(t1["fx_invoices_flagged"])}
 
 {chr(10).join(f"- `{v['code']}`: {v['description']} → {v['f5_box']}" for v in t2["vatgroups_found"])}
 
-FX+SO mismatches detected: {len(t2["mismatches_found"])}
+FX+SR mismatches detected: {len(t2["mismatches_found"])}
 
 ### Test 3: Findings
 

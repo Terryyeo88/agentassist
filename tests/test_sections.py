@@ -260,13 +260,17 @@ class TestF5BoxSection:
     def test_box_8_value(self, report):
         assert report.f5_boxes.boxes["box_8_net_gst"] == pytest.approx(17045.87)
 
-    def test_box_5_attribution_has_si_im_zp(self, report):
+    def test_box_5_attribution_has_tx_im_zp(self, report):
+        # T2.21b: SI->TX rename. Expected to fail today: chain-run-sample.json's
+        # classify.vatgroup_inventory still has "SI" (not "TX"), so the
+        # _BOX_VATGROUPS["box_5_taxable_purchases"] intersection yields
+        # {"SI", "ZP", "IM"} and "TX" is not present.
         box5 = next(
             a for a in report.f5_boxes.attribution
             if a.box_name == "box_5_taxable_purchases"
         )
         vgs = set(box5.vat_groups)
-        assert "SI" in vgs
+        assert "TX" in vgs
         assert "IM" in vgs
         assert "ZP" in vgs
 

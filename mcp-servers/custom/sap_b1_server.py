@@ -346,13 +346,19 @@ def _is_sgd(doc: dict) -> bool:
 # VatGroup → F5 box routing. lt_box = line total destination, tt_box = tax total destination.
 # None means the amount for this code is excluded from that box entirely (not zero — absent).
 F5_BOX_MAPPING = {
-    "SO":     {"lt_box": "box_1_standard_rated_sales", "tt_box": "box_6_output_tax",  "side": "sales"},
+    "SR":     {"lt_box": "box_1_standard_rated_sales", "tt_box": "box_6_output_tax",  "side": "sales"},
     "DS":     {"lt_box": "box_1_standard_rated_sales", "tt_box": "box_6_output_tax",  "side": "sales"},
     "ZR":     {"lt_box": "box_2_zero_rated_sales",     "tt_box": None,                "side": "sales"},
     "ES33":   {"lt_box": "box_3_exempt_sales",         "tt_box": None,                "side": "sales"},
     "ESN33":  {"lt_box": "box_3_exempt_sales",         "tt_box": None,                "side": "sales"},
     "OS":     {"lt_box": None,                         "tt_box": None,                "side": "sales"},
-    "SI":     {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
+    # NG ("Supplies made by non-GST registered business", Annex E): recognized
+    # but not expected to occur in AgentAssist's (GST-registered) clients' own
+    # sales data. Excluded from all boxes, same treatment as OS, so that an
+    # NG line (if it ever appears) is not misrouted to the "unknown VatGroup"
+    # anomalies bucket.
+    "NG":     {"lt_box": None,                         "tt_box": None,                "side": "sales"},
+    "TX":     {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
     "ZP":     {"lt_box": "box_5_taxable_purchases",    "tt_box": None,                "side": "purchase"},
     "IM":     {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
     "IGDS":   {"lt_box": "box_5_taxable_purchases",    "tt_box": "box_7_input_tax",   "side": "purchase"},
@@ -374,8 +380,8 @@ F5_BOX_MAPPING = {
 # IRAS ASK Annual Review Guide §10.1(d)(iv) — tax coded as zero-rated but reflects GST.
 # DocNum 610 (LineTotal=1200, TaxTotal=84 at 7%) is the known live fixture for this case.
 _E2_ZERO_RATE_CODES = {"ZR", "OS", "ES33", "ESN33", "BL", "NR", "ZP"}
-# Only SO and DS are standard-rated on the sales side; DS is a domestic service variant.
-_STANDARD_RATE_SALES = {"SO", "DS"}
+# Only SR and DS are standard-rated on the sales side; DS is a domestic service variant.
+_STANDARD_RATE_SALES = {"SR", "DS"}
 
 
 # ── Module-level initialisation ───────────────────────────────────────────────
@@ -415,7 +421,7 @@ try:
     # this loop can only add new codes — never overwrite existing ones.
     for _code, _mapping in _client_config.custom_vat_groups.items():
         F5_BOX_MAPPING[_code] = _mapping
-    _tax_code_mappings = dict(_client_config.tax_code_mappings)
+    _tax_code_mappings = dict(_client_config.effective_tax_code_mappings)
     sap = SAPB1Client(_client_config)
 except RuntimeError as _init_err:
     logger.warning(
@@ -452,9 +458,10 @@ def configure_client(
             to merge into F5_BOX_MAPPING (additive; existing codes are not
             overwritten).
         tax_code_mappings: Optional dict of source-system tax code (uppercase)
-            -> canonical VatGroup code, from ClientConfig.tax_code_mappings.
-            Empty/None for SAP B1 clients — VatGroup codes pass through
-            unchanged. See normalize_vat_group().
+            -> canonical VatGroup code. Callers should pass
+            ClientConfig.effective_tax_code_mappings (T2.21b), which includes
+            the SAP B1 default SO -> SR / SI -> TX rename for source_system ==
+            "sap_b1" clients. See normalize_vat_group().
     """
     global sap, _tax_code_mappings
 
@@ -611,12 +618,12 @@ def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_r
     if entity_type == "sales" and vg in _STANDARD_RATE_SALES and line_total > 0.01 and tax_total < 0.01:
         issues.append({**base, "error_code": "E3",
             "description": f"{prefix}Standard-rated line (VatGroup={vg}) with zero tax on {line_total:.2f}"})
-    if entity_type == "purchase" and vg == "SI" and line_total > 0.01 and tax_total < 0.01:
+    if entity_type == "purchase" and vg == "TX" and line_total > 0.01 and tax_total < 0.01:
         issues.append({**base, "error_code": "E3",
-            "description": f"{prefix}Standard-rated purchase (VatGroup=SI) with zero tax on {line_total:.2f}"})
+            "description": f"{prefix}Standard-rated purchase (VatGroup=TX) with zero tax on {line_total:.2f}"})
 
-    # E4: GST rate deviates from expected (SO and SI only per spec)
-    if vg in {"SO", "SI"} and line_total > 0.01 and tax_total > 0.01:
+    # E4: GST rate deviates from expected (SR and TX only per spec)
+    if vg in {"SR", "TX"} and line_total > 0.01 and tax_total > 0.01:
         ratio = tax_total / line_total
         # 0.001 tolerance absorbs floating-point rounding, not a business threshold
         if abs(ratio - expected_rate) > 0.001:
@@ -998,31 +1005,32 @@ def _vg_category(vg: str) -> str:
     """Return a human-readable GST category label for a VatGroup code.
 
     Args:
-        vg: A VatGroup code string, e.g. 'SO', 'ZR', 'SI'.
+        vg: A VatGroup code string, e.g. 'SR', 'ZR', 'TX'.
 
     Returns:
         str: A descriptive label for the code, or a fallback string indicating
             the code is not in the known mapping.
     """
     _categories = {
-        "SO":     "Standard-rated output (sales)",
+        "SR":     "Standard-rated output (sales)",
         "DS":     "Standard-rated output (sales)",
         "ZR":     "Zero-rated supply (sales)",
         "ES33":   "Exempt supply — Reg 33 (sales)",
         "ESN33":  "Exempt supply — non-Reg 33 (sales)",
         "OS":     "Out-of-scope supply (sales)",
-        "SI":     "Standard-rated input (purchases)",
+        "NG":     "Supply by non-GST-registered business (sales)",
+        "TX":     "Standard-rated input (purchases)",
         "ZP":     "Zero-rated purchase (purchases)",
         "IM":     "Import GST (purchases)",
         "IGDS":   "Import GST — IGDS scheme (purchases)",
-        "ME":     "Minor/miscellaneous exempt (purchases)",
+        "ME":     "Major Exporter Scheme import (purchases)",
         "NR":     "Non-recoverable input (purchases)",
         "BL":     "Blocked input — Reg 26/27 (purchases)",
         "EP":     "Exempt purchase (purchases)",
         "OP":     "Out-of-scope purchase (purchases)",
         "TX-E33": "Tourist refund — Reg 33 (purchases)",
         "TX-N33": "Tourist refund — non-Reg 33 (purchases)",
-        "TX-RE":  "Tourist refund — retail (purchases)",
+        "TX-RE":  "Residual input tax (purchases)",
     }
     return _categories.get(vg, f"Unknown VatGroup '{vg}'")
 

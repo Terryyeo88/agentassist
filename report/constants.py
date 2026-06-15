@@ -52,7 +52,7 @@ from __future__ import annotations
 # the wording lookup is a secondary step after template placement.
 
 APPENDIX1_WORDING: dict[str, str] = {
-    # E1 — FX sale coded as local standard-rated (SO / DS)
+    # E1 — FX sale coded as local standard-rated (SR / DS)
     # Template 2, Step 3A
     "E1": (
         "Wrong classification of supplies made"
@@ -88,25 +88,25 @@ APPENDIX1_WORDING: dict[str, str] = {
         "and/or non-taxable purchases which do not attract GST"
     ),
 
-    # E3 — standard-rated sales line (SO / DS) with zero output tax
+    # E3 — standard-rated sales line (SR / DS) with zero output tax
     # Template 2, Step 3A.3.1.i
     "E3_SALES": (
         "Over- / Under-reporting of value in GST return"
     ),
 
-    # E3 — standard-rated purchase line (SI) with zero input tax
+    # E3 — standard-rated purchase line (TX) with zero input tax
     # Template 6, Step 3D source-doc checks
     "E3_PURCHASE": (
         "Over- / Under-reporting of value in GST return"
     ),
 
-    # E4 — rate deviation on SO (sales side)
+    # E4 — rate deviation on SR (sales side)
     # Template 2, Step 3A.3.1.i
     "E4_SO": (
         "Over- / Under-reporting of value in GST return"
     ),
 
-    # E4 — rate deviation on SI (purchase side)
+    # E4 — rate deviation on TX (purchase side)
     # Template 6, Step 3D source-doc checks
     # Identical Appendix 1 wording to E4_SO; separate key for template routing.
     "E4_SI": (
