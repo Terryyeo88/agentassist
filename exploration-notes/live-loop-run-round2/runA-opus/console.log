@@ -1,0 +1,50 @@
+>>> crafted findings: [('detect:NO_GST_REG:605', 'NO_GST_REG'), ('doc:gst_amount_mismatch:3001', 'gst_amount_mismatch')]
+>>> PDF fixture exists: True  (C:\Users\terry\Desktop\AgentAssist\sap-b1-ai-agent-t53vr2\tests\fixtures\documents\INV-3001.pdf)
+>>> running LIVE loop (AGENT_LIVE_TRANSPORT=1, max_cost_usd=2.00) ...
+
+>>> SAVED raw stream (33 msgs across 2 query calls) + ledger (10 entries)
+    [NO_GST_REG] status=staged attempts=1 complete=True lint=True sink_slots={'purchase_invoices': '<present>', 'document_pdfs': None, 'supplier_catalog': '<present>', 'prior_period_treatment': '<present>'}
+    [gst_amount_mismatch] status=staged attempts=1 complete=True lint=True sink_slots={'sap_listing': '<present>', 'document_pdfs': '<present>', 'prior_period_treatment': '<present>'}
+
+>>> SUMMARY: {
+  "pinned_master": "af79296",
+  "findings": [
+    [
+      "detect:NO_GST_REG:605",
+      "NO_GST_REG"
+    ],
+    [
+      "doc:gst_amount_mismatch:3001",
+      "gst_amount_mismatch"
+    ]
+  ],
+  "total_cost_usd": 0.859977,
+  "budget_exceeded": false,
+  "agent_layer_complete": true,
+  "pending_count": 2,
+  "staged": [
+    "NO_GST_REG",
+    "gst_amount_mismatch"
+  ],
+  "tool_calls_seen": [
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment"
+  ],
+  "reads_called_in_turn": [
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment"
+  ],
+  "read_ledger_tool_names": [
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__read_vendor_gst_status"
+  ],
+  "dossier_completeness_rate": 1.0,
+  "language_lint_pass_rate": 1.0
+}

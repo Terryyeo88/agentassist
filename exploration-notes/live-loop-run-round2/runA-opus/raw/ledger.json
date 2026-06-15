@@ -1,0 +1,154 @@
+[
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "f9f58ce9-6d73-49f4-8414-d66f714add7e",
+    "tool_name": "run_review_chain",
+    "tier": 1,
+    "justification": "Gather the deterministic GST review findings (full atomic chain) so the agent layer can assemble per-finding case files for human review.",
+    "call_params": {},
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:08.300703+00:00",
+    "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "entry_hash": "sha256:9cc03437e9382e1cb8baef97875456f76d8921fafbb6f0be57129b227f02d27d"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "5cf15ef0-f452-4f0a-b592-17ff30266eb9",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 605
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:17.086953+00:00",
+    "prev_hash": "sha256:9cc03437e9382e1cb8baef97875456f76d8921fafbb6f0be57129b227f02d27d",
+    "entry_hash": "sha256:097b71f17f8608bd9d29a07d86c6aa728db11d1c8831ab8ae5b169fe62da1d55"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "b37b00b1-072e-4e99-b540-4f9190baf2ae",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Mama Shop Supplies"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:17.561935+00:00",
+    "prev_hash": "sha256:097b71f17f8608bd9d29a07d86c6aa728db11d1c8831ab8ae5b169fe62da1d55",
+    "entry_hash": "sha256:800a4df9931634ef0cc0c9a902193d04bb498e228689020e6c63f95952bdce45"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "7d96e3e5-c9fc-4481-a426-905db5f85dc5",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "detect:NO_GST_REG:605"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:17.928623+00:00",
+    "prev_hash": "sha256:800a4df9931634ef0cc0c9a902193d04bb498e228689020e6c63f95952bdce45",
+    "entry_hash": "sha256:c7e5a6c40dc56d7d08f4c049bb0d560387ce24979357f0671409c01fbbe2d46b"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "e8b24cf7-0ca4-4754-a563-88d3a0fc86ad",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.7323609999999999,
+      "cost_usd_used": 0.7323609999999999,
+      "turns_used": 1
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:27.706822+00:00",
+    "prev_hash": "sha256:c7e5a6c40dc56d7d08f4c049bb0d560387ce24979357f0671409c01fbbe2d46b",
+    "entry_hash": "sha256:92c9c1a73f1a9b6a5527bbda9b2b54f4e2a20cc1dfa440330d2b0165f12d5785"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "761d3855-ecc3-4008-bfdf-adb92a0d7762",
+    "tool_name": "propose_action",
+    "tier": 1,
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:27.706990+00:00",
+    "prev_hash": "sha256:92c9c1a73f1a9b6a5527bbda9b2b54f4e2a20cc1dfa440330d2b0165f12d5785",
+    "entry_hash": "sha256:f1ad4d2dc90de0a8241ed0eddf031eaa3bd44b9b749241e59b85c34a8066d262"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "2941c848-4a68-4d0f-ae2e-cbf7b5761c60",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 3001
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:38.351361+00:00",
+    "prev_hash": "sha256:f1ad4d2dc90de0a8241ed0eddf031eaa3bd44b9b749241e59b85c34a8066d262",
+    "entry_hash": "sha256:e2b7716328d0ae91b28f49e6a3de4f96b3b627433343e313d2230ca48ef6ac87"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "55cfa670-0f9a-4fdf-bd2e-20eb358a5167",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "doc:gst_amount_mismatch:3001"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:38.511737+00:00",
+    "prev_hash": "sha256:e2b7716328d0ae91b28f49e6a3de4f96b3b627433343e313d2230ca48ef6ac87",
+    "entry_hash": "sha256:f2681f3aa563a3ecbe020f777ec07d83a17ef2a456cf3a95b402aa70c468d7d4"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "0f02ab9b-81bf-43f4-aef5-afb6d1600421",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.12761650000000002,
+      "cost_usd_used": 0.8599775,
+      "turns_used": 2
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:46.595705+00:00",
+    "prev_hash": "sha256:f2681f3aa563a3ecbe020f777ec07d83a17ef2a456cf3a95b402aa70c468d7d4",
+    "entry_hash": "sha256:50f59e32d2dcc8b8bf73fd5098772bce011ac3e99b14db724e26c9c52e8aa6e7"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "562ad555-1d8e-41b3-996e-af1505f035cb",
+    "tool_name": "propose_action",
+    "tier": 1,
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:25:46.595866+00:00",
+    "prev_hash": "sha256:50f59e32d2dcc8b8bf73fd5098772bce011ac3e99b14db724e26c9c52e8aa6e7",
+    "entry_hash": "sha256:f3f4552504837ee0d7543c4553b35ba7b7893de208ab2db3f08eb73188d8e782"
+  }
+]
