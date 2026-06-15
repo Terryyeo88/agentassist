@@ -33,9 +33,16 @@ from agent.loop import (
     FindingOutcome,
     LoopContext,
     ResultEvent,
+    ToolUseEvent,
     run_casefile_loop,
 )
 from agent.proposals import StagingStore
+from agent.read_tools import (
+    get_source_document,
+    read_prior_period_treatment,
+    read_vendor_gst_status,
+)
+from agent.schemas import Tier
 
 
 class _FakeProvider:
@@ -48,28 +55,69 @@ class _FakeProvider:
         return self._m.get(int(doc_num))
 
 
+def _apply_scripted_read(event: ToolUseEvent, finding: Finding, ctx: LoopContext,
+                         sink: dict, ledger: Ledger) -> None:
+    """Execute a scripted Tier-0 read against *ctx* and write it into *sink*.
+
+    Hermetic simulation of architecture A: the live path's MCP read handler executes
+    the read via ctx and writes the sink in-turn; here the fake does the same against
+    the same ``read_tools`` functions. Per constraint B the fake also writes the Tier-0
+    read ledger entry (the SDK PreToolUse hook does this on the live path); the loop
+    driver writes none for reads.
+    """
+    name = event.tool_name
+    ti = event.tool_input
+    payload = finding.payload or {}
+    if name == "get_source_document":
+        value: Any = get_source_document(ctx.provider, int(ti.get("doc_num", payload.get("doc_num"))))
+    elif name == "read_vendor_gst_status":
+        value = read_vendor_gst_status(ctx.vendor_catalog, ti.get("card_name", payload.get("card_name")))
+    elif name == "read_prior_period_treatment":
+        key = ti.get("key") or f"{finding.check_id}:{payload.get('card_name')}"
+        value = read_prior_period_treatment(ctx.prior_period_store, key)
+    else:
+        value = None
+    slot = ti.get("evidence_slot")
+    if slot:
+        sink[slot] = value
+    else:
+        sink.setdefault(name, value)
+    ledger.append(
+        tool_name=name, tier=Tier.ZERO, justification=None,
+        call_params={k: v for k, v in ti.items() if k != "justification"},
+        outcome="allowed", blocked_reason=None,
+    )
+
+
 class ScriptedLoopTransport:
-    """Replays a scripted AgentEvent stream per finding (no SDK, no binary, no tokens).
+    """Gathers scripted evidence into the sink per finding (no SDK, no binary, no tokens).
+
+    Architecture A (T5.3f): each scripted turn lists the reads the model performs (as
+    ``ToolUseEvent``s) plus its ``FramingEvent``/``ResultEvent``. ``gather`` EXECUTES the
+    scripted reads against the bound ctx and writes the results into the driver's
+    ``evidence_sink`` (mirroring the live MCP handlers), ledgers them Tier-0, and yields
+    only the framing + cost. A scripted ``propose_action`` is IGNORED — staging is now
+    driver-decided. Successive ``gather`` calls for the same finding pop the next turn,
+    supporting bounded re-entry.
 
     Args:
         scripts: finding_id -> list of turns; each turn is a list of AgentEvents.
-                 Successive ``stream`` calls for the same finding pop the next turn,
-                 supporting bounded re-entry (turn 1 incomplete, turn 2 complete).
-
-    Attributes:
-        seen_prompts:   prompts the driver passed in (for inspection).
-        spawned_binary: always False — this transport never launches a process.
+        ctx:     LoopContext the scripted reads resolve against.
+        ledger:  Ledger the fake writes Tier-0 read entries into (constraint B).
     """
 
     #: Class-level invariant mirroring agent.eval.transport.FakeTransport.
     SPAWNS_BINARY: bool = False
 
-    def __init__(self, scripts: dict[str, list[list[AgentEvent]]]) -> None:
+    def __init__(self, scripts: "dict[str, list[list[AgentEvent]]]",
+                 ctx: LoopContext, ledger: Ledger) -> None:
         self._queues = {fid: deque(turns) for fid, turns in scripts.items()}
+        self._ctx = ctx
+        self._ledger = ledger
         self.seen_prompts: list[str] = []
         self.spawned_binary: bool = False
 
-    def stream(self, prompt: str, finding: "Finding") -> Iterable[AgentEvent]:
+    def gather(self, prompt: str, finding: "Finding", evidence_sink: dict) -> Iterable[AgentEvent]:
         self.seen_prompts.append(prompt)
         queue = self._queues.get(finding.finding_id)
         if not queue:
@@ -77,7 +125,12 @@ class ScriptedLoopTransport:
             yield ResultEvent(cost_usd=0.0)
             return
         for event in queue.popleft():
-            yield event
+            if isinstance(event, ToolUseEvent):
+                if event.tool_name == "propose_action":
+                    continue  # staging is driver-decided now; ignore scripted propose
+                _apply_scripted_read(event, finding, self._ctx, evidence_sink, self._ledger)
+            else:
+                yield event  # FramingEvent / ResultEvent
 
 
 @dataclass
@@ -139,12 +192,12 @@ def run_loop_scenario(scenario: LoopScenario) -> LoopRunRecord:
     ledger = Ledger()
     budget = RunBudget(max_turns=scenario.max_turns, max_cost_usd=scenario.max_cost_usd)
     store = StagingStore()
-    transport = ScriptedLoopTransport(scenario.scripts)
     ctx = LoopContext(
         provider=_FakeProvider(scenario.provider_docs),
         vendor_catalog=dict(scenario.vendor_catalog),
         prior_period_store=dict(scenario.prior_period_store),
     )
+    transport = ScriptedLoopTransport(scenario.scripts, ctx, ledger)
     result = run_casefile_loop(
         invoke_review=_invoke(scenario.review_result),
         transport=transport,

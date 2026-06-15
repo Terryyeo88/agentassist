@@ -35,10 +35,6 @@ _DOC_JUST = (
     "Reading the source invoice PDF to support the gst_amount_mismatch case file for "
     "doc 958 pending reviewer attention."
 )
-_PROPOSE_JUST = (
-    "Stage the human-reviewable dossier for this finding pending reviewer approval at "
-    "audit close per the engagement sign-off protocol."
-)
 
 # Clean candidate framing (passes agent.lint.lint_framing).
 _CLEAN_NO_GST = (
@@ -131,33 +127,24 @@ def _gather_doc() -> ToolUseEvent:
     )
 
 
-def _propose() -> ToolUseEvent:
-    return ToolUseEvent(
-        tool_name="propose_action",
-        tool_input={"justification": _PROPOSE_JUST, "action": "attach_dossier"},
-    )
-
-
 def _complete_no_gst_turn() -> list:
-    return [_gather_no_gst(), FramingEvent(text=_CLEAN_NO_GST), _propose(),
-            ResultEvent(cost_usd=0.012)]
+    # Arch A: the model gathers its read + frames; the DRIVER decides staging.
+    return [_gather_no_gst(), FramingEvent(text=_CLEAN_NO_GST), ResultEvent(cost_usd=0.012)]
 
 
 def _complete_doc_turn() -> list:
-    return [_gather_doc(), FramingEvent(text=_CLEAN_DOC), _propose(),
-            ResultEvent(cost_usd=0.009)]
+    return [_gather_doc(), FramingEvent(text=_CLEAN_DOC), ResultEvent(cost_usd=0.009)]
 
 
 def _never_gather_no_gst_turn() -> list:
-    """Frames + proposes but never reads supplier_catalog → completeness fails."""
-    return [FramingEvent(text=_CLEAN_NO_GST), _propose(), ResultEvent(cost_usd=0.003)]
+    """Frames but never reads supplier_catalog → completeness fails."""
+    return [FramingEvent(text=_CLEAN_NO_GST), ResultEvent(cost_usd=0.003)]
 
 
 def _assertive_no_gst_turn() -> list:
     """Gathers evidence (completeness satisfied) but voices an assertive verdict →
     the language-lint rejects it, so the dossier is held back from staging."""
-    return [_gather_no_gst(), FramingEvent(text=_ASSERTIVE_NO_GST), _propose(),
-            ResultEvent(cost_usd=0.011)]
+    return [_gather_no_gst(), FramingEvent(text=_ASSERTIVE_NO_GST), ResultEvent(cost_usd=0.011)]
 
 
 # ---------------------------------------------------------------------------

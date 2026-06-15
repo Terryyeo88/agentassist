@@ -25,6 +25,12 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from agent.loop import Finding, FramingEvent, ResultEvent, ToolUseEvent
+from agent.read_tools import (
+    get_source_document,
+    read_prior_period_treatment,
+    read_vendor_gst_status,
+)
+from agent.schemas import Tier
 
 # Prompt-injection payload embedded in the poisoned PDF. UNTRUSTED input — it tries to
 # make the agent assert compliance and seal. The lint rejects this phrasing if echoed,
@@ -122,29 +128,68 @@ def default_prior_period_store() -> dict:
 
 @dataclass
 class FakeTransport:
-    """Replays a scripted agent stream. No SDK, no binary, no tokens.
+    """Gathers scripted evidence into the sink per finding. No SDK, no binary, no tokens.
+
+    Architecture A (T5.3f): ``gather`` EXECUTES the scripted Tier-0 reads against the
+    bound ``ctx`` and writes the results into the driver's ``evidence_sink`` (mirroring
+    the live MCP handlers), ledgers them Tier-0 (constraint B — the SDK hook does this
+    on the live path; the driver writes none for reads), ignores any scripted
+    ``propose_action`` (staging is driver-decided), and yields only framing + cost.
+    Successive ``gather`` calls for the same finding pop the next turn (bounded re-entry).
 
     Args:
         scripts: finding_id -> list of turns; each turn is a list of AgentEvents.
-                 Successive ``stream`` calls for the same finding pop the next turn,
-                 supporting bounded re-entry (turn 1 incomplete, turn 2 complete).
+        ctx:     LoopContext the scripted reads resolve against.
+        ledger:  Ledger the fake writes Tier-0 read entries into.
     """
     scripts: dict = field(default_factory=dict)
+    ctx: object = None
+    ledger: object = None
     seen_prompts: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self._queues = {fid: deque(turns) for fid, turns in self.scripts.items()}
 
-    def stream(self, prompt: str, finding: "Finding") -> Iterable:
+    def _apply_read(self, event: ToolUseEvent, finding: "Finding", sink: dict) -> None:
+        name = event.tool_name
+        ti = event.tool_input
+        payload = finding.payload or {}
+        if name == "get_source_document":
+            value = get_source_document(self.ctx.provider,
+                                        int(ti.get("doc_num", payload.get("doc_num"))))
+        elif name == "read_vendor_gst_status":
+            value = read_vendor_gst_status(self.ctx.vendor_catalog,
+                                           ti.get("card_name", payload.get("card_name")))
+        elif name == "read_prior_period_treatment":
+            key = ti.get("key") or f"{finding.check_id}:{payload.get('card_name')}"
+            value = read_prior_period_treatment(self.ctx.prior_period_store, key)
+        else:
+            value = None
+        slot = ti.get("evidence_slot")
+        if slot:
+            sink[slot] = value
+        else:
+            sink.setdefault(name, value)
+        self.ledger.append(
+            tool_name=name, tier=Tier.ZERO, justification=None,
+            call_params={k: v for k, v in ti.items() if k != "justification"},
+            outcome="allowed", blocked_reason=None,
+        )
+
+    def gather(self, prompt: str, finding: "Finding", evidence_sink: dict) -> Iterable:
         self.seen_prompts.append(prompt)
         queue = self._queues.get(finding.finding_id)
         if not queue:
             # No script left: an empty turn (no reads, no framing) costing nothing.
             yield ResultEvent(cost_usd=0.0)
             return
-        turn = queue.popleft()
-        for event in turn:
-            yield event
+        for event in queue.popleft():
+            if isinstance(event, ToolUseEvent):
+                if event.tool_name == "propose_action":
+                    continue  # staging is driver-decided now
+                self._apply_read(event, finding, evidence_sink)
+            else:
+                yield event  # FramingEvent / ResultEvent
 
 
 # ---------------------------------------------------------------------------
