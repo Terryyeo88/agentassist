@@ -1,0 +1,169 @@
+[
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "ecbb42c9-5d48-496b-8584-a3755fa8830a",
+    "tool_name": "run_review_chain",
+    "tier": 1,
+    "justification": "Gather the deterministic GST review findings (full atomic chain) so the agent layer can assemble per-finding case files for human review.",
+    "call_params": {},
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:27:05.036301+00:00",
+    "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "entry_hash": "sha256:3928a3030a74cd50fe0fd09edcf37a99a6496a8f3ab3426f4ed6de3c610519d1"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "851eb2ec-8575-4d08-b19e-e8470f6acb0a",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 605
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:27:12.898247+00:00",
+    "prev_hash": "sha256:3928a3030a74cd50fe0fd09edcf37a99a6496a8f3ab3426f4ed6de3c610519d1",
+    "entry_hash": "sha256:ec74c2ac92c36a7dfc18ed05d4dd1904b3e28b2c1fbc52c84561d01194eb317f"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "49798ded-bd8f-4091-87a7-65c7760847ec",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Mama Shop Supplies"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:27:13.286001+00:00",
+    "prev_hash": "sha256:ec74c2ac92c36a7dfc18ed05d4dd1904b3e28b2c1fbc52c84561d01194eb317f",
+    "entry_hash": "sha256:9af3ec3f83e744bff5ba99f4c16a34c8ce525ffe012442b8e9e9fd5b624205d0"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "8925be81-3db9-4a64-9719-541ae7208209",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "detect:NO_GST_REG:605"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:27:13.426367+00:00",
+    "prev_hash": "sha256:9af3ec3f83e744bff5ba99f4c16a34c8ce525ffe012442b8e9e9fd5b624205d0",
+    "entry_hash": "sha256:0184cd69b1abd41acc4a70257fdde79b67853402b4ca6942f841ef5a5a302877"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "22abc3a3-7603-4208-a1de-a10954328067",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.390513,
+      "cost_usd_used": 0.390513,
+      "turns_used": 1
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:27:25.508744+00:00",
+    "prev_hash": "sha256:0184cd69b1abd41acc4a70257fdde79b67853402b4ca6942f841ef5a5a302877",
+    "entry_hash": "sha256:64354eedd838ef308818b1dba79dba3ad56ada615d7f300b22151dc72f0b452c"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "d316f59c-9ed7-463c-a47e-075b22a42baa",
+    "tool_name": "propose_action",
+    "tier": 1,
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:27:25.508931+00:00",
+    "prev_hash": "sha256:64354eedd838ef308818b1dba79dba3ad56ada615d7f300b22151dc72f0b452c",
+    "entry_hash": "sha256:6434aba3507b1bee124d18be739bbf38a5647597bc951fc7542120155bc8aea1"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "1fdb2ca5-b6fd-468e-ab0e-70c08e58a5d3",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 3001
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:27:40.581452+00:00",
+    "prev_hash": "sha256:6434aba3507b1bee124d18be739bbf38a5647597bc951fc7542120155bc8aea1",
+    "entry_hash": "sha256:1bc1fd4f5860dd1e8125f3e7ae915f5b1abf241837d67e79f083cb88b38752f6"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "d2755d1d-7425-4913-88a7-4f91c6c9c7d3",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "doc:gst_amount_mismatch:3001"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:27:40.598123+00:00",
+    "prev_hash": "sha256:1bc1fd4f5860dd1e8125f3e7ae915f5b1abf241837d67e79f083cb88b38752f6",
+    "entry_hash": "sha256:d81718ae933dbd0a4b35f040f8136e68271db3e10774fbb31a3fa6e6cd07d4c9"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "d0c25b6c-4c8e-4c1a-ac33-b3770b35e000",
+    "tool_name": "Read",
+    "tier": 3,
+    "justification": null,
+    "call_params": {
+      "file_path": "C:\\Users\\terry\\Desktop\\AgentAssist\\sap-b1-ai-agent-t53vr2\\tests\\fixtures\\documents\\INV-3001.pdf"
+    },
+    "outcome": "blocked",
+    "blocked_reason": "tool-not-found: 'Read' is not in the agent registry",
+    "timestamp": "2026-06-15T09:27:45.971013+00:00",
+    "prev_hash": "sha256:d81718ae933dbd0a4b35f040f8136e68271db3e10774fbb31a3fa6e6cd07d4c9",
+    "entry_hash": "sha256:426247d3006afa092b6958c6a8c70f31faa9b0598becc68dbb2c1e1143b0a63e"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "16d4cddb-c3f8-4b65-9cc0-99f8faef3e70",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.1061839,
+      "cost_usd_used": 0.4966969,
+      "turns_used": 2
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:28:17.900419+00:00",
+    "prev_hash": "sha256:426247d3006afa092b6958c6a8c70f31faa9b0598becc68dbb2c1e1143b0a63e",
+    "entry_hash": "sha256:d4ca5c391e4fa02137319d7731a36630526a86e47aaefbb0a52b148fde263379"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "dc17bf11-5808-4c6d-b481-2b185744685e",
+    "tool_name": "propose_action",
+    "tier": 1,
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-15T09:28:17.900636+00:00",
+    "prev_hash": "sha256:d4ca5c391e4fa02137319d7731a36630526a86e47aaefbb0a52b148fde263379",
+    "entry_hash": "sha256:a22fd2bf45e087f7930619604c2eb195a53f632cbbe0afa5c0137e13f8bf8c10"
+  }
+]
