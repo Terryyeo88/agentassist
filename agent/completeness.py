@@ -38,6 +38,17 @@ from agent.registry import CHECK_REGISTRY
 # Slots the agent must gather via a Tier-0 read (see agent/read_tools.py).
 AGENT_GATHERED_INPUTS: frozenset[str] = frozenset({"supplier_catalog", "document_pdfs"})
 
+# CODE-DEFINED binding: which Tier-0 read tool fills which canonical completeness slot.
+# The slot a read fills is a deterministic property of the tool (globally 1:1 — verified
+# across every CheckSpec needing an agent-gathered slot), NOT a string the model supplies
+# (T5.3g — the T5.3-V live run showed the model invents slot names). Every member of
+# AGENT_GATHERED_INPUTS MUST appear as a value here, or completeness can never be reached
+# for the check that needs it (enforced by tests/test_t53g_slot_contract.py).
+READ_TOOL_SLOT: dict[str, str] = {
+    "get_source_document": "document_pdfs",
+    "read_vendor_gst_status": "supplier_catalog",
+}
+
 
 def required_inputs(check_id: str) -> list[str]:
     """Return the required input slots for *check_id* — CheckSpec.inputs_needed verbatim.

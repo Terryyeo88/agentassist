@@ -40,12 +40,16 @@ from agent.budget import RunBudget
 from agent.harness import build_options
 from agent.ledger import Ledger
 from agent.loop import AgentEvent, Finding, FramingEvent, ResultEvent
-from agent.read_tools_server import make_read_tools_server
+from agent.read_tools_server import READ_TOOLS_QUALIFIED, make_read_tools_server
 
 #: Env var that opts in to the live, token-burning transport. Unless it is exactly
 #: "1", ``make_live_transport`` refuses to build one — the live path cannot run by
 #: accident. The supervised T5.3-V run sets it explicitly.
 LIVE_OPT_IN_ENV: str = "AGENT_LIVE_TRANSPORT"
+
+#: Leaked CLI built-in observed in the T5.3-V live run (denied Tier-3 by the cage, but it
+#: wasted turns). Named exactly as the SDK emits it in the stream's ToolUseBlock.
+_DISALLOWED_BUILTINS: list[str] = ["ToolSearch"]
 
 
 def _resolve_query() -> Callable[..., Any]:
@@ -127,12 +131,14 @@ class LiveAgentTransport:
         ledger: Ledger,
         budget: RunBudget,
         system_prompt: str = "",
+        model: Optional[str] = None,
         query_fn: Optional[Callable[..., Any]] = None,
     ) -> None:
         self._ctx = ctx
         self._ledger = ledger
         self._budget = budget
         self._system_prompt = system_prompt
+        self._model = model  # pinned model for this run (None = CLI default; run's choice)
         self._query_fn = query_fn  # resolved lazily so the SDK import stays deferred
         self.seen_prompts: List[str] = []
 
@@ -149,9 +155,14 @@ class LiveAgentTransport:
         """
         self.seen_prompts.append(prompt)
         reads_server = make_read_tools_server(self._ctx, evidence_sink)
+        # Tool-schema hardening (T5.3g): steer the model to ONLY the reads (allowlist),
+        # deny the observed leaked built-in, and pin the run's model. Hook-bearing.
         options = build_options(
             self._ledger, self._budget,
             system_prompt=self._system_prompt, reads_server=reads_server,
+            tool_allowlist=list(READ_TOOLS_QUALIFIED),
+            disallowed_tools=_DISALLOWED_BUILTINS,
+            model=self._model,
         )
         for event in asyncio.run(self._collect(prompt, options)):
             yield event
@@ -179,6 +190,7 @@ def make_live_transport(
     ledger: Ledger,
     budget: RunBudget,
     system_prompt: str = "",
+    model: Optional[str] = None,
     query_fn: Optional[Callable[..., Any]] = None,
 ) -> LiveAgentTransport:
     """Build a ``LiveAgentTransport`` — ONLY when the live opt-in is explicitly set.
@@ -199,5 +211,5 @@ def make_live_transport(
         )
     return LiveAgentTransport(
         ctx=ctx, ledger=ledger, budget=budget,
-        system_prompt=system_prompt, query_fn=query_fn,
+        system_prompt=system_prompt, model=model, query_fn=query_fn,
     )
