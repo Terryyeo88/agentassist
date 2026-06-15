@@ -39,6 +39,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from agent.completeness import READ_TOOL_SLOT
 from agent.read_tools import (
     get_source_document,
     read_prior_period_treatment,
@@ -66,20 +67,25 @@ READ_TOOLS_QUALIFIED: tuple[str, ...] = tuple(
     f"mcp__{READS_SERVER_NAME}__{n}" for n in READ_TOOL_NAMES
 )
 
-# Input schemas. evidence_slot names which completeness slot the result fills; the
-# lookup key is the read's own argument. Tier-0 reads need no justification (the
-# PreToolUse hook always allows Tier-0 + logs).
-_DOC_SCHEMA: dict[str, Any] = {"doc_num": int, "evidence_slot": str}
-_VENDOR_SCHEMA: dict[str, Any] = {"card_name": str, "evidence_slot": str}
-_PRIOR_SCHEMA: dict[str, Any] = {"key": str, "evidence_slot": str}
+# Model-facing input schemas. The model passes ONLY the finding's identifier — it does
+# NOT name the evidence slot (T5.3g: the slot is bound in code, not by the model). Tier-0
+# reads need no justification (the PreToolUse hook always allows Tier-0 + logs).
+_DOC_SCHEMA: dict[str, Any] = {"doc_num": int}
+_VENDOR_SCHEMA: dict[str, Any] = {"card_name": str}
+_PRIOR_SCHEMA: dict[str, Any] = {"key": str}
+
+# Enrichment reads fill no required completeness slot; they record under a stable key.
+_ENRICHMENT_SLOT: dict[str, str] = {"read_prior_period_treatment": "prior_period_treatment"}
 
 
-def _record(evidence_sink: dict, tool_name: str, slot: Any, result: Any) -> None:
-    """Record a read result into the sink, mirroring loop._run_finding's slot logic."""
-    if slot:
-        evidence_sink[slot] = result
-    else:
-        evidence_sink.setdefault(tool_name, result)
+def canonical_slot(tool_name: str) -> str:
+    """The deterministic sink slot a read fills — CODE-DEFINED, never model-supplied.
+
+    Required completeness slots come from ``READ_TOOL_SLOT`` (sourced from
+    ``CheckSpec.inputs_needed``); enrichment reads get a stable key. This is the single
+    source of truth the live handlers AND the hermetic fakes both bind against.
+    """
+    return READ_TOOL_SLOT.get(tool_name) or _ENRICHMENT_SLOT[tool_name]
 
 
 def _payload(tool_name: str, slot: Any, found: bool, result: Any) -> dict[str, Any]:
@@ -108,35 +114,35 @@ def make_read_tools(
     from claude_agent_sdk import tool  # noqa: PLC0415 - deferred SDK import
 
     async def _get_source_document(args: dict[str, Any]) -> dict[str, Any]:
-        slot = args.get("evidence_slot")
+        slot = canonical_slot("get_source_document")
         path = get_source_document(ctx.provider, int(args["doc_num"]))
-        _record(evidence_sink, "get_source_document", slot, path)
+        evidence_sink[slot] = path
         return _payload("get_source_document", slot, path is not None, path)
 
     async def _read_vendor_gst_status(args: dict[str, Any]) -> dict[str, Any]:
-        slot = args.get("evidence_slot")
+        slot = canonical_slot("read_vendor_gst_status")
         rec = read_vendor_gst_status(ctx.vendor_catalog, args["card_name"])
-        _record(evidence_sink, "read_vendor_gst_status", slot, rec)
+        evidence_sink[slot] = rec
         return _payload("read_vendor_gst_status", slot, bool(rec.get("found")), rec)
 
     async def _read_prior_period_treatment(args: dict[str, Any]) -> dict[str, Any]:
-        slot = args.get("evidence_slot")
+        slot = canonical_slot("read_prior_period_treatment")
         rec = read_prior_period_treatment(ctx.prior_period_store, args["key"])
-        _record(evidence_sink, "read_prior_period_treatment", slot, rec)
+        evidence_sink[slot] = rec
         return _payload("read_prior_period_treatment", slot, bool(rec.get("found")), rec)
 
     return [
         tool("get_source_document",
-             "Fetch the source invoice PDF path for a doc_num (read-only). Provide "
-             "doc_num and the evidence_slot to fill. Returns found=false when no PDF.",
+             "Fetch the source invoice PDF for a finding's doc_num (read-only). Provide "
+             "the finding's doc_num. Returns found=false when no PDF is available.",
              _DOC_SCHEMA)(_get_source_document),
         tool("read_vendor_gst_status",
              "Look up a vendor's GST-registration status by card_name (read-only). "
-             "Provide card_name and the evidence_slot to fill.",
+             "Provide the finding's card_name.",
              _VENDOR_SCHEMA)(_read_vendor_gst_status),
         tool("read_prior_period_treatment",
              "Look up how a finding key was treated in a prior period (read-only). "
-             "Provide key and the evidence_slot to fill.",
+             "Provide the finding's key.",
              _PRIOR_SCHEMA)(_read_prior_period_treatment),
     ]
 

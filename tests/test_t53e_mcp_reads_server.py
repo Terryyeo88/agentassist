@@ -105,23 +105,16 @@ class TestHandlersReturnAndRecord:
         assert out["found"] is False
         assert out["result"]["found"] is False
 
-    def test_prior_period_treatment_records(self):
+    def test_prior_period_treatment_records_canonical_enrichment_slot(self):
+        # T5.3g: the slot is CODE-DEFINED; the model passes no evidence_slot. The
+        # enrichment read records under its canonical key "prior_period_treatment".
         sink = {}
         h = _handlers(_ctx(), sink)["read_prior_period_treatment"]
-        out = _text(_call(h, {"key": "NO_GST_REG:Mama Shop Supplies",
-                              "evidence_slot": "prior_treatment"}))
+        out = _text(_call(h, {"key": "NO_GST_REG:Mama Shop Supplies"}))
         assert out["found"] is True
         assert out["result"]["treatment"] == "disallowed"
-        assert sink["prior_treatment"]["treatment"] == "disallowed"
-
-    def test_no_slot_records_under_tool_name(self):
-        # Mirrors _run_finding: a read without evidence_slot is enrichment, kept under
-        # the tool name via setdefault.
-        sink = {}
-        h = _handlers(_ctx(), sink)["read_prior_period_treatment"]
-        _call(h, {"key": "NO_GST_REG:Mama Shop Supplies"})
-        assert "read_prior_period_treatment" in sink
-        assert sink["read_prior_period_treatment"]["treatment"] == "disallowed"
+        assert sink["prior_period_treatment"]["treatment"] == "disallowed"
+        assert out["evidence_slot"] == "prior_period_treatment"
 
 
 # --------------------------------------------------------------------------- #
