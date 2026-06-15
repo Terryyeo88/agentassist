@@ -51,10 +51,11 @@ def _invoke(review_dict):
 def _run(budget):
     ledger = Ledger()
     store = StagingStore()
-    transport = fx.FakeTransport(scripts=fx.golden_scripts())
+    ctx = _ctx()
+    transport = fx.FakeTransport(scripts=fx.golden_scripts(), ctx=ctx, ledger=ledger)
     result = run_casefile_loop(
         invoke_review=_invoke(fx.canned_review_result()),
-        transport=transport, ctx=_ctx(), ledger=ledger, budget=budget, store=store,
+        transport=transport, ctx=ctx, ledger=ledger, budget=budget, store=store,
     )
     return result, ledger, store
 
