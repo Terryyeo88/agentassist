@@ -1,0 +1,80 @@
+{
+  "pinned_master": "af79296",
+  "findings": [
+    [
+      "detect:NO_GST_REG:605",
+      "NO_GST_REG"
+    ],
+    [
+      "doc:gst_amount_mismatch:3001",
+      "gst_amount_mismatch"
+    ]
+  ],
+  "total_cost_usd": 1.08437,
+  "budget_exceeded": false,
+  "agent_layer_complete": true,
+  "pending_count": 0,
+  "staged": [],
+  "tool_calls_seen": [
+    "ToolSearch",
+    "ToolSearch",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__read_prior_period_treatment",
+    "ToolSearch",
+    "ToolSearch",
+    "ToolSearch",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "ToolSearch",
+    "ToolSearch",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "ToolSearch",
+    "ToolSearch",
+    "mcp__reads__get_source_document",
+    "ToolSearch",
+    "ToolSearch",
+    "mcp__reads__get_source_document",
+    "ToolSearch",
+    "ToolSearch",
+    "mcp__reads__get_source_document"
+  ],
+  "reads_called_in_turn": [
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__get_source_document",
+    "mcp__reads__get_source_document",
+    "mcp__reads__get_source_document"
+  ],
+  "read_ledger_tool_names": [
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__read_vendor_gst_status"
+  ],
+  "dossier_completeness_rate": 0.0,
+  "language_lint_pass_rate": 1.0
+}
