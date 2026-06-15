@@ -2814,6 +2814,63 @@ strategic or engineering conversation.
 
 31. **T2.20 — Annex E vocabulary migration discovery audit** (DONE 2026-06-12 — audit complete; build task OPEN): a read-only audit for "Option C" (migrating AgentAssist's internal VatGroup vocabulary from the current 18-code SAP B1 set to the 35-code IRAS Annex E GST Category Code set per the e-Tax Guide "Adopting GST InvoiceNow Requirement for GST-Registered Businesses", Second Edition, 9 Mar 2026, Annex E) produced `exploration-notes/t2.20/vocabulary-migration-inventory.md`. Key results: the 18-code vocabulary is carried in ≥7 independently-maintained locations, of which only `F5_BOX_MAPPING` + two module-level sets in `sap_b1_server.py` form the shared core consumed by Tools 12/13/14; 15 of 35 Annex E codes have a current equivalent (13 direct carryovers + 2 renames), 2 are name collisions with conflicting semantics (`TX-N33`, `TX-RE`), 18 have no current equivalent (Customer Accounting / OVR-LVG / reverse-charge families plus `NA`/`NG`/`TXNA`/`TXRC-TS` pending IRAS-text confirmation), and `TX-E33` (current) has no Annex E target. T2.18 (PLANNED) is necessary but not sufficient for the migration — see roadmap T2.18/T2.20 entries for the sequencing recommendation. First-pass build-task estimate: ~9-13.5 days excl. T2.18, ~11-17.5 days incl. T2.18, with a follow-on task (T2.22) recommended for the 13 codes needing genuine transaction-level detection. T2.2 (roadmap) is sequenced behind these findings — do not scope T2.2 against "the 18-code standard set" until the Annex E migration lands or is explicitly deferred. No source files changed; no fixtures regenerated.
 
+32. **T2.21b — Annex E vocabulary rename, buckets 1+2 (16 codes)** (DONE 2026-06-15 —
+    chain-accepted; commit `21c70e9` on branch `t2.21a-annex-e-baseline-vocab`, NOT yet
+    merged to master): builds T2.20 Section 2d's buckets 1+2 — the 14 direct-carryover
+    codes (`DS`, `ZR`, `ES33`, `ESN33`, `OS`, `IM`, `ME`, `IGDS`, `ZP`, `BL`, `EP`, `OP`,
+    `NR`, `NG`) plus the 2 renamed codes `SO`→`SR` (sales standard-rated) and `SI`→`TX`
+    (purchase standard-rated), edited/synced across the ~7 load-bearing locations
+    identified in T2.20 Section 1 (1.1 `F5_BOX_MAPPING`, 1.2/1.3 module-level sets, 1.6
+    `_vg_category`, 1.7-1.9 `run_baseline_tests.py`, 1.11-1.13 `base.md`, 1.14-1.16
+    `report/routing.py` + `report/sections.py`, 1.17
+    `config/loader._STANDARD_VAT_GROUPS`, 1.20 `sg-tax-code-mappings.md`). Also fixes two
+    drift items from T2.20 Section 0: `ZP` was missing from `_E2_ZERO_RATE_CODES`
+    (`sap_b1_server.py`) and `_ZERO_RATED_VGS` (`report/routing.py`) — both now include
+    `ZP`; and `_vg_category`'s `ME`/`TX-RE` labels (Tool 13's human-readable
+    `gst_category` text) were corrected to match `base.md`/`KNOWN_VATGROUPS`.
+
+    Wires `effective_tax_code_mappings` live: `config/loader.py`'s
+    `_SAP_B1_DEFAULT_TAX_CODE_MAPPINGS = {"SO": "SR", "SI": "TX"}` is merged under any
+    client-declared `tax_code_mappings` via the `effective_tax_code_mappings` property
+    (`config/loader.py:166`), so every SAP B1 client that declares no override — i.e.
+    `sbodemosg.yaml` and `example.yaml` as shipped — now has raw `SO`/`SI` normalized to
+    `SR`/`TX` by `normalize_vat_group()` before F5-box routing or E1-E4 detection.
+    `audit_bundle/config_redaction.py`'s `_ALLOW_LIST` (T2.20 Section 1 item 1.23) gains
+    `"effective_tax_code_mappings"`, so a sealed bundle records both the declared override
+    (`tax_code_mappings`, possibly `{}`) and the mapping actually applied.
+
+    **Test counts (branch-only, NOT on master):** 1490 passed, 1 skipped — +9 net new
+    vs. master's 1387/1 (10 new tests introduced by this slice, 1 prior characterization
+    test superseded by the rename). The "Current master total" lines elsewhere in this
+    document (test-state line in the audit-bundle section, and the D10/D11 docs-sync
+    footer entries) remain accurate at **1387 passed, 1 skipped** as descriptions of
+    `master`'s actual state — `t2.21a-annex-e-baseline-vocab` is unmerged, so no
+    master-total line needed updating for this entry.
+
+    **Chain acceptance (SOP step 5, DONE):** live, read-only SBODEMOSG validation,
+    period 2024-07-01..2024-07-07 (same window as T2.20 Section 0), comparing
+    `8ccc2e8` (pre-rename) vs `21c70e9` (post-rename). F5 box totals byte-identical
+    before/after (box_1=81874.39 … box_8=5185.22, `anomalies: []` both runs);
+    `vatgroup_inventory` shows `SR`(13 docs)/`TX`(1 doc) in place of `SO`/`SI`, both with
+    `known_to_mapping: true` and unchanged `lt_box`/`tt_box`/`side`; `detect_gst_errors`
+    returns the same single E1 finding (doc_num 958) with only the VatGroup token in the
+    free-text description changed (`"...with SO code..."` → `"...with SR code..."`); a
+    full `run_chain` → `build_report` → `render_pdf` produced a 4-page PDF with `SR`/`TX`
+    visible in the box table and findings and zero occurrences of standalone `SO`/`SI`/
+    "unknown"; `effective_tax_code_mappings == {"SO": "SR", "SI": "TX"}` confirmed driving
+    `normalize_vat_group()` via both the module-load path (`CLIENT_ID=sbodemosg`) and the
+    `run_chain`/`configure_client(...)` path, with identical results. `ZP`/`ME`/`TX-RE` did
+    not appear in this period's live data — their drift fixes remain validated by
+    fixtures/unit tests only, not live. Full findings:
+    `exploration-notes/t2.21/t2.21b-chain-acceptance-findings.md`.
+
+    **Remaining T2.21 scope** — T2.20 Section 2d's buckets 3+4+8 (`TX-N33`, `TX-RE`,
+    `TX-E33`→`TX-ESS`, `IM-N33`, `IM-RE`, `IM-ESS`, `NA`, `TXNA`; 8 codes) — is gated on
+    T2.18 (still PLANNED; see T2.18 entry), per T2.20 Section 3's original sequencing
+    analysis. Buckets 5-7 (11 T2.22-deferred codes: Customer Accounting, Reverse Charge,
+    OVR/LVG families) remain untouched. See roadmap T2.21 entry for the
+    description/sequencing of the remaining scope.
+
 ---
 
 *End of document. Generated 2026-05-26 by repository audit; updated 2026-05-27 (Test 3,
@@ -2852,3 +2909,4 @@ Updated 2026-06-12 (T2.20: Annex E vocabulary migration discovery audit — read
 Updated 2026-06-12 (D9: T5.2 post-cage docs-sync — T5.2a/T5.2b agent/ cage section added (registry/tiers/justification/ledger/proposals/executor/budget; CheckSpec v0/PROVISIONAL 14 entries; hooks/harness/approve_cli; Ledger.from_entries; seal.py agent-ledger.json integration); first runtime dep `claude-agent-sdk==0.2.99` documented with cross-platform note; honest status: cage built + hermetically unit-tested, NO live loop, seal/emit stubs deferred T5.3; exec summary updated; T1.5 master total updated 1211 → 1372; T2.17 test count line updated; T5.2 roadmap entry marked DONE; T5.2c + T5.8 + input-surface note added to roadmap; merge-gates.md Gate a extended to cover `agent/` + explicit agent/-allowed note + Gate b flake8 + Gate e agentic-cage invariants 1/2/3/7 graduated; CI import-scan step added to `.github/workflows/ci.yml`; `knowledge-base/sg-tax-code-mappings.md` checked — no change required, cage does not affect accounting-domain routing).*
 Updated 2026-06-12 (D10: T5.1 engine-seam docs-sync — T5.1 section added (`engine/` package; `review(client_config, period, inputs) → ReviewResult` contract; `ReviewResult` 11 fields incl. `analytical_review_data`; `ReviewInputs` 4 fields / forward-compatible source-adapter seam / SAP wired only / deep substitution is T2.12; `GateHalt(message, checked)` plain serialisable record; `run_agent.py` reduced to thin CLI; `review()` is SILENT; `engine/__init__` no-re-export-of-`review` note; import-scan extension barring `orchestrator/` from importing `engine/`; honest qualifier: behavior-preserving refactor, built+unit-tested, content-equivalent stdout, NOT demo-validated, no agent loop, T2.12/T2.11 caveats); exec summary updated; T1.5 master total updated 1372 → 1387; T2.17 test count line updated; `docs/merge-gates.md` checked — already correct (Gate a Check 2 already includes `engine/`), no change required; `knowledge-base/sg-tax-code-mappings.md` checked — no change required, seam is packaging only and does not touch VatGroup→F5-box routing, zero-rating, or accounting-domain content; T5.1 roadmap entry DONE; roadmap build-state snapshot updated; D10 added to roadmap docs tasks).*
 Updated 2026-06-14 (D11: T5.3 SDK-runtime docs-sync — corrected the inaccurate "Linux CI builds from sdist" claim for `claude-agent-sdk==0.2.99` in three places (exec summary, §T5.2b Cross-platform note, roadmap T5.2 entry). Verified finding: the `manylinux_2_17_x86_64` wheel BUNDLES the Linux `claude` binary at `_bundled/claude` (CLI 2.1.175 > SDK 2.0.0 floor); on `ubuntu-latest` pip selects the WHEEL not the sdist, so `pip install` auto-provisions the binary — no npm install, no `cli_path`, no env var; pin holds at 0.2.99. Caveat: no musllinux wheel — an Alpine runner falls back to the binary-less sdist and fails at `query()` time; keep CI on glibc (`ubuntu-latest`) and assert `_bundled/claude` post-install. Test seam noted: `query()`/`ClaudeSDKClient` accept custom `transport=` so the hermetic suite injects a FakeTransport (no binary, no tokens); any live-in-CI loop is opt-in (`workflow_dispatch`) and burns real tokens. Full corrected finding stated once in §T5.2b; exec summary + roadmap carry brief accurate pointers. Roadmap T5.3 entry: SDK-runtime blocker marked RESOLVED, T5.3 stays PLANNED pending the build. Docs-only; no source/test change; test count unchanged at 1387/1. `knowledge-base/sg-tax-code-mappings.md` checked — no change required, the wheel/packaging finding is infra and does not touch VatGroup→F5-box routing, zero-rating, or accounting-domain content; D11 added to roadmap docs tasks).*
+Updated 2026-06-15 (D12: T2.21b docs-sync, SOP step 7 — Appendix C #32 added for T2.21b (buckets 1+2 of T2.20 Section 2d, 16 codes, `SO`→`SR`/`SI`→`TX` renames + 14 direct carryovers, ZP E2-set fix, ME/TX-RE `_vg_category` label fixes, `effective_tax_code_mappings` live wiring, audit-bundle allow-list addition; commit `21c70e9`, branch `t2.21a-annex-e-baseline-vocab`, NOT merged; chain-accepted, 1490/1 on branch, +9 net new vs master's unchanged 1387/1); roadmap T2.21 entry added (buckets 1+2 DONE 2026-06-15, buckets 3+4+8 remaining scope flagged as blocked on T2.18 with no scheduled follow-on — open naming question for Collin/Terry on whether that remainder becomes "T2.21c" or stays an annotation), T2.2 sequencing note and T2.20's T2.18-dependency finding updated to point at it; `exploration-notes/iras-ask-coverage-analysis.md` updated — 10 `SO`/`SI` literal VatGroup-code references renamed to `SR`/`TX` (E1/E3/E4 definitions, findings-to-template mapping, deterministic/judgment matrix), generic "SR/ZR/exempt" box-category shorthand and `TX-RE` references left unchanged (different code, not part of this rename); `system-prompts/base.md` + `knowledge-base/sg-tax-code-mappings.md` already synced to `SR`/`TX` as part of commit `21c70e9` itself (T2.20 Section 1 items 1.11-1.13/1.20) — no separate "accounting-domain"/"technical-understanding" pedagogical docs exist, confirmed via repo-wide search; `exploration-notes/t2.21/t2.21b-chain-acceptance-findings.md` (SOP step 5 deliverable) added; scratch recon scripts/output from the chain-acceptance session removed).*

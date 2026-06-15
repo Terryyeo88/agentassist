@@ -9,7 +9,7 @@
 - `validate_invoice_tax_codes(period_start, period_end, expected_rate=0.07)` — per-line E1–E4 checks across invoices + credit notes; returns a `vatgroup_inventory`.
 - `detect_gst_errors(period_start, period_end, expected_rate=0.07)` — E1–E4 + COMPLETENESS + NO_GST_REG, severity-sorted.
 
-**Error codes (locked to the tool code):** E1 = FX sale coded local standard-rated (SO/DS); E2 = GST charged on a non-taxable supply (TaxTotal>0 with ZR/OS/ES33/ESN33/BL/NR); E3 = standard-rated line carrying zero tax (SO/DS sales or SI purchases); E4 = rate deviation within {SO, SI}; NO_GST_REG = purchase with input tax but supplier `FederalTaxID` blank; COMPLETENESS = purchase/sales count ratio < 0.1.
+**Error codes (locked to the tool code):** E1 = FX sale coded local standard-rated (SR/DS); E2 = GST charged on a non-taxable supply (TaxTotal>0 with ZR/OS/ES33/ESN33/BL/NR); E3 = standard-rated line carrying zero tax (SR/DS sales or TX purchases); E4 = rate deviation within {SR, TX}; NO_GST_REG = purchase with input tax but supplier `FederalTaxID` blank; COMPLETENESS = purchase/sales count ratio < 0.1.
 
 **Scope caveat:** AgentAssist has been validated only on the SBODEMOSG demo database. Production data may contain custom VatGroups, partial-exemption scenarios, manual journals, and scheme-specific imports not yet handled. This analysis describes designed/validated capability, not production-proven behaviour. AgentAssist performs *post-submission* transaction review, which corresponds to the ASK Annual Review Steps 3A–3E substantive testing rather than the pre-submission Pre-Filing Checklist.
 
@@ -46,8 +46,8 @@ Procedural step: choose which filed return(s) to subject to substantive testing.
 | 3A.1.b — Time-of-supply compliance (earlier of invoice issued / payment received) | Invoice date vs payment date | ✗ / 👤 | — | No payment-date ingestion; time-of-supply is a documentary judgment |
 | 3A.1.c — Missing invoice numbers in listing | Sequence-gap analysis | ✗ | — | Not implemented; feasible as a future extension over `DocNum` sequences |
 | 3A.1.d — Transactions reducing sales recorded via valid credit/debit notes | Credit/debit-note linkage | ◐ | `calculate_f5_return` / `validate_invoice_tax_codes` (credit notes fetched & subtracted; CN lines classified) | Subtraction is handled; matching a CN to its original invoice and confirming single-use is not |
-| Detection of FX sales miscoded as local standard-rated (relates to 3A.1.k "correct GST treatment") | FX + SO/DS line detection | ✓ | E1 in `validate_invoice_tax_codes` / `detect_gst_errors`; E1 candidates in `calculate_f5_return` | — |
-| Output GST charged at the correct rate / zero-tax on standard-rated lines (3A.3.1.i) | Per-line rate validation | ✓ | E3 (zero tax on SO/DS) and E4 (rate deviation on SO) | E4 needs the correct `expected_rate` per period (config) |
+| Detection of FX sales miscoded as local standard-rated (relates to 3A.1.k "correct GST treatment") | FX + SR/DS line detection | ✓ | E1 in `validate_invoice_tax_codes` / `detect_gst_errors`; E1 candidates in `calculate_f5_return` | — |
+| Output GST charged at the correct rate / zero-tax on standard-rated lines (3A.3.1.i) | Per-line rate validation | ✓ | E3 (zero tax on SR/DS) and E4 (rate deviation on SR) | E4 needs the correct `expected_rate` per period (config) |
 | 3A.1.e–j, l–m — Customer accounting; EM-operator remote services; OVR/LVG; reverse-charge output tax | Scheme-specific output-tax treatment | ✗ / 👤 | — | Boxes 14–17 and customer-accounting/RC/OVR logic not implemented; largely out of scope for a typical SME |
 | 3A.3 — Source-document checks on sampled transactions (valid tax invoice, GST in SGD, amounts agree to listing) | Inspect physical tax invoices | 👤 | — | Requires the source documents; AgentAssist can supply the population the sample is drawn from |
 
@@ -80,7 +80,7 @@ Procedural step: choose which filed return(s) to subject to substantive testing.
 | 3D.1.1.c — Input tax claimed outside the accounting period | Date-window + cross-period dedup | ✗ | — | No cross-period claim tracking |
 | 3D.1.1.d — Duplicate input-tax claims | Cross-transaction dedup | ✗ | — | Not implemented |
 | 3D.1.1.f — Credit notes received / debit notes issued reduce purchases & GST | CN/DN linkage | ◐ | Purchase credit notes fetched & subtracted; CN lines classified | Subtraction handled; original-document matching not |
-| 3D.1.1.h — Input tax on disallowed expenses (Reg 26/27: medical, motor cars, club, family benefits) | Expense-category + GST disallowance | ◐ / J+ | E2 flags BL + TaxTotal>0 | Catches GST wrongly carried on a BL-coded line; does not *classify* an SI-coded expense as disallowable from its description (J+: surface candidates) |
+| 3D.1.1.h — Input tax on disallowed expenses (Reg 26/27: medical, motor cars, club, family benefits) | Expense-category + GST disallowance | ◐ / J+ | E2 flags BL + TaxTotal>0 | Catches GST wrongly carried on a BL-coded line; does not *classify* a TX-coded expense as disallowable from its description (J+: surface candidates) |
 | 3D.1.1.h — Purchases from non-GST-registered suppliers | Supplier GST-registration status | ✓ | NO_GST_REG (`detect_gst_errors`): purchase with input tax + blank `FederalTaxID` | Relies on `FederalTaxID`; clients storing GST reg no. in a UDF would mis-flag (config) |
 | 3D.1.2 — Partial-exemption apportionment required & correct | De Minimis + apportionment formula | ✗ / 👤 | — | TX-RE mapped as Excluded; no apportionment logic. Judgment-heavy |
 | 3D.1.3 — Reverse charge on imported services/LVG accounted for | RC scope + output tax | ✗ | — | RC not implemented |
@@ -138,13 +138,13 @@ This drives the T1.4 PDF report layout: findings are grouped so a reviewer sees 
 
 | AgentAssist finding | IRAS Template | Template section / row | Appendix 1 error category (verbatim) |
 |---|---|---|---|
-| **E1** — FX sale coded local standard-rated (SO/DS) | Template 2 | Step 3A.1.a (listing reconciliation) and 3A.3.1.ii–iii (amounts/SGD recording) | *General:* "Incorrect recording of value(s) from source document to listing … due to the use of different exchange rates for tax invoices issued in foreign currency"; and "Wrong classification of supplies made" |
+| **E1** — FX sale coded local standard-rated (SR/DS) | Template 2 | Step 3A.1.a (listing reconciliation) and 3A.3.1.ii–iii (amounts/SGD recording) | *General:* "Incorrect recording of value(s) from source document to listing … due to the use of different exchange rates for tax invoices issued in foreign currency"; and "Wrong classification of supplies made" |
 | **E2 (output side)** — GST charged on a ZR / OS / ES33 / ESN33 supply | Template 3 (ZR) / Templates 4–5 (exempt) | 3B.3.1.a (no GST on ZR invoice) / 3C exempt-qualification checks | *Zero-rated:* "Supplies previously treated as zero-rated supplies but cannot qualify"; *Exempt:* "Supplies previously treated as exempt supplies but cannot qualify for exemption" |
 | **E2 (input side)** — GST carried on a BL (blocked) line | Template 6 | Step 3D.1.1.h (disallowed input tax) | *Taxable Purchases and Input Tax:* "Input tax to be disallowed – Not for business purposes and/or specific expenses disallowed under GST (General) Regulations 26 and 27" |
 | **E2 (input side)** — GST carried on an NR (non-registered) line | Template 6 | Step 3D.1.1.h | *Taxable Purchases and Input Tax:* "Input tax to be disallowed – Purchases from non-GST registered suppliers and/or non-taxable purchases … which do not attract GST" |
-| **E3** — standard-rated sales line (SO/DS) with zero output tax | Template 2 | Step 3A.3.1.i (GST charged at correct rate) | *General:* "Over- / Under-reporting of value in GST return"; *Standard-rated:* output-tax under-reporting |
-| **E3** — standard-rated purchase line (SI) with zero tax | Template 6 | Step 3D.3 (B2 — input tax supported by Reg 11 invoice) | *Taxable Purchases and Input Tax:* "Over-/Under-reporting" of input tax |
-| **E4** — rate deviation on SO/SI | Template 2 (SO) / Template 6 (SI) | 3A.3.1.i / 3D source-doc checks | *General:* "Over- / Under-reporting of value in GST return (e.g., due to calculation error …)" |
+| **E3** — standard-rated sales line (SR/DS) with zero output tax | Template 2 | Step 3A.3.1.i (GST charged at correct rate) | *General:* "Over- / Under-reporting of value in GST return"; *Standard-rated:* output-tax under-reporting |
+| **E3** — standard-rated purchase line (TX) with zero tax | Template 6 | Step 3D.3 (B2 — input tax supported by Reg 11 invoice) | *Taxable Purchases and Input Tax:* "Over-/Under-reporting" of input tax |
+| **E4** — rate deviation on SR/TX | Template 2 (SR) / Template 6 (TX) | 3A.3.1.i / 3D source-doc checks | *General:* "Over- / Under-reporting of value in GST return (e.g., due to calculation error …)" |
 | **NO_GST_REG** — input tax claimed on a purchase from a supplier with blank GST reg no. | Template 6 | Step 3D.1.1.h | *Taxable Purchases and Input Tax:* "Input tax to be disallowed – Purchases from non-GST registered suppliers and/or non-taxable purchases" |
 | **COMPLETENESS** — purchase/sales ratio below threshold (possible omission) | Template 1 | Step 1.3a (fluctuations) and 1.3d (TP/TS ratio) | *General:* "Over- / Under-reporting of value in GST return (e.g., due to … omission of transactions)" |
 | **F5 box-level errors** — computed box ≠ declared box | Template 1 | Step 1.3b/1.3c (declared vs computed output/input tax) | *General:* "Over- / Under-reporting of value in GST return" |
@@ -169,7 +169,7 @@ Classifies each substantive check in the ASK Annual Review's transaction-testing
 | 3A.1.b Time-of-supply (earlier of invoice/payment) | J+ | Deterministic only if payment dates are ingested; otherwise documentary. AgentAssist could flag invoice-date anomalies if fed payment data |
 | 3A.1.c Missing invoice numbers | D | SEQ_GAP over `DocNum` built in T2.10 (`orchestrator/check_listing.py`). Two-argument API with company-wide existence semantics (period-boundary fix applied). **Positive-detection validated on synthetic cases (T2.10-V):** DocNum 8002 truly-absent → flagged; DocNum 8003 within range but present company-wide (period-boundary discriminating case) → not flagged. Renders in signed PDF when findings present; Not-Examined item suppressed independently. Live zero-FP on SBODEMOSG Q3 2024 (1005 company-wide headers). **NOT validated on real client data.** SEQ_GAP cannot be seeded live on SAP B1; positive cases were crafted. |
 | 3A.1.d Sales reductions via valid credit/debit notes | D+ | Deterministic once CN/DN linkage is modelled; single-use rule needs cross-document state |
-| 3A.1.k FX/standard-rate correct treatment (→ E1) | D | FX + SO/DS detection is fully deterministic |
+| 3A.1.k FX/standard-rate correct treatment (→ E1) | D | FX + SR/DS detection is fully deterministic |
 | 3A.3.1.i GST at correct rate (→ E3/E4) | D+ | Deterministic given the correct `expected_rate` (per-period config) |
 | 3A.1.e–j, l–m Customer accounting / EM / OVR / RC | J / D+ | Scheme-specific; mostly judgment and out of SME scope |
 | 3A.3 Valid tax invoice exists / Reg 11 compliant / SGD shown | J | Requires the physical document |
@@ -204,7 +204,7 @@ Classifies each substantive check in the ASK Annual Review's transaction-testing
 | 3D.1.1.d Duplicate claims | D | DUP_CLAIM built in T2.10 (`orchestrator/check_listing.py`). Key = (CardCode, NumAtCard, DocTotal); blank NumAtCard excluded. **Positive-detection validated on synthetic cases (T2.10-V):** dup pair 7001/7002 (same CardCode + NumAtCard + DocTotal) → flagged; near-miss 7003 (different NumAtCard) → not flagged. Renders in signed PDF when findings present; Not-Examined item suppressed independently. Live zero-FP on SBODEMOSG (NumAtCard 0% populated — all excluded per design). **INERT on SBODEMOSG and any company where AP operators do not populate NumAtCard** — client-onboarding data-quality precondition. NOT validated on real client data. |
 | 3D.1.1.f Purchase reductions via CN/DN | D+ | CN subtraction handled; matching needs document state |
 | 3D.1.1.h GST on disallowed (BL) expense (→ E2) | D | BL + GST is deterministically detectable |
-| 3D.1.1.h Expense category disallowable under Reg 26/27 | J+ | Classifying an SI expense as disallowable from its description is judgment; AgentAssist can surface keyword candidates |
+| 3D.1.1.h Expense category disallowable under Reg 26/27 | J+ | Classifying a TX expense as disallowable from its description is judgment; AgentAssist can surface keyword candidates |
 | 3D.1.1.h Purchase from non-GST-registered supplier (→ NO_GST_REG) | D+ | Deterministic from `FederalTaxID`; the "+" is config for clients storing reg no. in a UDF |
 | 3D.1.2 Partial-exemption apportionment | J | De Minimis + apportionment; judgment-heavy, not built |
 | 3D.1.3 Reverse charge accounted for | J / D+ | Scheme-dependent; not built |

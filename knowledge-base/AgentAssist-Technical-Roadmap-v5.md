@@ -73,15 +73,18 @@ Effort 1–1.5 wk. Owner Collin. Add `JournalEntries` queries; filter GST-releva
 ### T2.2 — Custom VatGroup discovery and reporting — PLANNED (sequenced behind T2.20)
 Effort 1 wk. Owner Collin. Enumerate the VatGroup codes actually present in the client's transaction data, classify against the 18-code standard set, and surface unknowns with sample DocNums/counterparties — the independent completeness check that catches codes the client forgot or never declared. The enumeration produces a client-confirmation worksheet; the client declares the intended treatment of each custom/unknown code; those client-declared treatments persist to per-client config. Treatment is CLIENT-DECLARED, not auto-classified — intended treatment of a custom code cannot be inferred from data (self-report is authoritative for treatment; enumeration is authoritative for completeness). Thin slice of the future T2.12 normalization adapter.
 
-**Sequencing note (T2.20, 2026-06-12):** this entry's "18-code standard set" is
-the pre-Annex-E vocabulary. T2.20's discovery audit
+**Sequencing note (T2.20, 2026-06-12; updated 2026-06-15):** this entry's
+"18-code standard set" is the pre-Annex-E vocabulary. T2.20's discovery audit
 (`exploration-notes/t2.20/vocabulary-migration-inventory.md`) found that 20 of
 the 35 IRAS Annex E GST Category Codes either have no equivalent in the
-18-code set or collide with an existing code under a different meaning. Do not
-scope T2.2 against "the 18-code standard set" until the Annex E migration
-(tentatively T2.21) has landed or has been explicitly deferred — otherwise
-T2.2's classification step will need rework against whatever vocabulary T2.21
-produces.
+18-code set or collide with an existing code under a different meaning. T2.21
+buckets 1+2 (the `SO`→`SR`/`SI`→`TX` renames + 14 direct carryovers — 16 of 35
+codes) are DONE (commit `21c70e9`, branch `t2.21a-annex-e-baseline-vocab`, not
+yet merged — see T2.21 entry below), but T2.21's remaining buckets 3+4+8 (8
+codes) are blocked on T2.18 with no scheduled follow-on. Do not scope T2.2
+against "the 18-code standard set" until T2.21's full scope has landed or the
+remainder has been explicitly deferred — otherwise T2.2's classification step
+will need rework against whatever vocabulary the remaining buckets produce.
 
 ### T2.3 — Automated evaluation harness — PLANNED (durability mechanism for the headline reliability claim)
 Effort 2–3 wk. Owner Terry. Given stored prompt + reference output, invoke the Claude API directly, capture response, compute a scoring vector; run as CI on every meaningful change. Scoring uses structural checks, not text comparison. Protects the 30/30 across model upgrades and prompt/KB edits. T2.11 builds on it for the reasoning-layer basket.
@@ -304,7 +307,10 @@ Edition, 9 Mar 2026), Annex E. No source files changed. Artefact:
   building block for the `TX-RE`/`IM-RE`/`TXRC-RE` residual-input-tax family,
   but the Customer Accounting and OVR/LVG families (8 codes) need either an
   extended T2.18 scope or a "manual review" fallback. Recommend sequencing
-  T2.18 immediately before/with the build task (tentatively T2.21).
+  T2.18 immediately before/with the remaining T2.21 build (buckets 3+4+8) —
+  see T2.21 entry below. **Confirmed by T2.21b (2026-06-15):** buckets 1+2
+  (16 codes, the `SO`→`SR`/`SI`→`TX` renames + 14 direct carryovers) needed no
+  T2.18 input at all — the T2.18 dependency is specific to buckets 3+4+8.
 - Surfaced two pre-existing drift bugs (not fixed, per task scope):
   `system-prompts/base.md`'s E2 condition set and `report/routing.py`'s
   `_ZERO_RATED_VGS` are both missing `ZP`, added to the production E2 set in
@@ -324,6 +330,61 @@ Edition, 9 Mar 2026), Annex E. No source files changed. Artefact:
   config flag can resolve.
 
 See T2.2 (above) for the resulting sequencing note.
+
+### T2.21 — Annex E vocabulary migration: build — buckets 1+2 DONE, buckets 3+4+8 remaining scope (blocked on T2.18)
+
+**Buckets 1+2 — DONE (2026-06-15).** Committed `21c70e9` on branch
+`t2.21a-annex-e-baseline-vocab` (NOT yet merged to master). Owner Collin.
+Implements T2.20 Section 2d's buckets 1+2 (16 of the 35 Annex E codes): the 14
+direct-carryover codes (`DS`, `ZR`, `ES33`, `ESN33`, `OS`, `IM`, `ME`, `IGDS`,
+`ZP`, `BL`, `EP`, `OP`, `NR`, `NG`) plus the 2 renamed codes `SO`→`SR`
+(sales standard-rated) and `SI`→`TX` (purchase standard-rated), edited/synced
+across the ~7 load-bearing locations identified in T2.20 Section 1. Also
+fixes two T2.20 Section 0 drift findings — `ZP` was missing from
+`_E2_ZERO_RATE_CODES` (`sap_b1_server.py`) and `_ZERO_RATED_VGS`
+(`report/routing.py`), both now include it; and `_vg_category`'s `ME`/`TX-RE`
+human-readable labels were corrected to match `base.md`/`KNOWN_VATGROUPS`.
+Wires `effective_tax_code_mappings` live:
+`config/loader._SAP_B1_DEFAULT_TAX_CODE_MAPPINGS = {"SO": "SR", "SI": "TX"}`
+is now applied by `normalize_vat_group()` for every SAP B1 client that
+declares no `tax_code_mappings` override (i.e. `sbodemosg.yaml` and
+`example.yaml` as shipped); `audit_bundle/config_redaction.py`'s
+`_ALLOW_LIST` gains `effective_tax_code_mappings`.
+
+**Chain-accepted (SOP step 5, 2026-06-15)** via live, read-only SBODEMOSG
+validation, period 2024-07-01..2024-07-07 (T2.20 Section 0's window), diffing
+`8ccc2e8` (pre-rename) against `21c70e9` (post-rename): F5 box totals
+byte-identical before/after; `vatgroup_inventory` shows `SR`(13)/`TX`(1) in
+place of `SO`/`SI`, `known_to_mapping: true`, `lt_box`/`tt_box`/`side`
+unchanged; `detect_gst_errors` returns the same single E1 finding (doc_num
+958) with only the VatGroup token in the description text changed; a full
+`run_chain` → `build_report` → `render_pdf` produced a 4-page PDF with
+`SR`/`TX` visible and zero occurrences of standalone `SO`/`SI`/"unknown";
+`effective_tax_code_mappings == {"SO": "SR", "SI": "TX"}` confirmed live via
+both the module-load and `run_chain`/`configure_client` paths. `ZP`/`ME`/
+`TX-RE` did not appear in this period's live data — those fixes remain
+fixture/unit-test-validated only. **1490 passed, 1 skipped on the branch**
+(+9 net new vs master's 1387/1 — 10 new tests, 1 prior characterization test
+superseded by the rename; branch not yet merged, so master's test count is
+unchanged). Findings:
+`exploration-notes/t2.21/t2.21b-chain-acceptance-findings.md`. See
+`AGENTASSIST_TECHNICAL_STATE.md` Appendix C #32.
+
+**Remaining scope (buckets 3+4+8, 8 codes) — blocked on T2.18, no scheduled
+follow-on task.** T2.20 Section 2d's buckets 3+4+8 were explicitly out of
+scope for T2.21b: bucket 3 (`TX-N33`, `TX-RE`, `TX-E33`→`TX-ESS` — name
+collisions in the T2.18-attribution family), bucket 4 (`IM-N33`, `IM-RE`,
+`IM-ESS` — partial-`IM` carryover, T2.18-attribution), and bucket 8 (`NA`,
+`TXNA` — scheme-participation). Per T2.20 Section 3's analysis, confirmed by
+T2.21b's experience (buckets 1+2 needed no T2.18 input at all): all 8 of
+these codes require T2.18's `actively_makes_exempt_supplies`/scheme-status
+config, which is still PLANNED (see T2.18 entry above — this finding does not
+change T2.18's own scope). This remaining scope therefore has **no scheduled
+follow-on task** pending a T2.18 sequencing decision — it is deliberately
+*not* labelled "T2.21c" here, since whether it becomes its own numbered entry
+or stays an annotation on this entry is an open question for Collin/Terry.
+Buckets 5-7 (11 T2.22-deferred codes — Customer Accounting, Reverse Charge,
+OVR/LVG families) remain untouched and tracked under T2.22.
 
 ---
 
