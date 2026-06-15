@@ -4,6 +4,8 @@
 *Current GST rate: 9% (effective 1 Jan 2024)*
 *Note: Demo DB SBODEMOSG has rates at 7% (pre-2024). This is a demo data artefact, NOT a compliance issue. Update before production use against live SME data.*
 
+*T2.21b: SAP B1's native `SO` (sales standard-rated) and `SI` (purchase standard-rated) codes are normalized by AgentAssist to the canonical `SR` and `TX` codes respectively (see `config/loader.py`'s `effective_tax_code_mappings` and `sap_b1_server.normalize_vat_group()`). The "SAP B1 VatGroup Codes in SBODEMOSG" table below documents the raw codes as stored in SBODEMOSG; the "F5 Box Calculation Rules" section below documents the post-normalization routing logic and therefore uses `SR`/`TX`.*
+
 ---
 
 ## SAP B1 VatGroup Codes in SBODEMOSG
@@ -39,7 +41,7 @@
 ## F5 Box Calculation Rules
 
 ### Box 1 — Standard-Rated Supplies (value)
-- Sum of LineTotal (excl. GST) for sales invoice lines where VatGroup = SO or DS
+- Sum of LineTotal (excl. GST) for sales invoice lines where VatGroup = SR or DS
 - EXCLUDE any GST component (Box 1 reports net values only)
 - DEDUCT credit notes with same VatGroups
 - IRAS reference: para 5.7 and inclusion list 5.7(a)–(k)
@@ -59,18 +61,18 @@
 - IRAS reference: para 5.10
 
 ### Box 5 — Taxable Purchases (value)
-- Sum of LineTotal (excl. GST) for purchase invoice lines where VatGroup IN (SI, ZP, IM, IGDS, ME)
+- Sum of LineTotal (excl. GST) for purchase invoice lines where VatGroup IN (TX, ZP, IM, IGDS, ME)
 - EXCLUDE: BL, NR, EP, OP, TX-E33, TX-N33 — these are not "taxable purchases" per IRAS
 - IRAS reference: para 5.11
 - **Critical**: Box 5 must be tracked separately from Box 7. Do NOT compute Box 5 by re-grossing Box 7 (IRAS para 6.5.1)
 
 ### Box 6 — Output Tax Due
-- Sum of TaxTotal at line level for sales invoice lines where VatGroup IN (SO, DS)
+- Sum of TaxTotal at line level for sales invoice lines where VatGroup IN (SR, DS)
 - IRAS reference: para 5.12
 - Production scope additions (not in POC): reverse charge GST, overseas vendor registration GST, low-value goods GST, bad debt recovery, eTRS reclaims
 
 ### Box 7 — Input Tax Claimed
-- Sum of TaxTotal at line level for purchase invoice lines where VatGroup IN (SI, IM, IGDS)
+- Sum of TaxTotal at line level for purchase invoice lines where VatGroup IN (TX, IM, IGDS)
 - EXCLUDE: BL (blocked), ZP (zero-rated, no GST), EP, OP, ME (GST suspended), NR (no GST), TX-E33, TX-N33
 - IRAS reference: para 5.13
 - Requires valid tax invoice with supplier's GST registration number for each claim

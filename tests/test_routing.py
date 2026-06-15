@@ -10,7 +10,7 @@ class TestRoute:
     # ── E1 ────────────────────────────────────────────────────────────────────
 
     def test_e1_routes_to_template_2(self):
-        assert route("E1", "SO")["number"] == 2
+        assert route("E1", "SR")["number"] == 2
 
     def test_e1_ds_routes_to_template_2(self):
         assert route("E1", "DS")["number"] == 2
@@ -50,20 +50,20 @@ class TestRoute:
 
     # ── E3 / E4 ──────────────────────────────────────────────────────────────
 
-    def test_e3_so_routes_to_template_2(self):
-        assert route("E3", "SO")["number"] == 2
+    def test_e3_sr_routes_to_template_2(self):
+        assert route("E3", "SR")["number"] == 2
 
     def test_e3_ds_routes_to_template_2(self):
         assert route("E3", "DS")["number"] == 2
 
-    def test_e3_si_routes_to_template_6(self):
-        assert route("E3", "SI")["number"] == 6
+    def test_e3_tx_routes_to_template_6(self):
+        assert route("E3", "TX")["number"] == 6
 
-    def test_e4_so_routes_to_template_2(self):
-        assert route("E4", "SO")["number"] == 2
+    def test_e4_sr_routes_to_template_2(self):
+        assert route("E4", "SR")["number"] == 2
 
-    def test_e4_si_routes_to_template_6(self):
-        assert route("E4", "SI")["number"] == 6
+    def test_e4_tx_routes_to_template_6(self):
+        assert route("E4", "TX")["number"] == 6
 
     # ── NO_GST_REG / COMPLETENESS / unknown ──────────────────────────────────
 
@@ -79,11 +79,11 @@ class TestRoute:
     # ── TemplateRef shape ────────────────────────────────────────────────────
 
     def test_template_ref_label_is_non_empty(self):
-        ref = route("E1", "SO")
+        ref = route("E1", "SR")
         assert ref["label"] != ""
 
     def test_template_ref_label_for_e1_mentions_standard_rated(self):
-        ref = route("E1", "SO")
+        ref = route("E1", "SR")
         assert "3A" in ref["label"] or "Standard-rated" in ref["label"]
 
     def test_none_vat_group_does_not_raise(self):
@@ -96,7 +96,7 @@ class TestAppendix1For:
     # ── E1 ────────────────────────────────────────────────────────────────────
 
     def test_e1_returns_wrong_classification_string(self):
-        result = appendix1_for("E1", "SO")
+        result = appendix1_for("E1", "SR")
         assert result == APPENDIX1_WORDING["E1"]
         assert "Wrong classification" in result
 

@@ -1432,8 +1432,8 @@
   "config": {
     "source_system": "xero",
     "tax_code_mappings": {
-      "OUTPUT": "SO",
-      "INPUT": "SI"
+      "OUTPUT": "SR",
+      "INPUT": "TX"
     }
   }
 }
