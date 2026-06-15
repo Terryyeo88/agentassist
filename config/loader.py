@@ -61,8 +61,8 @@ logger = logging.getLogger(__name__)
 # ── Standard VatGroup codes ────────────────────────────────────────────────────
 # Authoritative set for Singapore GST F5. Custom codes must not collide with these.
 _STANDARD_VAT_GROUPS = frozenset({
-    "SO", "DS", "ZR", "ES33", "ESN33", "OS",           # sales side
-    "SI", "ZP", "IM", "IGDS", "ME", "NR",              # purchase side (Box 5 / Box 7)
+    "SR", "DS", "ZR", "ES33", "ESN33", "OS", "NG",     # sales side
+    "TX", "ZP", "IM", "IGDS", "ME", "NR",              # purchase side (Box 5 / Box 7)
     "BL", "EP", "OP", "TX-E33", "TX-N33", "TX-RE",     # excluded purchases
 })
 
@@ -74,10 +74,10 @@ _STANDARD_VAT_GROUPS = frozenset({
 # override) — mirrors T2.19's "absent block -> defaults" precedent without
 # requiring per-client YAML edits.
 #
-# NOTE: "SR"/"TX" are not yet in _STANDARD_VAT_GROUPS or F5_BOX_MAPPING
-# (T2.21b+, not yet landed) — this constant and the property that uses it are
-# deliberately NOT validated against _STANDARD_VAT_GROUPS (see Step 9 below),
-# so this addition does not raise ValueError on load.
+# NOTE: as of T2.21b, "SR"/"TX" are canonical members of _STANDARD_VAT_GROUPS
+# and F5_BOX_MAPPING. This constant and the property that uses it are still
+# not validated against _STANDARD_VAT_GROUPS (see Step 9 below) — they are an
+# unconditional built-in default, not a user-declared tax_code_mappings entry.
 _SAP_B1_DEFAULT_TAX_CODE_MAPPINGS: dict[str, str] = {"SO": "SR", "SI": "TX"}
 
 

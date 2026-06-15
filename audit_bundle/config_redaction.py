@@ -41,6 +41,13 @@ _ALLOW_LIST: frozenset[str] = frozenset({
     "firm_name",
     "source_system",
     "tax_code_mappings",
+    # T2.21b: the resolved mapping normalize_vat_group() actually applies —
+    # tax_code_mappings (above) reflects only what the client YAML declares,
+    # but effective_tax_code_mappings also includes the built-in SAP B1
+    # SO -> SR / SI -> TX default. Recording both in the bundle lets a
+    # reviewer see the declared override alongside the mapping that was
+    # actually in effect for this run.
+    "effective_tax_code_mappings",
 })
 
 # Fields that must never enter the bundle even if inadvertently added to the allow-list.

@@ -12,13 +12,13 @@ aggregation logic that invokes them.
 
 Routing overview:
     E1                  → Template 2 (standard-rated supplies)
-    E2 / ZR or OS       → Template 3 (zero-rated supplies)
+    E2 / ZR, OS or ZP   → Template 3 (zero-rated supplies)
     E2 / ES33 or ESN33  → Template 4 or 5 (exempt supplies; flag-controlled)
     E2 / BL or NR       → Template 6 (input tax)
-    E3 / SO or DS       → Template 2
-    E3 / SI             → Template 6
-    E4 / SO             → Template 2
-    E4 / SI             → Template 6
+    E3 / SR or DS       → Template 2
+    E3 / TX             → Template 6
+    E4 / SR             → Template 2
+    E4 / TX             → Template 6
     NO_GST_REG          → Template 6
     COMPLETENESS        → Template 1
     unrecognised        → Template 1 (safe fallback)
@@ -56,10 +56,10 @@ class TemplateRef(TypedDict):
 # Frozen sets used by both _template_number and _appendix1_key for membership
 # tests.  frozenset gives O(1) lookup and is immutable, preventing accidental
 # mutation in either routing function.
-_ZERO_RATED_VGS: frozenset[str] = frozenset({"ZR", "OS"})
+_ZERO_RATED_VGS: frozenset[str] = frozenset({"ZR", "OS", "ZP"})
 _EXEMPT_VGS: frozenset[str] = frozenset({"ES33", "ESN33"})
 _BLOCKED_INPUT_VGS: frozenset[str] = frozenset({"BL", "NR"})
-_SR_SALES_VGS: frozenset[str] = frozenset({"SO", "DS"})
+_SR_SALES_VGS: frozenset[str] = frozenset({"SR", "DS"})
 
 
 def _template_number(
@@ -102,13 +102,13 @@ def _template_number(
     if error_code == "E3":
         if vg in _SR_SALES_VGS:
             return 2
-        if vg == "SI":
+        if vg == "TX":
             return 6
         return 1
     if error_code == "E4":
-        if vg == "SO":
+        if vg == "SR":
             return 2
-        if vg == "SI":
+        if vg == "TX":
             return 6
         return 1
     if error_code == "NO_GST_REG":
@@ -185,13 +185,13 @@ def _appendix1_key(error_code: str, vg: str) -> str:
     if error_code == "E3":
         if vg in _SR_SALES_VGS:
             return "E3_SALES"
-        if vg == "SI":
+        if vg == "TX":
             return "E3_PURCHASE"
         return "UNKNOWN_VATGROUP"
     if error_code == "E4":
-        if vg == "SO":
+        if vg == "SR":
             return "E4_SO"
-        if vg == "SI":
+        if vg == "TX":
             return "E4_SI"
         return "UNKNOWN_VATGROUP"
     if error_code == "NO_GST_REG":

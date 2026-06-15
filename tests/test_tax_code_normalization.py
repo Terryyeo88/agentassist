@@ -78,11 +78,11 @@ def test_unknown_code_passes_through_to_anomalies():
 def test_case_insensitive_lookup(tmp_path):
     # Mappings as produced by load_client_config() have uppercase keys; the
     # raw_code itself may arrive in any case from the source system.
-    _write_config(tmp_path, tax_code_mappings={"output": "SO"})
+    _write_config(tmp_path, tax_code_mappings={"output": "SR"})
     cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
-    assert normalize_vat_group("output", cfg.tax_code_mappings) == "SO"
-    assert normalize_vat_group("Output", cfg.tax_code_mappings) == "SO"
-    assert normalize_vat_group("OUTPUT", cfg.tax_code_mappings) == "SO"
+    assert normalize_vat_group("output", cfg.tax_code_mappings) == "SR"
+    assert normalize_vat_group("Output", cfg.tax_code_mappings) == "SR"
+    assert normalize_vat_group("OUTPUT", cfg.tax_code_mappings) == "SR"
 
 
 def test_canonical_code_passthrough():
@@ -121,15 +121,15 @@ def test_load_client_config_validates_bad_target(tmp_path):
 
 
 def test_load_client_config_normalizes_keys_to_uppercase(tmp_path):
-    _write_config(tmp_path, tax_code_mappings={"output": "SO", "Input": "SI"})
+    _write_config(tmp_path, tax_code_mappings={"output": "SR", "Input": "TX"})
     cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
-    assert cfg.tax_code_mappings == {"OUTPUT": "SO", "INPUT": "SI"}
+    assert cfg.tax_code_mappings == {"OUTPUT": "SR", "INPUT": "TX"}
 
 
 def test_valid_mapping_loads_cleanly(tmp_path):
-    _write_config(tmp_path, tax_code_mappings={"OUTPUT": "SO", "INPUT": "SI"})
+    _write_config(tmp_path, tax_code_mappings={"OUTPUT": "SR", "INPUT": "TX"})
     cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
-    assert cfg.tax_code_mappings == {"OUTPUT": "SO", "INPUT": "SI"}
+    assert cfg.tax_code_mappings == {"OUTPUT": "SR", "INPUT": "TX"}
 
 
 def test_invalid_target_code_raises(tmp_path):
@@ -140,9 +140,9 @@ def test_invalid_target_code_raises(tmp_path):
 
 
 def test_keys_normalized_to_uppercase(tmp_path):
-    _write_config(tmp_path, tax_code_mappings={"output": "SO", "Input": "SI"})
+    _write_config(tmp_path, tax_code_mappings={"output": "SR", "Input": "TX"})
     cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
-    assert cfg.tax_code_mappings == {"OUTPUT": "SO", "INPUT": "SI"}
+    assert cfg.tax_code_mappings == {"OUTPUT": "SR", "INPUT": "TX"}
 
 
 def test_absent_mapping_block_gives_empty_dict(tmp_path):
@@ -190,11 +190,11 @@ def test_non_sap_b1_client_does_not_get_sap_b1_default_merged(tmp_path):
     _write_config(
         tmp_path,
         source_system="xero",
-        tax_code_mappings={"OUTPUT": "SO", "INPUT": "SI"},
+        tax_code_mappings={"OUTPUT": "SR", "INPUT": "TX"},
     )
     cfg = load_client_config("testclient", check_connectivity=False, config_dir=tmp_path)
     assert cfg.source_system == "xero"
-    assert cfg.effective_tax_code_mappings == {"OUTPUT": "SO", "INPUT": "SI"}
+    assert cfg.effective_tax_code_mappings == {"OUTPUT": "SR", "INPUT": "TX"}
     assert "SO" not in cfg.effective_tax_code_mappings  # no SAP-B1 default leakage
     assert "SI" not in cfg.effective_tax_code_mappings
 
@@ -245,37 +245,21 @@ def test_default_mapping_round_trips_through_f5_box_mapping():
 
 
 # ---------------------------------------------------------------------------
-# T2.21a — _STANDARD_VAT_GROUPS gap (scope-confirmation flag, see report)
-#
-# Characterization test: confirm that _STANDARD_VAT_GROUPS (config/loader.py)
-# does not yet contain "SR"/"TX". This documents a constraint on HOW the
-# built-in default must be implemented: if {"SO": "SR", "SI": "TX"} were merged
-# into raw_mappings BEFORE the Step 9 validation loop (which checks every
-# mapping target against _STANDARD_VAT_GROUPS), load_client_config() would
-# raise ValueError("'SR' is not a canonical AgentAssist VatGroup code") for
-# every sap_b1 client — including sbodemosg — as soon as the default is wired
-# in. The default must therefore be exposed via a property computed AFTER Step
-# 9 (over the already-validated tax_code_mappings), as assumed by the tests
-# above — NOT by injecting it into raw_mappings ahead of validation.
-#
-# This test currently PASSES (it documents today's state); it is not part of
-# the "failing tests" deliverable below.
-# ---------------------------------------------------------------------------
-
-def test_standard_vat_groups_does_not_yet_include_sr_or_tx():
-    assert "SR" not in _STANDARD_VAT_GROUPS
-    assert "TX" not in _STANDARD_VAT_GROUPS
-
-
-# ---------------------------------------------------------------------------
 # T2.21b — _STANDARD_VAT_GROUPS core rename (SO->SR, SI->TX)
 #
-# SOP step 3 (failing test first). Per vocabulary-migration-inventory.md
-# Section 2d buckets 1+2 (the 16 in-scope codes: 13 unchanged carryovers + NG
-# + SO->SR/SI->TX), _STANDARD_VAT_GROUPS (config/loader.py:63-67) must drop
-# "SO"/"SI" and add "SR"/"TX" as part of the canonical-vocabulary rename.
-# Expected to fail today: "SR"/"TX" are absent and "SO"/"SI" are still present
-# (see test_standard_vat_groups_does_not_yet_include_sr_or_tx above).
+# Per vocabulary-migration-inventory.md Section 2d buckets 1+2 (the 16
+# in-scope codes: 13 unchanged carryovers + NG + SO->SR/SI->TX),
+# _STANDARD_VAT_GROUPS (config/loader.py:63-67) drops "SO"/"SI" and adds
+# "SR"/"TX"/"NG" as part of the canonical-vocabulary rename.
+#
+# NOTE: this supersedes the T2.21a characterization test
+# test_standard_vat_groups_does_not_yet_include_sr_or_tx (which asserted the
+# opposite — "SR"/"TX" NOT in _STANDARD_VAT_GROUPS — and has been removed now
+# that its premise is false). The constraint it documented (the SAP-B1 default
+# must be exposed via effective_tax_code_mappings, computed AFTER Step 9's
+# validation loop, not merged into raw_mappings before it) remains true and is
+# unaffected by _STANDARD_VAT_GROUPS now containing "SR"/"TX" — Step 9 still
+# only validates user-declared tax_code_mappings, not the built-in default.
 # ---------------------------------------------------------------------------
 
 def test_standard_vat_groups_includes_sr_and_tx_not_so_or_si():
@@ -413,23 +397,23 @@ def configured_mappings():
 
 
 def test_xero_output_code_routes_to_box1(configured_mappings):
-    configured_mappings({"OUTPUT": "SO"})
+    configured_mappings({"OUTPUT": "SR"})
     line = {"VatGroup": "OUTPUT", "LineTotal": 1000, "TaxTotal": 90}
     doc = {"DocNum": 101, "DocDate": "2024-07-15", "CardName": "Acme Pte Ltd", "DocCurrency": "SGD"}
 
     issues = sap_b1_server._classify_line(line, doc, entity_type="sales", expected_rate=0.09)
 
-    # Clean line at the expected 9% rate — normalized to canonical SO,
+    # Clean line at the expected 9% rate — normalized to canonical SR,
     # raises no E1-E4 issue (i.e. does not land in anomalies).
     assert issues == []
-    assert sap_b1_server.normalize_vat_group("OUTPUT", sap_b1_server._tax_code_mappings) == "SO"
-    mapping = sap_b1_server.F5_BOX_MAPPING["SO"]
+    assert sap_b1_server.normalize_vat_group("OUTPUT", sap_b1_server._tax_code_mappings) == "SR"
+    mapping = sap_b1_server.F5_BOX_MAPPING["SR"]
     assert mapping["lt_box"] == "box_1_standard_rated_sales"
     assert mapping["tt_box"] == "box_6_output_tax"
 
 
 def test_xero_input_code_detects_e3(configured_mappings):
-    configured_mappings({"INPUT": "SI"})
+    configured_mappings({"INPUT": "TX"})
     line = {"VatGroup": "INPUT", "LineTotal": 500, "TaxTotal": 0}
     doc = {"DocNum": 102, "DocDate": "2024-07-16", "CardName": "Vendor Co", "DocCurrency": "SGD"}
 
@@ -438,7 +422,7 @@ def test_xero_input_code_detects_e3(configured_mappings):
     assert len(issues) == 1
     assert issues[0]["error_code"] == "E3"
     # The issue's vat_group is the canonical code, not the raw "INPUT".
-    assert issues[0]["vat_group"] == "SI"
+    assert issues[0]["vat_group"] == "TX"
 
 
 def test_unmapped_code_lands_in_anomalies(configured_mappings):
