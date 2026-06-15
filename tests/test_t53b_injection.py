@@ -68,7 +68,7 @@ def _run(scripts, provider):
         vendor_catalog=fx.default_vendor_catalog(),
         prior_period_store=fx.default_prior_period_store(),
     )
-    transport = fx.FakeTransport(scripts=scripts)
+    transport = fx.FakeTransport(scripts=scripts, ctx=ctx, ledger=ledger)
     result = run_casefile_loop(
         invoke_review=lambda: _doc_only_review(),
         transport=transport, ctx=ctx, ledger=ledger, budget=budget, store=store,

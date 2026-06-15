@@ -58,10 +58,11 @@ class TestFullLoopHappyPath:
         ledger = Ledger()
         budget = RunBudget(max_turns=20, max_cost_usd=1.0)
         store = StagingStore()
-        transport = fx.FakeTransport(scripts=fx.golden_scripts())
+        ctx = _ctx()
+        transport = fx.FakeTransport(scripts=fx.golden_scripts(), ctx=ctx, ledger=ledger)
         result = run_casefile_loop(
             invoke_review=_invoke(fx.canned_review_result()),
-            transport=transport, ctx=_ctx(), ledger=ledger, budget=budget, store=store,
+            transport=transport, ctx=ctx, ledger=ledger, budget=budget, store=store,
         )
         return result, ledger, budget, store
 
@@ -124,10 +125,11 @@ class TestReEntryOnIncompleteDossier:
             # gst_amount_mismatch completes first turn.
             "doc:gst_amount_mismatch:958": [fx.golden_turn_doc_mismatch()],
         }
-        transport = fx.FakeTransport(scripts=scripts)
+        ctx = _ctx()
+        transport = fx.FakeTransport(scripts=scripts, ctx=ctx, ledger=ledger)
         result = run_casefile_loop(
             invoke_review=_invoke(fx.canned_review_result()),
-            transport=transport, ctx=_ctx(), ledger=ledger, budget=budget, store=store,
+            transport=transport, ctx=ctx, ledger=ledger, budget=budget, store=store,
         )
         no_gst = [o for o in result.outcomes if o.check_id == "NO_GST_REG"][0]
         # Took two attempts (turn 1 incomplete, turn 2 complete).
@@ -147,10 +149,11 @@ class TestHaltedReviewProducesNoDossiers:
         ledger = Ledger()
         budget = RunBudget(max_turns=20, max_cost_usd=1.0)
         store = StagingStore()
-        transport = fx.FakeTransport(scripts={})
+        ctx = _ctx()
+        transport = fx.FakeTransport(scripts={}, ctx=ctx, ledger=ledger)
         result = run_casefile_loop(
             invoke_review=_invoke(fx.halted_review_result()),
-            transport=transport, ctx=_ctx(), ledger=ledger, budget=budget, store=store,
+            transport=transport, ctx=ctx, ledger=ledger, budget=budget, store=store,
         )
         assert result.review_status == "halted"
         assert result.dossiers == []

@@ -95,6 +95,9 @@ T2.16 (on master, 2026-06-11) added the annual analytical review TP/TS ratio pas
 T5.2a (on master, 2026-06-12, PR #12) built the action-tier enforcement core (`agent/` package): Tier enum + ToolSpec/CheckSpec/LedgerEntry/ProposalArtifact/RunBudget schemas; tool registry (8 tools: 4 Tier-0 read-only, 4 Tier-1 staging, zero Tier-2-executing); justification gate (heuristic backstop + ledger write BEFORE allow); append-only hash-chained justification ledger (reuses `canonical.py` primitives); Tier-2 proposal artifact + StagingStore (CLI-first approval mechanism); deterministic executor framework (`test_noop` hermetic handler + documented NotImplemented stubs for `seal`/`emit`, deferred T5.3); RunBudget with BudgetExceededSignal routing to invariant-7 non-blocking path. CheckSpec schema is v0/PROVISIONAL — 14 entries spanning E1/E2/E3/E4/NO_GST_REG/COMPLETENESS/SEQ_GAP/DUP_CLAIM/declared_A/declared_B/gst_amount_mismatch/correct_period/total_inconsistency/reg11_supplier_gst_absent; NOT wired to any consumer; Collin ratifies schema after T2.18 lands. Zero `anthropic` import in `agent/`; stdlib only. 89 new tests (T-1 through T-10). Test state after T5.2a: **1328 passed, 1 skipped**.
 T5.2b (on master, 2026-06-12, PR #13) added the SDK integration surface: `agent/hooks.py` (`make_hooks(ledger)` → PreToolUse/PostToolUse callbacks; Tier-3 → deny tool-not-found; Tier-1 → justification gate with ledger write BEFORE allow; Tier-0 → always allow + ledger entry; PostToolUse → audit_log separate from sealed chain, whether execution outcomes enter the sealed ledger deferred to T5.3); `agent/harness.py` (`build_options(ledger, budget)` → ClaudeAgentOptions with Tier-0/1 tools + hooks wired; SDK import deferred); `agent/approve_cli.py` (list/show/approve/reject library + argparse CLI over StagingStore + Executor); `agent/ledger.py` extended with `Ledger.from_entries(list[dict])` for sealed-JSON reload; `audit_bundle/seal.py` extended with `agent_ledger=None` parameter — writes `steps/agent-ledger.json` covered by the manifest root-hash. First runtime dependency: `claude-agent-sdk==0.2.99` added to `requirements.txt`. **Cross-platform note** (corrected D11, 2026-06-14 — see §T5.2b): on `ubuntu-latest` pip selects the `manylinux` wheel, which BUNDLES the Linux `claude` binary (`_bundled/claude`), so `pip install` auto-provisions it — no npm/`cli_path`/env var; import-only works without the binary; there is no musllinux wheel, so keep CI on glibc. 44 new tests (T-1 through T-8). **Honest status: cage built + hermetically unit-tested; NO live agent loop; `seal`/`emit` executor handlers are NotImplemented stubs deferred to T5.3. NOT demo-validated.** Current test state: **1372 passed, 1 skipped**.
 T5.1 (on master, 2026-06-12, merge commit `e30f795`) extracted the full GST review pipeline from `run_agent.py` into `engine/review.py` as one atomic callable: `review(client_config, period, inputs) → ReviewResult`. `ReviewInputs` (4 fields: `line_source`, `provider`, `declared_f5`, `analytical_review`) is the forward-compatible source-adapter seam — SAP B1 wired today via `fetch_si_purchase_lines`; a T2.12 CSV/Excel adapter substitutes a different `line_source` callable without changing `review()`'s signature. `ReviewResult` carries 11 fields including `analytical_review_data`. `GateHalt(message, checked)` is a plain serialisable record replacing the live `GateFailure` exception in the result. `run_agent.py` reduced to a thin CLI; no pipeline logic remains there. `review()` is SILENT — caller prints from the returned result. `engine/__init__.py` re-exports `ReviewResult`, `ReviewInputs`, `GateHalt` but intentionally does NOT re-export `review` itself (re-exporting would shadow the `engine.review` submodule attribute and break `patch("engine.review.run_chain", …)` in tests). Import-scan gate extended to bar `orchestrator/` from importing `engine/` (dependency direction: `engine/ → orchestrator/`, never reverse). **Honest qualifier:** behavior-preserving refactor; built + unit-tested (15 new tests in `tests/test_engine_review.py`); stdout content-equivalent to prior inline wiring (same lines, same exit codes; NOT byte-identical interleaving — mid-run progress lines now print after `review()` returns); NOT demo-validated end-to-end (live SBODEMOSG CLI run pending/Terry-supervised); no agent loop (T5.3); nothing customer-facing changes until T2.11. Current test state: **1387 passed, 1 skipped**.
+T5.3 Slice 1 (on master, 2026-06-14, merge `458e33b`) plumbed the engine into the cage: `agent/engine_tool.py` exposes the deterministic `review()` pipeline as ONE atomic MCP tool (`mcp__engine__run_review_chain`) — no sub-step (run_chain / gate / seal) is reachable; the MCP-prefix-aware `get_tier()` resolves it back to the Tier-1 `run_review_chain` registry entry so the justification gate applies. `agent/executor.py::make_tier2_handlers` builds real `seal_bundle`/`emit_final_pdf` handlers wired via `extra_handlers` (defaults stay NotImplemented) that fire ONLY on `status="approved"`. Three new Tier-0 dossier reads added (`get_source_document`, `read_vendor_gst_status`, `read_prior_period_treatment`). **SEALED-CHAIN routing (locked):** Tier-2 outcome-bearing executions (post-approval seal/emit) append to the sealed hash-chained agent-ledger; Tier-0 reads stay in the separate unsealed `audit_log`. +21 tests. Test state after Slice 1: **1408 passed, 1 skipped**.
+T5.3 Slice 2 (on master, 2026-06-14, PR #17) built the live case-file loop: `agent/loop.py::run_casefile_loop` is a plain-Python gather→act→verify driver — the model is invoked WITHIN it (via an injected `AgentTransport`) and NEVER drives it; the deterministic completeness checklist and `RunBudget` decide termination. Verification is a CODE-DEFINED completeness checklist keyed to `CheckSpec.inputs_needed` (`agent/completeness.py`) — never model self-assessment; `agent/lint.py` is a deterministic language-lint (brittle backstop, not a replacement for the structural cage); `agent/dossier.py` adds the `DossierArtifact` schema + finding extraction; `agent/proposals.py` gains the additive `compute_inputs_hash` shared by dossier ⇄ proposal. The loop can ONLY ever stage a PENDING proposal (no Tier-2 tool exists); `cost_usd_used` is written to the ledger as the auditable cost-per-review COGS field; budget-exceeded routes non-blocking (Invariant 7); a poisoned PDF can at worst become a PENDING proposal a human reads — nothing is sealed or emitted. +38 tests (branch `t5.3b-casefile-loop` standalone off the 1408 base: 1446 passed, 1 skipped; combined with T5.7a on master → 1479).
+T5.7a (on master, 2026-06-14, PR #16) built the agent-behaviour eval harness (`agent/eval/`): `FakeTransport` (a concrete subclass of the SDK `Transport` ABC) replays scripted streams with zero tokens / zero binary; the runner drives the REAL cage (build_options + the Slice-1 engine server, hooks-only, engine invoker bound to a tripwire); four cage-invariant metrics (justification-gate hold, zero Tier-2 self-execution, Tier-3 denial, sealed-chain routing integrity) score an adversarial scenario library; `report.py` renders a scorecard with DEFERRED rows reserved for T5.7b. **Honest:** this is measurement infra — it gates "built → validated" for the cage invariants but is NOT itself loop validation; the two loop-quality metrics (dossier completeness rate, language-lint pass rate) are deferred to T5.7b. +33 tests. T5.7b (on master, 2026-06-14, PR #18) then filled those two DEFERRED rows: `dossier_completeness_rate` + `language_lint_pass_rate`, measured by driving the REAL Slice-2 `run_casefile_loop` over a hermetic `ScriptedLoopTransport` (distinct from T5.7a's SDK-ABC `FakeTransport` — the loop transport never touches the SDK), so the scorecard now has **6 rows** (4 cage + 2 loop); `make_hooks` now exposes `audit_log` via a public `.audit_log` handle on the PostToolUse callback (additive; the runner no longer introspects `__closure__`). +20 tests. T5.3c (on master, 2026-06-15, PR #21, commit `5cb9fd3`) then added the live-model `AgentTransport` adapter (`agent/live_transport.py`): `LiveAgentTransport` maps a `claude_agent_sdk.query()` stream → the loop's `AgentEvent`s (`ToolUseBlock→ToolUseEvent`, `TextBlock→FramingEvent`, `ResultMessage→ResultEvent(cost_usd=total_cost_usd)`); relay-only (invoke-never-perform preserved, no new tools, no Tier-2 surface); opt-in factory `make_live_transport` gated behind env `AGENT_LIVE_TRANSPORT`; SDK import confined + deferred to call time. This unblocks T5.3-V (the supervised, opt-in live run — still separate). +14 tests (mocked SDK stream, no model/binary/tokens). **All of T5.3/T5.3c + T5.7a + T5.7b is built + hermetically tested, NOT live-validated; T5.3c is mock-tested only (the live run is the separate supervised T5.3-V); the loop-quality metrics pass on SCRIPTED scenarios, NOT real-data validation; nothing customer-facing until T2.11.** Current test state: **1513 passed, 1 skipped**.
 
 **The three to five most important gaps before commercial deployment**
 
@@ -857,7 +860,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b–T5.1 merges): **1387 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.1, T5.2 sections and footer for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b–T5.1–T5.3-Slice1–T5.7a–T5.3-Slice2–T5.7b–T5.3c merges): **1513 passed, 1 skipped** — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.1, T5.2, T5.3, T5.7a, T5.7b sections and footer for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -1657,7 +1660,7 @@ after T5.2a: **1328 passed, 1 skipped**.
 | File | Role |
 |---|---|
 | `agent/hooks.py` | `make_hooks(ledger)` → `(pre_tool_use_cb, post_tool_use_cb, audit_log)`. PreToolUse: Tier-3 → deny "tool-not-found" + ledger entry blocked; Tier-1 → `validate_justification` → ledger write BEFORE allow/deny; Tier-0 → always allow + ledger entry. PostToolUse → `audit_log` (plain list[dict]; SEPARATE from the hash-chained ledger — whether execution outcomes enter the sealed chain is a T5.3 decision). SDK import (`HookContext`, `HookJSONOutput`) deferred via `TYPE_CHECKING` so `agent/` is importable without `claude-agent-sdk` installed. |
-| `agent/harness.py` | `build_options(ledger, budget, *, system_prompt="")` → `ClaudeAgentOptions`. Wires `allowed_tools` (Tier-0/1 names from registry), hooks (PreToolUse + PostToolUse), `max_turns` from `RunBudget`. SDK import deferred inside `build_options()` — pure-core test environments do not require the SDK. Does NOT call `query()`; that is T5.3's job. |
+| `agent/harness.py` | `build_options(ledger, budget, *, system_prompt="")` → `ClaudeAgentOptions`. Wires `allowed_tools` (Tier-0/1 names from registry), hooks (PreToolUse + PostToolUse), `max_turns` from `RunBudget`. SDK import deferred inside `build_options()` — pure-core test environments do not require the SDK. Does NOT call `query()` itself; the live `query()` call lives in `agent/live_transport.py` (T5.3c, see §T5.3 Slice 3). |
 | `agent/approve_cli.py` | `list_pending(store)`, `show_proposal(store, id)`, `approve_proposal(store, executor, id)`, `reject_proposal(store, id)` library functions + argparse `main()` CLI. Approval dispatches the deterministic executor; rejection marks the proposal. |
 | `agent/ledger.py` (amended) | `Ledger.from_entries(list[dict])` class method — reconstructs a `Ledger` from a list of raw dict entries (e.g. loaded from the sealed `steps/agent-ledger.json`). Enables post-seal `Ledger.verify()` on the reconstructed object. |
 | `audit_bundle/seal.py` (amended) | `agent_ledger=None` parameter. When an `agent/ledger.Ledger` is supplied, `seal_bundle` serialises it via `canonical_json` and writes `steps/agent-ledger.json`, covered by the manifest root-hash. Backward-compatible — existing callers unaffected when parameter absent. |
@@ -1699,6 +1702,207 @@ Codified in `docs/merge-gates.md` Gate b.
 | `query()` call | (not yet in any file) | T5.3 builds the actual agent loop using `build_options` from T5.2b |
 | PostToolUse → sealed chain | `agent/hooks.py` | Whether execution outcomes enter the hash-chained ledger is a T5.3 architectural decision |
 | Live model validation | — | No live-model run in any T5.2 test; T5.7 eval harness gates "validated" status |
+
+---
+
+## T5.3 — Engine-tool plumbing + case-file loop (on master; built + hermetically tested; NOT live-validated)
+
+### Status
+
+T5.3 Slice 1 (engine-tool plumbing) merged to `master` (2026-06-14, merge commit `458e33b`).
+T5.3 Slice 2 (case-file loop) merged to `master` (2026-06-14, PR #17 from branch
+`t5.3b-casefile-loop`).
+
+**Honest status:** built + hermetically tested (FakeTransport / no live model, no live SAP, no
+tokens, no network). The loop has NOT been run against a live model end-to-end; **nothing
+customer-facing changes until T2.11.** The seal/emit handlers exist but fire only behind human
+approval in the deterministic executor — the agent loop itself never seals or emits.
+
+### Slice 1 — engine-tool plumbing
+
+| File | Role |
+|---|---|
+| `agent/engine_tool.py` | Bridges `engine.review.review()` into the cage as ONE atomic in-process MCP tool. `make_engine_tool(invoke_review)` / `make_engine_server(invoke_review)` build a single SDK tool named `run_review_chain`, exposed as `mcp__engine__run_review_chain`. The handler runs the WHOLE pipeline (fetch→classify→calculate→detect→compile→report→seal, all gates) and returns a serialised `ReviewResult`. The agent can NEVER reach `run_chain` / individual gates / `seal_bundle` — there is no sub-step tool. `invoke_review` is a zero-arg callable the caller binds server-side with `client_config` + `ReviewInputs`, so write-bearing inputs stay out of the model's reach. SDK + engine imports are deferred so `agent/` stays importable without the SDK. |
+| `agent/registry.py` (amended) | MCP-prefix-aware `get_tier()`: `_strip_mcp_prefix()` maps `mcp__<server>__<tool>` back to its bare registry name before tier lookup, so the justification gate applies to the MCP-exposed engine tool too (it resolves to the Tier-1 `run_review_chain` contract). Three new Tier-0 dossier reads registered. |
+| `agent/read_tools.py` | The three new Tier-0 reads (read-only, autonomous): `get_source_document(provider, doc_num)` (source invoice PDF path via the DocumentProvider seam; `None` when absent), `read_vendor_gst_status(catalog, card_name)` (vendor GST-registration lookup), `read_prior_period_treatment(store, key)` (how a finding key was treated in a prior period). |
+| `agent/executor.py::make_tier2_handlers` | Builds the REAL `seal_bundle` / `emit_final_pdf` handlers bound to a `Ledger`, passed via the `Executor(extra_handlers=...)` arg — the `_DEFAULT_HANDLERS` NotImplemented stubs are NOT edited, so an Executor built without `extra_handlers` still raises for seal/emit. The `Executor` guarantees these fire ONLY for proposals already in `status="approved"`. Each handler appends the Tier-2 execution OUTCOME (`tool_name=action`, `tier=2`, `outcome="executed"`) to the SEALED hash-chained ledger BEFORE invoking the bound `seal_fn`/`emit_fn(proposal=…, ledger=…)`, so the outcome entry is captured when the bundle is sealed. |
+
+**SEALED-CHAIN routing decision (locked, T5.3):** Tier-2 outcome-bearing executions (seal/emit,
+post human approval) are the ONLY execution outcomes that append to the sealed hash-chained
+agent-ledger — and that append happens in the executor (`make_tier2_handlers`), never in the
+PostToolUse hook (the agent never invokes a Tier-2 tool; none exist in the registry). Tier-0
+routine reads (and Tier-1 staging work) record their execution in the SEPARATE, UNSEALED
+`audit_log`. Ledger entries are **recorded facts**, not re-derivation inputs: box-isolation and
+compile-output re-derivability are unaffected by what is or is not written to the ledger.
+
+**SEALED-CHAIN lean (recorded once):** the Tier-2 seal produces the FINAL reviewed bundle, which
+references the engine's own deterministic bundle (`review()`'s internal seal) as sealed evidence.
+The agent loop only ever stages PENDING proposals; the final reviewed bundle is sealed by the
+deterministic executor AFTER a human approves — outside the loop.
+
+**Test state (Slice 1):** +21 tests. Master total after Slice 1: **1408 passed, 1 skipped**.
+
+### Slice 2 — case-file loop (gather → act → verify)
+
+| File | Role |
+|---|---|
+| `agent/loop.py` | `run_casefile_loop(...)` — the live loop the cage was built to hold. **Non-negotiable invariant:** the DRIVER is plain Python; the model is invoked WITHIN it (via an injected `AgentTransport`), never drives it. Per finding the model proposes evidence reads + a candidate framing and the driver DISPOSES: it executes the gated Tier-0 reads, runs the CODE-DEFINED completeness checklist, lints the framing, increments the budget, and decides termination. The model never decides when the loop ends — the deterministic checklist and the `RunBudget` do. `review()` is invoked ONCE up front (gather, Tier-1 gated) so the deterministic deliverable is in hand regardless of what the agent layer does (Invariant 7). The loop can ONLY ever stage a PENDING `ProposalArtifact` — it never seals or emits. Each turn's `cost_usd` is fed to `RunBudget` and written to the ledger; a `BudgetExceededSignal` is caught and routed non-blocking (Invariant 7), so the deterministic deliverable still ships. The SDK is NOT imported here; the hermetic `FakeTransport` replays a scripted stream and the live adapter (`agent/live_transport.py` — `LiveAgentTransport`, T5.3c, see §T5.3 Slice 3) wraps `claude_agent_sdk.query` behind the same `AgentTransport` interface. |
+| `agent/completeness.py` | `evaluate_completeness(check_id, evidence)` — a CODE-DEFINED completeness checklist keyed to `CheckSpec.inputs_needed` VERBATIM (`required_inputs`), NEVER model self-assessment. A finding is "done" only when every required input slot carries a non-null value; the model saying "I'm finished" is irrelevant. Slots split into ENGINE-SEEDED (carried on the finding payload) and AGENT-GATHERED (`supplier_catalog` ← `read_vendor_gst_status`; `document_pdfs` ← `get_source_document`). |
+| `agent/lint.py` | `lint_framing(text)` — deterministic language-lint enforcing invoke-never-perform at the text layer: REJECTS assertive compliance phrasing, REQUIRES a candidate-framing marker. **Honest:** a BRITTLE BACKSTOP to prompt design, not a replacement — a determined paraphrase can evade a phrase list. The REAL enforcement is structural (no "assert compliance" tool exists in the registry); this lint only catches the agent *voicing* a verdict in free-text framing a reviewer would read, and a failure holds the dossier back from staging. |
+| `agent/dossier.py` | `DossierArtifact` schema (per-finding case file: finding + Tier-0 evidence + candidate framing + CODE-DEFINED completeness block + `inputs_hash`) and `extract_findings(review_result)`, which flattens a `ReviewResult` across its three finding surfaces (`compile_output.detect.issues`, `document_candidates`, `reasoning_artefact.candidates`) into uniform `Finding` records. The dossier's `inputs_hash` is anchored via `compute_inputs_hash`, the SAME primitive `build_proposal` uses, so a dossier and the proposal that stages it share one hash. Every read PDF is UNTRUSTED input. |
+| `agent/proposals.py` (amended) | Additive `compute_inputs_hash(inputs)` — the single anchoring primitive (`sha256(canonical_json(inputs))`) shared by `build_proposal` and the Slice-2 dossiers. Existing callers unaffected. |
+
+**Prompt-injection containment:** every read PDF is untrusted input. A poisoned PDF can, at
+worst, become a PENDING proposal that a human reads — nothing is sealed or emitted on the basis
+of injected content, because the loop has no Tier-2 tool and the final seal is gated behind human
+approval.
+
+**Test state (Slice 2):** +38 tests (`test_t53b_loop.py`, `test_t53b_completeness.py`,
+`test_t53b_lint.py`, `test_t53b_dossier.py`, `test_t53b_budget_nonblocking.py`,
+`test_t53b_injection.py`). All hermetic — FakeTransport, no live model, no SAP, no tokens. Branch
+`t5.3b-casefile-loop` standalone (off the 1408 base): **1446 passed, 1 skipped**; combined with
+T5.7a on master → 1479 passed; after T5.7b → **1499 passed, 1 skipped** (see §T5.7a / §T5.7b / footer).
+
+### Slice 3 — live transport adapter (T5.3c)
+
+T5.3c merged to `master` (2026-06-15, PR #21 from branch `t5.3c-live-transport`, commit `5cb9fd3`).
+It supplies the live-model counterpart of the hermetic `FakeTransport`/`ScriptedLoopTransport` — the
+one piece the loop needed to run against a real model. **It is the translator the loop was designed
+to accept; it changes no loop logic** (`run_casefile_loop` already takes an injected `AgentTransport`).
+
+| File | Role |
+|---|---|
+| `agent/live_transport.py` | `LiveAgentTransport` implements the `agent.loop.AgentTransport` Protocol: `stream(prompt, finding)` runs ONE `claude_agent_sdk.query()` (== one loop turn; the driver then does `budget.increment(turns=1)`) and maps the SDK message stream → the loop's `AgentEvent`s. The async `query()` is drained via `asyncio.run` (the driver is plain sync Python — no enclosing event loop). `make_live_transport(options, *, query_fn=None)` is the opt-in factory: it raises `RuntimeError` unless env `AGENT_LIVE_TRANSPORT == "1"`, so the live, token-burning path cannot run by accident. The injected `ClaudeAgentOptions` is passed through to `query()` VERBATIM — the hook-free-vs-hook-bearing choice is the caller's, deferred to T5.3-V. |
+
+**SDK→AgentEvent mapping** (pure, structural by block/message type name — `_translate` needs no SDK import):
+`ToolUseBlock → ToolUseEvent` (tool name + `input` verbatim, carrying the model's `justification` +
+`evidence_slot`); `TextBlock → FramingEvent`; `ResultMessage → ResultEvent(cost_usd=total_cost_usd,
+usage=…)` — `total_cost_usd` is the priceable per-turn COGS the loop feeds to `RunBudget` and writes
+to the ledger; `ThinkingBlock` / `ToolResultBlock` / user / system messages are ignored. A turn with
+no `ResultMessage` still yields a zero-cost `ResultEvent` so the budget never starves.
+
+**Relay-only (invoke-never-perform preserved):** the adapter ONLY translates the model's tool
+*requests* into `AgentEvent`s; it executes no tool, seals/emits nothing, and adds no Tier-2 surface —
+the DRIVER (`run_casefile_loop`) + the cage hooks gate and execute everything. `allowed_tools()` is
+unchanged; no registry change; `validation_status` / `show_ai_candidates` untouched.
+
+**SDK confinement — third deferred-SDK site in core `agent/`.** The SDK import is confined to
+`agent/live_transport.py` and DEFERRED to call time (`_resolve_query()`); the translation logic is
+SDK-import-free, so importing `agent` *or* `agent.live_transport` does NOT load `claude_agent_sdk`,
+and `agent/__init__.py` stays SDK-free. The three core SDK relationships are now: `agent/harness.py`
+(import deferred inside `build_options`), `agent/eval/transport.py` (the one module that requires the
+SDK AT import — it genuinely subclasses the `Transport` ABC), and `agent/live_transport.py` (import
+deferred to query time). The module lives in core, not `agent/eval/`, so the eval hermetic source-scan
+gate (`tests/test_t57a_hermetic.py`, which scans only `agent/eval/*.py`) is untouched.
+
+**Test state (T5.3c):** +14 tests (`tests/test_t53c_live_transport.py`) over a MOCKED async `query_fn`
+(SDK-shaped messages — no live model, no `claude` binary, no tokens); failing-test-first shown. They
+assert the three mappings, `total_cost_usd→cost_usd`, the ignored message types, relay-only (no
+subprocess spawn, no read-tool execution, no Tier-2/seal/emit surface), Protocol conformance (the loop
+accepts it and drives a finding to a PENDING proposal with nothing sealed/emitted), and the
+`AGENT_LIVE_TRANSPORT` opt-in gate. Authoritative master total after T5.3c: **1513 passed, 1 skipped**
+(full suite run once in the worktree; flake8 `E9,F63,F7,F82` clean).
+
+**Honest status:** built + hermetically tested with a MOCKED SDK stream — **mock-tested only, NOT
+live-model-validated.** The first real `query()` run is the separate, supervised, opt-in **T5.3-V**
+(which T5.3c unblocks); T5.3-V is the step that exercises a live model, decides hook-free vs
+hook-bearing options, and sets `AGENT_LIVE_TRANSPORT=1`. **T2.11 still gates everything customer-facing.**
+
+### Live validation (T5.3-V) — crafted-finding live run (2026-06-15)
+
+First live, non-hermetic run of the arch-A `run_casefile_loop` against a real model, at master
+`af79296`, model **`claude-opus-4-8`**, cost **~$1.08** (under a $2 cap). **Crafted-finding — machinery
+only; NOT demo-DB, NOT real-client, NOT accuracy-validated.** SBODEMOSG was not used (SAP creds
+unprovisioned + no live `LoopContext` builder exists), so a hand-built `ReviewResult` (`NO_GST_REG` +
+`gst_amount_mismatch`) and a real fixture `ctx` (fixture PDF + small vendor catalog) drove it. Evidence:
+`exploration-notes/live-loop-run-20260615/` (`SESSION-REPORT.md`, `summary.json`, `raw/ledger.json`).
+
+**Validated live:** the model calls the `mcp__reads__*` tools **in-turn** (the SDK runs the T5.3e
+handlers, the per-finding `evidence_sink` fills) — NOT the prose-only behaviour the unbacked-tool probe
+showed. The cage **held** against a real model: Tier-0 reads allowed, an unexpected leaked CLI built-in
+(`ToolSearch`) **denied Tier-3** 13×, **zero Tier-2**, nothing sealed/emitted; driver-decided staging
+(A1) correctly **withheld** (no completeness ⇒ no stage).
+
+**Open gaps (honest):** (a) **0 PENDING staged** — the model wrote evidence under invented slot names
+(`source_document`≠`document_pdfs`, `vendor_gst_status`≠`supplier_catalog`) and mixed finding args, so
+the code-defined completeness (exact slot match) was unmet; the `evidence_slot` contract fix is pending
+(T5.3g). (b) live hook-written read ledger entries are **namespaced** (`mcp__reads__…`) vs the **bare**
+form the hermetic fakes write — T5.7b parity normalisation pending. (c) leaked CLI built-ins need
+suppression via the live options (`disallowed_tools` / tighter `allowed_tools`).
+
+**Frozen flags untouched:** `validation_status="unvalidated"`, `show_ai_candidates=False`. The full
+complete→stage path has **NOT** been shown on a live model — that is the T5.3-V round-2 run, after the
+slot-contract fix. T2.11 still gates everything customer-facing.
+
+---
+
+## T5.7a — Agent-behaviour eval harness (on master; measurement infra; cage-invariant metrics)
+
+### Status
+
+T5.7a merged to `master` (2026-06-14, PR #16 from branch `t5.7a-eval-harness`).
+
+**Honest status:** this is MEASUREMENT INFRASTRUCTURE. It gates "built → validated" for the
+**cage invariants** but is NOT itself loop validation — the loop-quality metrics are deferred to
+T5.7b. Fully hermetic: FakeTransport only, no live model, no SAP, no subprocess, no tokens.
+
+### Package: `agent/eval/`
+
+| File | Role |
+|---|---|
+| `agent/eval/transport.py` | `FakeTransport` — a CONCRETE subclass of the SDK `Transport` ABC that replays a pre-scripted, SDK-shaped message stream WITHOUT spawning a CLI binary and WITHOUT consuming tokens. The ONLY transport the eval harness uses. The SDK base must be resolved when the class is defined (it genuinely subclasses the ABC), so this is the one agent module that requires the SDK at import — confined to `agent/eval/`; the cage CORE stays SDK-import-free. |
+| `agent/eval/runner.py` | Replays a scenario through the REAL cage: builds production options (`build_options` + the Slice-1 in-process engine server), sources the scripted stream from a `FakeTransport`, and drives the actual PreToolUse/PostToolUse hooks (registry tier check + justification gate + ledger + audit_log). Human-approved Tier-2 executions run through the real `Executor` + `make_tier2_handlers`. HOOKS-ONLY: never calls `query()`/`ClaudeSDKClient`, never invokes the engine chain — the engine invoker is bound to a TRIPWIRE that raises if ever called, proving the eval measures the GATE, not a live pipeline. |
+| `agent/eval/metrics.py` | Four cage-invariant metrics over recorded `RunRecord`s (no re-running): **justification_gate_hold_rate** (Tier-1-without-valid-justification correctly blocked; target 1.0), **tier2_self_execution_count** (direct Tier-2 self-execution attempts the cage allowed; target 0), **tier3_denial_correct** (absent/unregistered tools denied "tool-not-found"; target 1.0), **sealed_chain_routing_integrity** (no cross-contamination between the sealed Tier-2 ledger and the unsealed Tier-0 audit_log; boolean pass). Loop-quality metrics DEFERRED to T5.7b. |
+| `agent/eval/scenario.py` / `scenarios.py` | Scenario format (`Attempt`s through the real hooks + optional human-approved `Tier2Execution`s) and the adversarial scenario library: seal-without-proposal, emit-without-proposal, nonexistent-write-tool, Tier-1-without-justification, internal-chain-step (sub-step tools that do not exist — the engine is one atomic tool), and legit-path-then-human-seal (routing test). |
+| `agent/eval/report.py` | `report_eval(records)` / `run_basket()` / `format_scorecard(rep)` — renders a human-readable scorecard (pass/fail per metric + per-scenario detail), with DEFERRED rows reserved for the two T5.7b loop-quality metrics so the table is ready once they land. |
+
+**What it proves vs. does not:** it proves the cage invariants hold under an adversarial scripted
+agent (the four metrics all pass over the scenario library). It does NOT validate loop QUALITY
+(dossier completeness rate, language-lint pass rate) — those are T5.7b, now unblocked since the
+Slice-2 loop exists. And it is not live-model validation; nothing customer-facing until T2.11.
+
+**Test state (T5.7a):** +33 tests (`test_t57a_transport.py`, `test_t57a_runner.py`,
+`test_t57a_metrics.py`, `test_t57a_scenario.py`, `test_t57a_report.py`, `test_t57a_hermetic.py`).
+All hermetic. T5.7a merged first (PR #16, master → 1441), then Slice 2 (PR #17) brought the
+authoritative master total to **1479 passed, 1 skipped**.
+
+---
+
+## T5.7b — Loop-quality eval metrics (on master; fills the two DEFERRED scorecard rows)
+
+### Status
+
+T5.7b merged to `master` (2026-06-14, PR #18 from branch `t5.7b-loop-quality-metrics`, commit `a24337a`).
+
+**Honest status:** these are LOOP-QUALITY metrics. They pass on **SCRIPTED scenarios — NOT
+real-data validation**; T2.11 still gates everything customer-facing. Distinguish the two T5.7
+baskets: **T5.7a measures CAGE invariants** (does the gate hold under an adversarial agent);
+**T5.7b measures LOOP QUALITY** (does the gather→act→verify loop produce complete dossiers + clean
+candidate framing). **Neither is live-model validation** — both are hermetic, scripted harnesses.
+
+### What it adds
+
+| Element | Role |
+|---|---|
+| `agent/eval/loop_runner.py` | `ScriptedLoopTransport` — an `agent.loop.AgentTransport` that replays a scripted `AgentEvent` stream PER FINDING via a per-finding `deque`, supporting bounded re-entry (turn 1 incomplete → turn 2 complete). It **never imports or touches the SDK** (the loop driver consumes plain `AgentEvent`s, not SDK messages), so the loop eval is even MORE hermetic than the cage eval — distinct from T5.7a's `FakeTransport`, which is the SDK-`Transport`-ABC subclass that drives the hooks. `run_loop_scenario` builds a fresh ledger/budget/store and drives the REAL `agent.loop.run_casefile_loop`, returning a `LoopRunRecord` with the per-finding outcomes/dossiers. |
+| `agent/eval/loop_scenarios.py` | `build_loop_basket()` — golden + adversarial loop scenarios (complete dossier; incomplete-completeness; assertive-language lint failure) driving the real Slice-2 loop over `ScriptedLoopTransport`. |
+| `agent/eval/metrics.py` | Two loop-quality metrics over the loop's `FindingOutcome`s (denominator = findings that produced a dossier; skipped findings excluded): **`dossier_completeness_rate`** (fraction whose `dossier.completeness["satisfied"] is True` — CODE-defined completeness, never model self-assessment; target `== 1.0`) and **`language_lint_pass_rate`** (fraction whose `candidate_framing_text` passes `agent.lint.lint_framing`; target `== 1.0`). `compute_loop_metrics(outcomes)` returns both. |
+| `agent/eval/report.py` | Scorecard now renders **6 rows** (4 cage + 2 loop). `EvalReport` gained `loop_metrics` + `loop_records`; `run_basket()` runs the adversarial cage basket AND the golden loop basket and scores both; `format_scorecard` fills the two previously-DEFERRED loop rows when present (and `report_eval`, cage-only, still falls back to `[DEFERRED:T5.7b]` placeholders). |
+| `agent/hooks.py` + `agent/eval/runner.py` | `make_hooks` now exposes the `audit_log` via a **public `.audit_log` handle** on the returned PostToolUse callback (additive; tuple return shape unchanged, `post_tool_use.audit_log is audit_log`). The runner's `_extract_cage` reads `post_cb.audit_log` directly — it **no longer introspects `post_tool_use.__closure__`**. |
+
+**Tech-debt (recorded, deferred):** there are now THREE scripted transports — `FakeTransport`
+(SDK-ABC, cage eval), the Slice-2 loop-test fixture (`tests/fixtures/agent_loop.py`), and
+`ScriptedLoopTransport` (loop eval). (2) and (3) overlap and are a future consolidation candidate;
+the `FakeTransport` consolidation was **deliberately deferred** (different altitude — it subclasses
+the SDK ABC, the others do not).
+
+**What it proves vs. does not:** it proves the real Slice-2 loop produces complete dossiers and
+clean candidate framing on the scripted scenarios (both metrics pass). It does NOT validate against
+real client data or a live model — SCRIPTED ≠ real-data; T2.11 still gates customer-facing.
+
+**Test state (T5.7b):** +20 tests (`test_t57b_loop_metrics.py`, `test_t57b_report.py`,
+`test_t57b_audit_handle.py`). All hermetic. Authoritative master total after T5.7b:
+**1499 passed, 1 skipped** (full suite run once in the worktree).
 
 ---
 
@@ -2909,4 +3113,11 @@ Updated 2026-06-12 (T2.20: Annex E vocabulary migration discovery audit — read
 Updated 2026-06-12 (D9: T5.2 post-cage docs-sync — T5.2a/T5.2b agent/ cage section added (registry/tiers/justification/ledger/proposals/executor/budget; CheckSpec v0/PROVISIONAL 14 entries; hooks/harness/approve_cli; Ledger.from_entries; seal.py agent-ledger.json integration); first runtime dep `claude-agent-sdk==0.2.99` documented with cross-platform note; honest status: cage built + hermetically unit-tested, NO live loop, seal/emit stubs deferred T5.3; exec summary updated; T1.5 master total updated 1211 → 1372; T2.17 test count line updated; T5.2 roadmap entry marked DONE; T5.2c + T5.8 + input-surface note added to roadmap; merge-gates.md Gate a extended to cover `agent/` + explicit agent/-allowed note + Gate b flake8 + Gate e agentic-cage invariants 1/2/3/7 graduated; CI import-scan step added to `.github/workflows/ci.yml`; `knowledge-base/sg-tax-code-mappings.md` checked — no change required, cage does not affect accounting-domain routing).*
 Updated 2026-06-12 (D10: T5.1 engine-seam docs-sync — T5.1 section added (`engine/` package; `review(client_config, period, inputs) → ReviewResult` contract; `ReviewResult` 11 fields incl. `analytical_review_data`; `ReviewInputs` 4 fields / forward-compatible source-adapter seam / SAP wired only / deep substitution is T2.12; `GateHalt(message, checked)` plain serialisable record; `run_agent.py` reduced to thin CLI; `review()` is SILENT; `engine/__init__` no-re-export-of-`review` note; import-scan extension barring `orchestrator/` from importing `engine/`; honest qualifier: behavior-preserving refactor, built+unit-tested, content-equivalent stdout, NOT demo-validated, no agent loop, T2.12/T2.11 caveats); exec summary updated; T1.5 master total updated 1372 → 1387; T2.17 test count line updated; `docs/merge-gates.md` checked — already correct (Gate a Check 2 already includes `engine/`), no change required; `knowledge-base/sg-tax-code-mappings.md` checked — no change required, seam is packaging only and does not touch VatGroup→F5-box routing, zero-rating, or accounting-domain content; T5.1 roadmap entry DONE; roadmap build-state snapshot updated; D10 added to roadmap docs tasks).*
 Updated 2026-06-14 (D11: T5.3 SDK-runtime docs-sync — corrected the inaccurate "Linux CI builds from sdist" claim for `claude-agent-sdk==0.2.99` in three places (exec summary, §T5.2b Cross-platform note, roadmap T5.2 entry). Verified finding: the `manylinux_2_17_x86_64` wheel BUNDLES the Linux `claude` binary at `_bundled/claude` (CLI 2.1.175 > SDK 2.0.0 floor); on `ubuntu-latest` pip selects the WHEEL not the sdist, so `pip install` auto-provisions the binary — no npm install, no `cli_path`, no env var; pin holds at 0.2.99. Caveat: no musllinux wheel — an Alpine runner falls back to the binary-less sdist and fails at `query()` time; keep CI on glibc (`ubuntu-latest`) and assert `_bundled/claude` post-install. Test seam noted: `query()`/`ClaudeSDKClient` accept custom `transport=` so the hermetic suite injects a FakeTransport (no binary, no tokens); any live-in-CI loop is opt-in (`workflow_dispatch`) and burns real tokens. Full corrected finding stated once in §T5.2b; exec summary + roadmap carry brief accurate pointers. Roadmap T5.3 entry: SDK-runtime blocker marked RESOLVED, T5.3 stays PLANNED pending the build. Docs-only; no source/test change; test count unchanged at 1387/1. `knowledge-base/sg-tax-code-mappings.md` checked — no change required, the wheel/packaging finding is infra and does not touch VatGroup→F5-box routing, zero-rating, or accounting-domain content; D11 added to roadmap docs tasks).*
+
+Updated 2026-06-14 (D12: T5.3 (Slice 1 + Slice 2) + T5.7a docs-sync — verification-first; read the merged code on master before writing. Added a T5.3 section (Slice 1 engine-tool plumbing: `agent/engine_tool.py` exposes `review()` as ONE atomic MCP tool `mcp__engine__run_review_chain`, no sub-step reachable; MCP-prefix-aware `get_tier()` resolves it to Tier-1 so the justification gate applies; `make_tier2_handlers` fires seal/emit only on `status="approved"` via `extra_handlers`; 3 new Tier-0 reads `get_source_document`/`read_vendor_gst_status`/`read_prior_period_treatment`; SEALED-CHAIN routing locked — Tier-2 post-approval outcomes → sealed hash-chained agent-ledger, Tier-0 reads → unsealed audit_log, ledger entries are recorded facts so box-isolation/re-derivability unaffected; sealed-chain lean recorded — Tier-2 seal produces the FINAL reviewed bundle referencing `review()`'s deterministic bundle as sealed evidence, loop only stages PENDING; Slice 2 case-file loop: plain-Python `run_casefile_loop` gather→act→verify, model invoked within / never drives, CODE-DEFINED completeness checklist keyed to `CheckSpec.inputs_needed`, deterministic language-lint brittle backstop, `DossierArtifact` schema, additive `compute_inputs_hash`, `cost_usd_used` → ledger COGS, budget-exceeded → invariant-7 non-blocking, prompt-injection containment → at worst a PENDING proposal). Added a T5.7a section (`agent/eval/` measurement harness: `FakeTransport` SDK-ABC subclass, runner drives the REAL cage with a tripwire'd engine invoker, 4 cage-invariant metrics, adversarial scenario library, scorecard; honest — measurement infra, gates "built → validated" for the cage layer but NOT loop validation; 2 loop-quality metrics deferred to T5.7b). Exec summary + master-total test-count line updated 1387 → **1479 passed / 1 skipped** (authoritative — full suite run once in the worktree). Honest qualifier throughout: built + hermetically tested, NOT live-validated; nothing customer-facing until T2.11. `docs/merge-gates.md` checked — Gate a already bars `orchestrator/` from `agent/`+`engine/` and `agent/eval/` is covered as part of `agent/`; no change required. `knowledge-base/sg-tax-code-mappings.md` checked — no change required, T5.3/T5.7a are agentic-shell infra and do not touch VatGroup→F5-box routing, zero-rating, or accounting-domain content. `exploration-notes/iras-ask-coverage-analysis.md` checked — no change required, T5.3/T5.7a do not change deterministic IRAS-ASK coverage. Pedagogical reference docs (accounting-domain-knowledge / technical-understanding) NOT found in the repo — reported, not guessed. Docs-only; no source/test change. D12 added to roadmap docs tasks).*
+
+Updated 2026-06-15 (D13: T5.7b loop-quality-metrics docs-sync — verification-first; confirmed T5.7b on master (PR #18, commit `a24337a`) and read the merged code before writing. Added a §T5.7b section (`agent/eval/loop_runner.py` `ScriptedLoopTransport` — an `agent.loop.AgentTransport` replaying scripted `AgentEvent`s per finding, never touches the SDK, drives the REAL `run_casefile_loop`; two loop-quality metrics `dossier_completeness_rate` + `language_lint_pass_rate` over the loop's `FindingOutcome`s; scorecard now 6 rows = 4 cage + 2 loop, the two DEFERRED rows filled; `make_hooks` public `.audit_log` handle on the PostToolUse callback, runner no longer introspects `__closure__`; 3-transports tech-debt with `FakeTransport` consolidation deliberately deferred). Distinguished the baskets: T5.7a = cage invariants, T5.7b = loop quality, neither is live-model validation. Honest qualifier: loop-quality metrics pass on SCRIPTED scenarios, NOT real-data validation; T2.11 still gates customer-facing. Exec summary + master-total test-count line updated 1479 → **1499 passed / 1 skipped** (authoritative — full suite run once in the worktree; flake8 E9,F63,F7,F82 clean). `exploration-notes/iras-ask-coverage-analysis.md` checked — no change required, T5.7b is agent-eval infra and changes no deterministic IRAS-ASK coverage cell. `docs/merge-gates.md` checked — no change required, Gate a already covers `agent/eval/` as part of `agent/` and T5.7b adds no new package boundary or credential. Pedagogical reference docs (accounting-domain-knowledge / technical-understanding) NOT in the repo — out of scope, not chased. Docs-only; no source/test change. D13 added to roadmap docs tasks).*
+
+Updated 2026-06-15 (D14: T5.3c LiveAgentTransport docs-sync — verification-first; confirmed T5.3c on master (PR #21, commit `5cb9fd3`) and read the merged `agent/live_transport.py` + `tests/test_t53c_live_transport.py` before writing. Added a §T5.3 Slice 3 section (`LiveAgentTransport` implements the `agent.loop.AgentTransport` Protocol — one `claude_agent_sdk.query()` per `stream()` == one loop turn, drained via `asyncio.run`; SDK→AgentEvent mapping `ToolUseBlock→ToolUseEvent` / `TextBlock→FramingEvent` / `ResultMessage→ResultEvent(cost_usd=total_cost_usd)`, thinking/tool-result/user/system ignored, structural `_translate` needs no SDK import; opt-in factory `make_live_transport` gated behind env `AGENT_LIVE_TRANSPORT` (raises unless `=="1"`); injected `ClaudeAgentOptions` passed through verbatim, hook-free-vs-hook-bearing deferred to T5.3-V; relay-only — invoke-never-perform preserved, executes nothing, no new tools, no Tier-2 surface, `allowed_tools()`/`validation_status`/`show_ai_candidates` untouched; SDK import confined + deferred to call time — third deferred-SDK site in core `agent/` after `harness.py` and `eval/transport.py`, `import agent`/`agent.live_transport` do not load the SDK, eval hermetic source-scan gate untouched since the module is in core not `agent/eval/`; +14 tests over a MOCKED async `query_fn`, failing-test-first). Corrected the now-stale "a FUTURE live adapter wraps `claude_agent_sdk.query`" phrasing in the `agent/loop.py` row → present-tense, names `agent/live_transport.py`; added a pointer on the `agent/harness.py` row that the live `query()` call now lives in `live_transport.py`. Honest qualifier: T5.3c is mock-tested only, NOT live-model-validated; the live run is the separate supervised opt-in T5.3-V (now unblocked); T2.11 still gates customer-facing. Exec summary + master-total test-count line updated 1499 → **1513 passed / 1 skipped** (authoritative — full suite run once in the worktree; flake8 E9,F63,F7,F82 clean). `exploration-notes/iras-ask-coverage-analysis.md` checked — no change required, T5.3c is agent-layer infra and changes no deterministic IRAS-ASK coverage cell. `docs/merge-gates.md` checked — no change required, `agent/` is already permitted the SDK (lazy) with the boundary at `orchestrator/`, and T5.3c adds no new package boundary or credential. Pedagogical reference docs (accounting-domain-knowledge / technical-understanding) NOT in the repo — out of scope, not chased. Docs-only; no source/test change. D14 added to roadmap docs tasks).*
+Updated 2026-06-15 (D15: preserve the T5.3-V live-run finding — first live, non-hermetic run of the arch-A `run_casefile_loop` against a real model (model `claude-opus-4-8`, master `af79296`, cost ~$1.08, crafted-finding + fixture ctx — NOT demo-DB, NOT real-client, NOT accuracy-validated; SBODEMOSG SAP creds unprovisioned + no live `LoopContext` builder). Preserved `exploration-notes/live-loop-run-20260615/` (`SESSION-REPORT.md` + `summary.json` + `raw/ledger.json`; the full 247 KB `raw/stream.json` token stream intentionally omitted as heavy). Added a §T5.3 "Live validation (T5.3-V)" subsection. **Validated live:** the model calls the `mcp__reads__*` tools in-turn (SDK runs the T5.3e handlers, sink fills — NOT prose-only); the cage held against a real model (Tier-0 reads allowed, a leaked CLI built-in `ToolSearch` denied Tier-3 13×, zero Tier-2, nothing sealed/emitted); driver-decided staging (A1) correctly withheld. **Open gaps:** (a) 0 PENDING — the model wrote evidence under invented slot names (`source_document`≠`document_pdfs`) so completeness was unmet → slot-contract fix pending (T5.3g); (b) live read ledger entries are namespaced (`mcp__reads__…`) vs the bare form the hermetic fakes write → T5.7b parity normalisation pending; (c) leaked CLI built-ins need suppression via the live options. Frozen flags untouched (`validation_status="unvalidated"`, `show_ai_candidates=False`); the full complete→stage path is NOT yet shown on a live model (T5.3-V round-2, after the slot fix); T2.11 still gates customer-facing. Docs-only (`.md` + preserved `.json`); no source/test change. Pedagogical reference docs out of scope, not chased).*
 Updated 2026-06-15 (D12: T2.21b docs-sync, SOP step 7 — Appendix C #32 added for T2.21b (buckets 1+2 of T2.20 Section 2d, 16 codes, `SO`→`SR`/`SI`→`TX` renames + 14 direct carryovers, ZP E2-set fix, ME/TX-RE `_vg_category` label fixes, `effective_tax_code_mappings` live wiring, audit-bundle allow-list addition; commit `21c70e9`, branch `t2.21a-annex-e-baseline-vocab`, NOT merged; chain-accepted, 1490/1 on branch, +9 net new vs master's unchanged 1387/1); roadmap T2.21 entry added (buckets 1+2 DONE 2026-06-15, buckets 3+4+8 remaining scope flagged as blocked on T2.18 with no scheduled follow-on — open naming question for Collin/Terry on whether that remainder becomes "T2.21c" or stays an annotation), T2.2 sequencing note and T2.20's T2.18-dependency finding updated to point at it; `exploration-notes/iras-ask-coverage-analysis.md` updated — 10 `SO`/`SI` literal VatGroup-code references renamed to `SR`/`TX` (E1/E3/E4 definitions, findings-to-template mapping, deterministic/judgment matrix), generic "SR/ZR/exempt" box-category shorthand and `TX-RE` references left unchanged (different code, not part of this rename); `system-prompts/base.md` + `knowledge-base/sg-tax-code-mappings.md` already synced to `SR`/`TX` as part of commit `21c70e9` itself (T2.20 Section 1 items 1.11-1.13/1.20) — no separate "accounting-domain"/"technical-understanding" pedagogical docs exist, confirmed via repo-wide search; `exploration-notes/t2.21/t2.21b-chain-acceptance-findings.md` (SOP step 5 deliverable) added; scratch recon scripts/output from the chain-acceptance session removed).*

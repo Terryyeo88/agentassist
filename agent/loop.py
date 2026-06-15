@@ -12,34 +12,39 @@ checklist, lints the framing, increments the budget, and decides loop terminatio
 The model never decides when the loop ends; the deterministic checklist and the
 RunBudget do.
 
-Phases (per finding):
-  * gather (Tier 0/1): call review() via the bound engine invoker (Tier-1, gated) to
-    get the deterministic findings — produced ONCE up front so the deterministic
-    deliverable is in hand regardless of what the agent layer does (Invariant 7).
-    Per finding the agent assembles a dossier using the Slice-1 Tier-0 reads
-    (source PDF, vendor GST status, prior-period treatment). Engine-provided input
-    slots are seeded from the finding payload.
-  * act (Tier 1): the agent proposes ``propose_action``; the justification gate writes
-    the justification to the ledger BEFORE the dossier is staged as a pending
-    ProposalArtifact in the StagingStore.
+Phases (per finding) — ARCHITECTURE A (T5.3f), in-turn evidence:
+  * gather (Tier 0): call review() via the bound engine invoker (Tier-1, gated) ONCE
+    up front so the deterministic deliverable is in hand regardless of what the agent
+    layer does (Invariant 7). Per finding the driver seeds the engine-provided slots
+    from the finding payload into a per-finding ``evidence_sink``, then hands the sink
+    to ``transport.gather`` — the model calls the T5.3e MCP read tools IN-TURN (source
+    PDF, vendor GST status, prior-period treatment) and the SDK handlers write the
+    agent-gathered slots into the sink. Reads are gated Tier-0 by the hooks (live) /
+    ledgered by the fake (hermetic); the DRIVER does not execute reads.
   * verify (CODE-DEFINED): the driver runs the completeness checklist keyed to
-    CheckSpec.inputs_needed against the staged dossier. Complete + lint-clean -> done;
-    incomplete -> re-enter gather, bounded by RunBudget / max_attempts_per_finding.
+    CheckSpec.inputs_needed against the sink, and lints the framing. Complete +
+    lint-clean -> the DRIVER stages (act, below); incomplete -> re-enter gather,
+    bounded by RunBudget / max_attempts_per_finding.
+  * act (Tier 1) — DRIVER-DECIDED: when (and only when) the code-defined completeness
+    and the lint pass, the DRIVER stages the dossier. It writes the Tier-1
+    ``propose_action`` justification to the ledger BEFORE staging, then stages a PENDING
+    ProposalArtifact. The model cannot call ``propose_action`` (an unbacked tool — see
+    the T5.3-probe), so the deterministic driver, not the model, decides staging.
 
 Invoke-never-perform: the agent has no Tier-2 tool. The loop can ONLY ever stage a
 PENDING proposal; it never seals or emits. Sealing the final reviewed bundle is the
 Slice-1 Tier-2 handler, fired by the deterministic executor AFTER a human approves —
 outside this loop. Every read PDF is UNTRUSTED input.
 
-Budget: each attempt's cost (ResultEvent.cost_usd, the priceable cost-per-review COGS
+Budget: each turn's cost (ResultEvent.cost_usd, the priceable cost-per-review COGS
 field) is fed to ``RunBudget.increment`` and written to the ledger. A
 ``BudgetExceededSignal`` is caught here and routed non-blocking — the deterministic
 deliverable still ships (Invariant 7).
 
 The SDK is NOT imported here. The loop consumes an ``AgentTransport`` abstraction; the
-hermetic ``FakeTransport`` (tests) replays a scripted stream, and a future live adapter
-wraps ``claude_agent_sdk.query`` behind the same interface (opt-in, token-burning, not
-required for the hermetic acceptance).
+hermetic fakes fill the sink directly, and the live ``LiveAgentTransport`` runs
+``claude_agent_sdk.query`` with the T5.3e reads server behind the same interface
+(opt-in, token-burning, not required for the hermetic acceptance).
 
 Zero anthropic import. Zero SDK import. Stdlib only.
 """
@@ -61,12 +66,7 @@ from agent.justification import validate_justification
 from agent.ledger import Ledger
 from agent.lint import LintResult, lint_framing
 from agent.proposals import ProposalArtifact, StagingStore, build_proposal
-from agent.read_tools import (
-    get_source_document,
-    read_prior_period_treatment,
-    read_vendor_gst_status,
-)
-from agent.registry import CHECK_REGISTRY, get_tier
+from agent.registry import CHECK_REGISTRY
 from agent.schemas import Tier
 
 # Driver-supplied justification for the engine-tool (run_review_chain) invocation at
@@ -111,15 +111,20 @@ AgentEvent = Any  # ToolUseEvent | FramingEvent | ResultEvent
 
 
 class AgentTransport(Protocol):
-    """Streams a scripted/real model turn for one finding.
+    """Runs one model turn for one finding, gathering evidence IN-TURN (arch A).
 
-    ``stream`` yields a sequence of AgentEvents for one attempt at *finding*. The
-    hermetic FakeTransport replays a scripted list; a live adapter would translate a
-    ``claude_agent_sdk.query`` stream into these events. The driver consumes the
-    stream and enforces the cage on every tool request.
+    ``gather`` runs the turn for *finding* and POPULATES *evidence_sink* with the
+    reads the model performed — live: the SDK runs the T5.3e MCP read handlers, which
+    write the sink in-turn; hermetic: the fake writes the sink directly. It yields only
+    ``FramingEvent`` (candidate framing) and ``ResultEvent`` (per-turn COGS); reads do
+    NOT come back as events. The transport is a RELAY — the plain-Python DRIVER
+    disposes: it runs budget, the CODE-DEFINED completeness over the sink, the lint,
+    driver-decided staging, and bounded re-entry. The model never decides termination.
     """
 
-    def stream(self, prompt: str, finding: "Finding") -> Iterable[AgentEvent]:
+    def gather(
+        self, prompt: str, finding: "Finding", evidence_sink: dict
+    ) -> Iterable[AgentEvent]:
         ...
 
 
@@ -176,30 +181,16 @@ class CaseFileResult:
 # Internals
 # ---------------------------------------------------------------------------
 
-def _sanitise(call_params: dict) -> dict:
-    """Return a ledger-safe copy of tool input (defensive; reads carry no credentials)."""
-    return {k: v for k, v in call_params.items() if k not in ("justification",)}
-
-
-def _execute_read(event: ToolUseEvent, finding: Finding, ctx: LoopContext) -> Any:
-    """Execute a Tier-0 dossier read (read-only) and return its result.
-
-    Args are taken from the tool input first, falling back to the finding payload.
-    """
-    name = event.tool_name
-    ti = event.tool_input
-    payload = finding.payload or {}
-    if name == "get_source_document":
-        doc_num = ti.get("doc_num", payload.get("doc_num"))
-        return get_source_document(ctx.provider, int(doc_num))
-    if name == "read_vendor_gst_status":
-        card_name = ti.get("card_name", payload.get("card_name"))
-        return read_vendor_gst_status(ctx.vendor_catalog, card_name)
-    if name == "read_prior_period_treatment":
-        key = ti.get("key") or f"{finding.check_id}:{payload.get('card_name')}"
-        return read_prior_period_treatment(ctx.prior_period_store, key)
-    # Unknown read name — return None; completeness will surface any missing slot.
-    return None
+# Driver-supplied justification for the DRIVER-DECIDED staging step (arch A). The
+# model does not (and cannot) call propose_action — an unbacked tool (T5.3-probe).
+# When the code-defined completeness and the lint pass, the DRIVER stages, writing
+# this Tier-1 justification to the ledger under the registered ``propose_action``
+# contract BEFORE staging, preserving "justification written to ledger before staging".
+_STAGE_JUSTIFICATION: str = (
+    "Stage the human-reviewable dossier for reviewer approval: the code-defined "
+    "completeness checklist is satisfied and the candidate framing passed the "
+    "language-lint. Pending reviewer approval; no compliance determination is made."
+)
 
 
 def _seed_engine_inputs(finding: Finding) -> dict:
@@ -256,46 +247,32 @@ def _run_finding(
     store: StagingStore,
     max_attempts: int,
 ) -> FindingOutcome:
-    """Drive gather -> act -> verify for one finding. Plain Python; model invoked within."""
+    """Drive gather -> verify -> (driver-decided) act for one finding. Plain Python.
+
+    Arch A: the model gathers evidence IN-TURN — ``transport.gather`` fills the
+    per-finding ``evidence_sink`` (live: SDK runs the MCP read handlers; hermetic: the
+    fake writes it) and yields only framing + cost. The DRIVER then runs the
+    code-defined completeness over the sink, lints the framing, and — when both pass —
+    stages a PENDING dossier itself. The driver never executes reads (no double-run).
+    """
     last_dossier: Optional[DossierArtifact] = None
     last_lint: Optional[LintResult] = None
     attempts = 0
 
     while attempts < max_attempts:
         attempts += 1
+        # The sink is the evidence map: seed engine-provided slots, then let the
+        # transport gather the agent slots IN-TURN.
         evidence = _seed_engine_inputs(finding)
         framing_text = ""
-        proposal_req: Optional[dict] = None
         turn_cost = 0.0
 
-        for event in transport.stream(build_prompt(finding), finding):
-            if isinstance(event, ToolUseEvent):
-                tier = get_tier(event.tool_name)
-                # Cage: tier check + justification gate. The gate writes the ledger
-                # BEFORE we learn the outcome (and BEFORE any staging).
-                gate = validate_justification(
-                    event.tool_input.get("justification"),
-                    tier,
-                    tool_name=event.tool_name,
-                    call_params=_sanitise(event.tool_input),
-                    ledger=ledger,
-                )
-                if not gate.allowed:
-                    continue  # blocked (e.g. trivial justification) — agent must re-justify
-                if tier == Tier.ZERO:
-                    slot = event.tool_input.get("evidence_slot")
-                    value = _execute_read(event, finding, ctx)
-                    if slot:
-                        evidence[slot] = value
-                    else:
-                        # Enrichment read (e.g. prior-period treatment): keep under its name.
-                        evidence.setdefault(event.tool_name, value)
-                elif event.tool_name == "propose_action":
-                    proposal_req = dict(event.tool_input)
-            elif isinstance(event, FramingEvent):
+        for event in transport.gather(build_prompt(finding), finding, evidence):
+            if isinstance(event, FramingEvent):
                 framing_text = event.text
             elif isinstance(event, ResultEvent):
                 turn_cost = float(event.cost_usd)
+            # Reads do NOT come back as events — they filled `evidence` (the sink).
 
         # Budget: increment from this turn's cost, record COGS to the ledger.
         # On over-budget the cost is still recorded, then the signal propagates.
@@ -306,20 +283,22 @@ def _run_finding(
             _record_cost(ledger, budget, turn_cost)
             raise
 
-        # verify (CODE-DEFINED) + framing lint.
+        # verify (CODE-DEFINED) over the gathered sink + framing lint.
         completeness = evaluate_completeness(finding.check_id, evidence)
         lint = lint_framing(framing_text)
         last_dossier = build_dossier(finding, evidence, framing_text, completeness)
         last_lint = lint
 
-        if completeness["satisfied"] and lint.passed and proposal_req is not None:
-            proposal = _stage_dossier(finding, last_dossier, proposal_req, store)
+        if completeness["satisfied"] and lint.passed:
+            # act (Tier 1) — DRIVER-DECIDED staging.
+            proposal = _stage_dossier(finding, last_dossier, store, ledger)
             return FindingOutcome(
                 finding_id=finding.finding_id, check_id=finding.check_id,
                 status="staged", dossier=last_dossier, proposal=proposal,
                 attempts=attempts, lint=lint,
             )
-        # else: incomplete or unclean framing or no proposal — re-enter gather (bounded).
+        # else: incomplete or unclean framing — re-enter gather (bounded by
+        # max_attempts AND RunBudget).
 
     return FindingOutcome(
         finding_id=finding.finding_id, check_id=finding.check_id,
@@ -331,16 +310,24 @@ def _run_finding(
 def _stage_dossier(
     finding: Finding,
     dossier: DossierArtifact,
-    proposal_req: dict,
     store: StagingStore,
+    ledger: Ledger,
 ) -> ProposalArtifact:
-    """Stage the dossier as a PENDING ProposalArtifact (the only Tier-2 path is human approval).
+    """Stage the dossier as a PENDING ProposalArtifact — DRIVER-DECIDED (arch A).
 
-    The justification was already gated and written to the ledger when the
-    ``propose_action`` event was processed — satisfying "justification written to ledger
-    BEFORE staging". The proposal anchors to the SAME inputs as the dossier, so they
-    share one inputs_hash.
+    The DRIVER triggers staging when the code-defined completeness + lint pass (the
+    model cannot call ``propose_action`` — an unbacked tool). The Tier-1 staging
+    justification is written to the ledger under the registered ``propose_action``
+    contract BEFORE staging, preserving "justification written to ledger BEFORE
+    staging". The proposal anchors to the SAME inputs as the dossier (shared
+    inputs_hash). This is still the ONLY Tier-2 path: a human approves the PENDING
+    proposal; the loop never seals or emits.
     """
+    validate_justification(
+        _STAGE_JUSTIFICATION, Tier.ONE,
+        tool_name="propose_action", call_params={"action": "attach_dossier"},
+        ledger=ledger,
+    )
     inputs = dossier_inputs(
         finding, dossier.evidence, dossier.candidate_framing_text, dossier.completeness
     )
@@ -348,8 +335,8 @@ def _stage_dossier(
         f"evidence:{slot}" for slot in sorted(dossier.evidence)
     ]
     proposal = build_proposal(
-        action=str(proposal_req.get("action", "attach_dossier")),
-        justification=str(proposal_req.get("justification")),
+        action="attach_dossier",
+        justification=_STAGE_JUSTIFICATION,
         evidence_refs=evidence_refs,
         inputs=inputs,
     )

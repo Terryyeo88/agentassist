@@ -35,6 +35,11 @@ def build_options(
     *,
     system_prompt: str = "",
     engine_server: "Optional[McpSdkServerConfig]" = None,
+    reads_server: "Optional[McpSdkServerConfig]" = None,
+    attach_hooks: bool = True,
+    tool_allowlist: "Optional[list[str]]" = None,
+    disallowed_tools: "Optional[list[str]]" = None,
+    model: "Optional[str]" = None,
 ) -> "ClaudeAgentOptions":
     """Assemble and return a ClaudeAgentOptions instance for one agent run.
 
@@ -51,6 +56,32 @@ def build_options(
                        (mcp__engine__run_review_chain) is appended to
                        allowed_tools.  When None (default) no engine tool is
                        wired — build_options behaviour is unchanged.
+        reads_server:  Optional in-process MCP server (from
+                       agent.read_tools_server.make_read_tools_server) exposing the
+                       three Tier-0 reads so a live model can call them.  When
+                       provided, it is wired into mcp_servers and its qualified tool
+                       names (mcp__reads__get_source_document, …) are appended to
+                       allowed_tools; the registry's MCP-aware get_tier resolves each
+                       back to Tier 0 so the PreToolUse hook gates them as reads.
+                       When None (default) no reads server is wired — behaviour is
+                       unchanged.
+        attach_hooks:  When True (default) the PreToolUse/PostToolUse ledger hooks
+                       are wired — unchanged behaviour for every existing caller.
+                       When False the returned options carry NO hooks
+                       (``hooks=None``); make_hooks is not called.  This is for
+                       the live case-file loop, whose plain-Python driver is the
+                       SOLE gate (it justification-gates and executes Tier-0 reads
+                       itself) — attaching the SDK hooks too would double-write the
+                       ledger and muddy the COGS / sealed-chain accounting.
+        tool_allowlist: When given, REPLACES the registry-derived allowed_tools (the
+                       live loop passes only the mcp__reads__* names so the model is
+                       steered to exactly the reads it needs). Default None keeps the
+                       registry-derived list — existing callers unchanged.
+        disallowed_tools: Names to deny outright (e.g. ["ToolSearch"] — a leaked CLI
+                       built-in observed in the T5.3-V run). Not enumerable; the cage
+                       PreToolUse hook (Tier-3 deny) is the real backstop. Default [].
+        model:         Pins the model when given (the run's choice). Default None =
+                       CLI default — existing callers unchanged.
 
     Returns:
         ClaudeAgentOptions with:
@@ -68,8 +99,6 @@ def build_options(
     """
     from claude_agent_sdk import ClaudeAgentOptions, HookMatcher  # noqa: PLC0415
 
-    pre_cb, post_cb, _audit_log = make_hooks(ledger)
-
     tool_names = [spec.name for spec in allowed_tools()]
 
     mcp_servers: dict[str, Any] = {}
@@ -83,13 +112,39 @@ def build_options(
         mcp_servers[ENGINE_SERVER_NAME] = engine_server
         tool_names.append(ENGINE_TOOL_QUALIFIED)
 
-    return ClaudeAgentOptions(
-        allowed_tools=tool_names,
-        mcp_servers=mcp_servers,
-        hooks={
+    if reads_server is not None:
+        # Wire the three Tier-0 reads as MCP tools. Their MCP-namespaced names are
+        # added to allowed_tools; the registry's MCP-aware get_tier resolves each to
+        # Tier 0, so the PreToolUse hook gates them as reads (allow + ledger).
+        from agent.read_tools_server import (  # noqa: PLC0415
+            READS_SERVER_NAME,
+            READ_TOOLS_QUALIFIED,
+        )
+        mcp_servers[READS_SERVER_NAME] = reads_server
+        tool_names.extend(READ_TOOLS_QUALIFIED)
+    # Hooks are wired only when requested. The hook-free path (attach_hooks=False)
+    # leaves the ledger untouched here — the live loop's driver is the sole gate.
+    hooks_arg = None
+    if attach_hooks:
+        pre_cb, post_cb, _audit_log = make_hooks(ledger)
+        hooks_arg = {
             "PreToolUse": [HookMatcher(hooks=[pre_cb])],
             "PostToolUse": [HookMatcher(hooks=[post_cb])],
-        },
+        }
+
+    # Tool-schema hardening (T5.3g). When a tool_allowlist is given it REPLACES the
+    # registry-derived allowed_tools — the live loop passes only the mcp__reads__* names
+    # so the model is steered to exactly the reads it needs. disallowed_tools denies
+    # named leaked CLI built-ins (e.g. "ToolSearch"); the cage hook is the real backstop.
+    # model pins the model when given (the run's choice; default None = CLI default).
+    final_allowed = list(tool_allowlist) if tool_allowlist is not None else tool_names
+
+    return ClaudeAgentOptions(
+        allowed_tools=final_allowed,
+        disallowed_tools=list(disallowed_tools) if disallowed_tools else [],
+        mcp_servers=mcp_servers,
+        hooks=hooks_arg,
         max_turns=budget.max_turns,
         system_prompt=system_prompt or None,
+        model=model,
     )

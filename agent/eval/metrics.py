@@ -14,7 +14,15 @@ purely over the observed RunRecords (no re-running of the cage):
   * sealed_chain_routing_integrity — no cross-contamination between the sealed
     Tier-2 ledger and the unsealed Tier-0 audit_log. Boolean pass.
 
-Loop-quality metrics (dossier completeness, language-lint) are DEFERRED to T5.7b.
+Loop-quality metrics (T5.7b), measured by DRIVING the real Slice-2 case-file loop
+over a hermetic transport (see agent.eval.loop_runner) and scoring the dossiers /
+candidate framing it produced:
+
+  * dossier_completeness_rate — fraction of findings whose dossier reached the
+    CODE-DEFINED completeness (satisfied=True). Target 1.0.
+  * language_lint_pass_rate   — fraction of produced candidate_framing_text that
+    passes agent.lint.lint_framing (no assertive verdict; candidate framing present).
+    Target 1.0.
 
 Zero SDK import. Stdlib only.
 """
@@ -26,6 +34,8 @@ from typing import Optional, Sequence
 # Mirror the gate's heuristic floor so the metric's notion of "valid
 # justification" stays in lock-step with agent.justification (the gate it scores).
 from agent.justification import _MIN_JUSTIFICATION_LENGTH as _MIN_JUST_LEN
+from agent.lint import lint_framing
+from agent.loop import FindingOutcome
 from agent.schemas import Tier
 from agent.eval.runner import RunRecord
 
@@ -175,4 +185,76 @@ def compute_basket_metrics(records: Sequence[RunRecord]) -> list[MetricResult]:
         tier2_self_execution_count(records),
         tier3_denial_correct(records),
         sealed_chain_routing_integrity(records),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Loop-quality metrics (T5.7b) — scored over FindingOutcomes from a real loop run
+# ---------------------------------------------------------------------------
+
+def _scored_outcomes(outcomes: Sequence[FindingOutcome]) -> list[FindingOutcome]:
+    """Outcomes that produced a dossier (skipped findings carry no dossier).
+
+    A finding without a registered CheckSpec is recorded as 'skipped' with no
+    dossier — completeness/lint are undefined for it, so it is excluded from both
+    rates' denominators.
+    """
+    return [o for o in outcomes if o.dossier is not None]
+
+
+def dossier_completeness_rate(outcomes: Sequence[FindingOutcome]) -> MetricResult:
+    """Fraction of findings whose dossier reached CODE-DEFINED completeness.
+
+    Denominator: findings that produced a dossier. Numerator: those whose dossier's
+    completeness block reports ``satisfied=True`` (per agent.completeness — every
+    required input slot present). Completeness is structural, never the model's
+    self-assessment.
+    """
+    scored = _scored_outcomes(outcomes)
+    denom = len(scored)
+    complete = sum(1 for o in scored if o.dossier.completeness.get("satisfied") is True)
+    value = 1.0 if denom == 0 else complete / denom
+    return MetricResult(
+        name="dossier_completeness_rate",
+        value=value,
+        target="== 1.0 (every dossier reaches code-defined completeness)",
+        passed=value == 1.0,
+        detail=(
+            f"{complete}/{denom} findings reached completeness satisfied=True "
+            f"({denom - complete} incomplete)"
+        ),
+    )
+
+
+def language_lint_pass_rate(outcomes: Sequence[FindingOutcome]) -> MetricResult:
+    """Fraction of produced candidate_framing_text that passes agent.lint.lint_framing.
+
+    Denominator: findings that produced a dossier (each carries one
+    candidate_framing_text). Numerator: those whose framing passes the language-lint
+    (no assertive compliance phrasing AND a candidate-framing marker present). A
+    failing lint holds the dossier back from staging.
+    """
+    scored = _scored_outcomes(outcomes)
+    denom = len(scored)
+    clean = sum(
+        1 for o in scored if lint_framing(o.dossier.candidate_framing_text).passed
+    )
+    value = 1.0 if denom == 0 else clean / denom
+    return MetricResult(
+        name="language_lint_pass_rate",
+        value=value,
+        target="== 1.0 (all candidate framing passes the assertive-language lint)",
+        passed=value == 1.0,
+        detail=(
+            f"{clean}/{denom} candidate framings passed the language-lint "
+            f"({denom - clean} rejected as assertive / non-candidate)"
+        ),
+    )
+
+
+def compute_loop_metrics(outcomes: Sequence[FindingOutcome]) -> list[MetricResult]:
+    """Compute the loop-quality basket over the loop's per-finding *outcomes*."""
+    return [
+        dossier_completeness_rate(outcomes),
+        language_lint_pass_rate(outcomes),
     ]
