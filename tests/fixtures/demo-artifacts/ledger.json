@@ -1,0 +1,908 @@
+[
+  {
+    "blocked_reason": null,
+    "call_params": {},
+    "entry_hash": "sha256:ce5c54b1e50a682857de7099fd28efa22cf0c56cb0779f76ed2316dbb7219c7d",
+    "entry_id": "08794fd0-1184-47e5-8af7-672cbe7a691a",
+    "justification": "Gather the deterministic GST review findings (full atomic chain) so the agent layer can assemble per-finding case files for human review.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.134727+00:00",
+    "tool_name": "run_review_chain"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.004,
+      "turns_used": 1
+    },
+    "entry_hash": "sha256:7c1c0df2e6b08ff4948f02653ed2eb610a6ba14fc5cf342bff90a088e91f83ae",
+    "entry_id": "ffa8f472-ee1a-4950-8346-633fc4fbd9af",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:ce5c54b1e50a682857de7099fd28efa22cf0c56cb0779f76ed2316dbb7219c7d",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.134906+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:93e9a5339a38fde6f4ac608dbd1c6a25a1bb00dd739d69e53523b799c98dee7f",
+    "entry_id": "8eaca5b6-78f5-4226-aee2-3d3dbecb2af7",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:7c1c0df2e6b08ff4948f02653ed2eb610a6ba14fc5cf342bff90a088e91f83ae",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.134979+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.008,
+      "turns_used": 2
+    },
+    "entry_hash": "sha256:1a48ffe038bcdb84996962de33217177652ed2330242541454efc1c209f5ee5c",
+    "entry_id": "182fcb42-5fb8-425d-b192-1d93689b0856",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:93e9a5339a38fde6f4ac608dbd1c6a25a1bb00dd739d69e53523b799c98dee7f",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135043+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:83dae1562c71e895c867c0b55ee84de658a348a63c5f4eba794b063fbc38727d",
+    "entry_id": "0276924b-a3d4-4094-98a7-f266dd83e07f",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:1a48ffe038bcdb84996962de33217177652ed2330242541454efc1c209f5ee5c",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.135082+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.012,
+      "turns_used": 3
+    },
+    "entry_hash": "sha256:5d186ce9f603bedaf6435fab0f7d6408cb2efe127c4af355c22c9145e4bceea2",
+    "entry_id": "c500dffe-7b08-4cc3-9639-06dbcd716c51",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:83dae1562c71e895c867c0b55ee84de658a348a63c5f4eba794b063fbc38727d",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135126+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:37563047e2571e0160c9f5ce62a15474126815ce2c334e1122c0d9157df19214",
+    "entry_id": "7d5139e3-85fc-4ad1-9ad7-04d9472c0b64",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:5d186ce9f603bedaf6435fab0f7d6408cb2efe127c4af355c22c9145e4bceea2",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.135159+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.016,
+      "turns_used": 4
+    },
+    "entry_hash": "sha256:542870b89e191d8afb4ce4b6ab37a6b87c2ff96ca4f852563fbc195d4990feff",
+    "entry_id": "66bdd63e-be14-4cdf-8d52-9dda40c9f1b5",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:37563047e2571e0160c9f5ce62a15474126815ce2c334e1122c0d9157df19214",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135199+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:4bdf49666578f022d34e684982cbef09b4d15ed5c4ebf044f919650467b4ccf6",
+    "entry_id": "b18cd4dc-d744-4ffa-91fd-4e1f00eb6e1f",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:542870b89e191d8afb4ce4b6ab37a6b87c2ff96ca4f852563fbc195d4990feff",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.135230+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.016,
+      "turns_used": 5
+    },
+    "entry_hash": "sha256:e515ff0d508a1c12f9cc2392af9816a74357921803ff292683b1ca27e4992188",
+    "entry_id": "a22bf8f3-f1c4-4819-8e4a-7b72c6b9f55d",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:4bdf49666578f022d34e684982cbef09b4d15ed5c4ebf044f919650467b4ccf6",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135271+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.016,
+      "turns_used": 6
+    },
+    "entry_hash": "sha256:813c1001c9cf96f4500d463e6953027b17294f808420ba43c7d229d3714e8a2c",
+    "entry_id": "28b82245-d827-4e9a-bf7e-71032b405ff0",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:e515ff0d508a1c12f9cc2392af9816a74357921803ff292683b1ca27e4992188",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135308+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.016,
+      "turns_used": 7
+    },
+    "entry_hash": "sha256:b92972894a2c8694ac97c5600f20578fb3d64bb1a637a7138050f7f09f1e4ef8",
+    "entry_id": "57ce4257-6bbf-4bfb-ad21-39c4657f2fa3",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:813c1001c9cf96f4500d463e6953027b17294f808420ba43c7d229d3714e8a2c",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135513+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.016,
+      "turns_used": 8
+    },
+    "entry_hash": "sha256:fbb834b1de0cbd127062b8cce16a4abe0512dc3ef23dbfc5227fa1645d695f8d",
+    "entry_id": "da3078c7-959b-43b8-a2a5-84d66d54935f",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:b92972894a2c8694ac97c5600f20578fb3d64bb1a637a7138050f7f09f1e4ef8",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135561+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.016,
+      "turns_used": 9
+    },
+    "entry_hash": "sha256:799937e70c63d2d91da934a70bee2cafb854cb401eff099909e42887192fad2e",
+    "entry_id": "59406b25-facc-423d-ac6f-729afc28b1ca",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:fbb834b1de0cbd127062b8cce16a4abe0512dc3ef23dbfc5227fa1645d695f8d",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135597+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.016,
+      "turns_used": 10
+    },
+    "entry_hash": "sha256:5128164a6bce623ff3db09dbdb8508876ea240adec0fe4c19eb1d055ded1af4b",
+    "entry_id": "99fbabae-2a98-4f28-9264-3055e0fc9a16",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:799937e70c63d2d91da934a70bee2cafb854cb401eff099909e42887192fad2e",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135630+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "card_name": "Acme Associates",
+      "evidence_slot": "supplier_catalog"
+    },
+    "entry_hash": "sha256:ed7d7ede6dc3f8a60dfae4e7f979767ed01ada2157774bfa6973d328f11af630",
+    "entry_id": "984acd89-7071-4d7b-b5c1-2bfe68b99d00",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:5128164a6bce623ff3db09dbdb8508876ea240adec0fe4c19eb1d055ded1af4b",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135668+00:00",
+    "tool_name": "mcp__reads__read_vendor_gst_status"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.02,
+      "turns_used": 11
+    },
+    "entry_hash": "sha256:5a35cca37d3ae880dd567f927fb89b107fee9fb4bbecc0a739cf36ed2a0cc024",
+    "entry_id": "c7a94bf1-d1a8-4b02-8e30-63cb63680924",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:ed7d7ede6dc3f8a60dfae4e7f979767ed01ada2157774bfa6973d328f11af630",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135684+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:d2f0b0ab5b32491dcd19cd59046595f3ffbf95679a096ee87c3a1687ab3734c2",
+    "entry_id": "c0fe1e7e-752b-4d6b-bdb5-0177b8914a0d",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:5a35cca37d3ae880dd567f927fb89b107fee9fb4bbecc0a739cf36ed2a0cc024",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.135719+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "card_name": "Far East Imports",
+      "evidence_slot": "supplier_catalog"
+    },
+    "entry_hash": "sha256:5eeb981d3f2f3ae2ca4953c32d66fd44d60e920de34f8e580652e9967493c982",
+    "entry_id": "c245d10f-ab82-453b-9a29-2e1c889f9261",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:d2f0b0ab5b32491dcd19cd59046595f3ffbf95679a096ee87c3a1687ab3734c2",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135765+00:00",
+    "tool_name": "mcp__reads__read_vendor_gst_status"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.024,
+      "turns_used": 12
+    },
+    "entry_hash": "sha256:1883f77dc0b5eb92e80d46d34bf8324857e457defa6a7015cef0635ec55c1f03",
+    "entry_id": "4ddc7273-4e7f-4135-be16-80f4ad9f8e31",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:5eeb981d3f2f3ae2ca4953c32d66fd44d60e920de34f8e580652e9967493c982",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135780+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:5507a59f6e7fe785fb713c20aa60c2f0997385636c49eae8273554dff6cf7243",
+    "entry_id": "b60b15f6-f767-4523-8479-92e102dadf6b",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:1883f77dc0b5eb92e80d46d34bf8324857e457defa6a7015cef0635ec55c1f03",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.135813+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "card_name": "SMD Technologies",
+      "evidence_slot": "supplier_catalog"
+    },
+    "entry_hash": "sha256:d7b5e9b55ac0c32d93d926ca47f28936e27f58cc8ee189707c100dff25f5cde2",
+    "entry_id": "653bb2c8-28dc-4662-87cb-0511e09dc28a",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:5507a59f6e7fe785fb713c20aa60c2f0997385636c49eae8273554dff6cf7243",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135856+00:00",
+    "tool_name": "mcp__reads__read_vendor_gst_status"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.028,
+      "turns_used": 13
+    },
+    "entry_hash": "sha256:3afb78182460f56fe1888ccee187b6dd8acb62f70b92cd73b58d557a54e3519d",
+    "entry_id": "68f372fc-e620-4d29-9356-0efe9b6a3162",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:d7b5e9b55ac0c32d93d926ca47f28936e27f58cc8ee189707c100dff25f5cde2",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135870+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:c9850c0f230443e1db91d7f25fd19eabd155af7bfc5694a082b902b0aa76e350",
+    "entry_id": "20c1def9-7462-4933-83af-6198e1b9ceff",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:3afb78182460f56fe1888ccee187b6dd8acb62f70b92cd73b58d557a54e3519d",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.135899+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "card_name": "Lasercom",
+      "evidence_slot": "supplier_catalog"
+    },
+    "entry_hash": "sha256:03978eca1a00827f001a7912dca54e0f2b44c3f20481f4445db3abaf7cbb5fd2",
+    "entry_id": "367203ef-a6eb-4e0e-8806-45ef0ace6dc4",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:c9850c0f230443e1db91d7f25fd19eabd155af7bfc5694a082b902b0aa76e350",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135940+00:00",
+    "tool_name": "mcp__reads__read_vendor_gst_status"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.032,
+      "turns_used": 14
+    },
+    "entry_hash": "sha256:1cc5d65524c0dfe3018faae13c17e69ffb94a116c207bea0f540758614f298f2",
+    "entry_id": "53007fdf-4bdc-4135-b7ec-f0e3464bc831",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:03978eca1a00827f001a7912dca54e0f2b44c3f20481f4445db3abaf7cbb5fd2",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.135953+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:cb53c453bf3627ab8f9835f2d9fcf2eb00875f3d1e9d1329e1a24ceca5ae240a",
+    "entry_id": "9485eeed-50f6-44c4-8429-04fe8fbdee38",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:1cc5d65524c0dfe3018faae13c17e69ffb94a116c207bea0f540758614f298f2",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.135982+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.036000000000000004,
+      "turns_used": 15
+    },
+    "entry_hash": "sha256:feff2e73e51c754acd127c1556d1537b4286c766fe528ba1d5258cedd023f31f",
+    "entry_id": "1c170798-b3dd-4315-bfb7-9c03d098745a",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:cb53c453bf3627ab8f9835f2d9fcf2eb00875f3d1e9d1329e1a24ceca5ae240a",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136017+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:314a11df0ff3e40ce3a1120dd4cb391dfc3b313fd40e62429d5e494c38526f77",
+    "entry_id": "e785feff-f5a1-48ab-b34a-a80633a073e7",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:feff2e73e51c754acd127c1556d1537b4286c766fe528ba1d5258cedd023f31f",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136050+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.04000000000000001,
+      "turns_used": 16
+    },
+    "entry_hash": "sha256:2a4a50d512eeefe8f71bd95d0f3543adda4c238fe625018c0208dff681d11b23",
+    "entry_id": "fec659c0-cb1e-43b0-bcc2-181b4221ec50",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:314a11df0ff3e40ce3a1120dd4cb391dfc3b313fd40e62429d5e494c38526f77",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136086+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:ffae6fc11f1a655ded71017fc6a9c74da36f5234db36b73f4794b2cf925a40f7",
+    "entry_id": "404d4bf3-4ae4-4607-a07a-75eb3cbd7083",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:2a4a50d512eeefe8f71bd95d0f3543adda4c238fe625018c0208dff681d11b23",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136117+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.04000000000000001,
+      "turns_used": 17
+    },
+    "entry_hash": "sha256:dc14e147eeaf06963229e7ea2b4ff235484c525d390d7e0ac09f917fe043b3be",
+    "entry_id": "d112b442-c8bf-493f-b470-35a49d4211a9",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:ffae6fc11f1a655ded71017fc6a9c74da36f5234db36b73f4794b2cf925a40f7",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136154+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.04000000000000001,
+      "turns_used": 18
+    },
+    "entry_hash": "sha256:5932b10ab250afe510fd5d768f9d11d61f0dfb8576e0b851aa2cf81796c9e515",
+    "entry_id": "64aa99a6-aefb-4968-a2b9-93d6570d0814",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:dc14e147eeaf06963229e7ea2b4ff235484c525d390d7e0ac09f917fe043b3be",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136189+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.0,
+      "cost_usd_used": 0.04000000000000001,
+      "turns_used": 19
+    },
+    "entry_hash": "sha256:7f8dfde67c0657d4d0df3038c2fc24fa64a4150f189cbfbeacb4258bb4e07cbc",
+    "entry_id": "dd84ed10-38bb-4801-8be2-a8ed0990b526",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:5932b10ab250afe510fd5d768f9d11d61f0dfb8576e0b851aa2cf81796c9e515",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136222+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.04400000000000001,
+      "turns_used": 20
+    },
+    "entry_hash": "sha256:e803a607720f0d8ec50b285b6bec7b7b501aed43af6d7273f7ac665e0beaa9a1",
+    "entry_id": "f288b076-f8b2-44a4-8bc6-b275e2710324",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:7f8dfde67c0657d4d0df3038c2fc24fa64a4150f189cbfbeacb4258bb4e07cbc",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136255+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:2d72abb5a46f6044aac01699d213ba3a6761b701468206b231f99ea7832c5c56",
+    "entry_id": "4b7797af-7872-48d9-8478-6d5c9c82c148",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:e803a607720f0d8ec50b285b6bec7b7b501aed43af6d7273f7ac665e0beaa9a1",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136287+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.048000000000000015,
+      "turns_used": 21
+    },
+    "entry_hash": "sha256:209b8c3d48b9b94f37e7644086d8272dbeedca2e511ef7d63775c0ec2cea1cbc",
+    "entry_id": "02685892-9c49-4801-a680-d1dbeaf4857c",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:2d72abb5a46f6044aac01699d213ba3a6761b701468206b231f99ea7832c5c56",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136325+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:712260bc83b46952fa948c1ca3e46fb77ec4e186112d4bada01723a2fb90f615",
+    "entry_id": "8c4b2b90-64df-430f-94fe-657380d98f2c",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:209b8c3d48b9b94f37e7644086d8272dbeedca2e511ef7d63775c0ec2cea1cbc",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136354+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "card_name": "Lumarx",
+      "evidence_slot": "supplier_catalog"
+    },
+    "entry_hash": "sha256:e418e1645f79d596a031b7c22ef5bf435052e1a643b5d4d9b076e01f86eca1e3",
+    "entry_id": "62bec6ff-c629-4f8f-aa05-626f9bbf7afd",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:712260bc83b46952fa948c1ca3e46fb77ec4e186112d4bada01723a2fb90f615",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136395+00:00",
+    "tool_name": "mcp__reads__read_vendor_gst_status"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.05200000000000002,
+      "turns_used": 22
+    },
+    "entry_hash": "sha256:3e51e41d8edc28ead8bc2cbd04811be68762a9ad1514e0166d5a0c989f39e80d",
+    "entry_id": "b0d3f3c7-0de8-40f5-866b-be9908764c59",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:e418e1645f79d596a031b7c22ef5bf435052e1a643b5d4d9b076e01f86eca1e3",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136410+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:4735beee9c0fcb55c7d239796b0550faed91a5d94bb5e48b5c2044d74ef9bba2",
+    "entry_id": "c854a7a6-8015-4827-885e-167cbcdb2a84",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:3e51e41d8edc28ead8bc2cbd04811be68762a9ad1514e0166d5a0c989f39e80d",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136441+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "card_name": "CTI Computers",
+      "evidence_slot": "supplier_catalog"
+    },
+    "entry_hash": "sha256:a8e5916f8e971aacb1beb64f02deaf4cd7d88f4dd474cc9513be2ceab28aa45c",
+    "entry_id": "5059e1a2-244f-4147-bd6a-642ca49f914c",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:4735beee9c0fcb55c7d239796b0550faed91a5d94bb5e48b5c2044d74ef9bba2",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136480+00:00",
+    "tool_name": "mcp__reads__read_vendor_gst_status"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.05600000000000002,
+      "turns_used": 23
+    },
+    "entry_hash": "sha256:f0ba671631547f22b6a1012db7c0a042a01b2bd40d53240ddaf48be56914128f",
+    "entry_id": "91c7c03b-6610-4d18-bb88-57af285a9d94",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:a8e5916f8e971aacb1beb64f02deaf4cd7d88f4dd474cc9513be2ceab28aa45c",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136493+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:de44168d14ab87ff9f28d79e19e000e0bfe1e0d1ff8993a85e84c7469d8a0f20",
+    "entry_id": "334dfc9f-3d86-4eeb-a5e0-d506038806e0",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:f0ba671631547f22b6a1012db7c0a042a01b2bd40d53240ddaf48be56914128f",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136523+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "card_name": "Blockies Corporation",
+      "evidence_slot": "supplier_catalog"
+    },
+    "entry_hash": "sha256:1d922ddc5783d84b5dabebf91bc6cd53add3d21b78e89bdd477278cdfc561f0d",
+    "entry_id": "ea67f3a5-5de2-4965-a2d8-9c0a45488ab1",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:de44168d14ab87ff9f28d79e19e000e0bfe1e0d1ff8993a85e84c7469d8a0f20",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136568+00:00",
+    "tool_name": "mcp__reads__read_vendor_gst_status"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.060000000000000026,
+      "turns_used": 24
+    },
+    "entry_hash": "sha256:6246159483c19cae89e684375b6ced0415b2b385f1655686c101420d935f5597",
+    "entry_id": "ca5091f0-b00a-4904-bcb9-bd59f7ca1b8e",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:1d922ddc5783d84b5dabebf91bc6cd53add3d21b78e89bdd477278cdfc561f0d",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136581+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:b9bd52aacd02ab8a5d02bf8de87b1ae0d14fc8140ac1fdc684ef766ca111a4e4",
+    "entry_id": "e029759d-f070-46e4-805d-4b8dd5066a26",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:6246159483c19cae89e684375b6ced0415b2b385f1655686c101420d935f5597",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136612+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.06400000000000003,
+      "turns_used": 25
+    },
+    "entry_hash": "sha256:d1b03994a12bd267007c800259239ac50313af28e41663d222555452dcdd383a",
+    "entry_id": "0d747652-35ff-4781-aa1d-e5aae43a8736",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:b9bd52aacd02ab8a5d02bf8de87b1ae0d14fc8140ac1fdc684ef766ca111a4e4",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136649+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:be8cdf51f78ccd9486c335c10e71a20470c5c084602d282ad97cd112eed829f1",
+    "entry_id": "ebce9ef5-c835-4a65-bf0e-81a0a4a2cf1d",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:d1b03994a12bd267007c800259239ac50313af28e41663d222555452dcdd383a",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136683+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.06800000000000003,
+      "turns_used": 26
+    },
+    "entry_hash": "sha256:9445782cf23e41fb2ba9ae42396240e0695a0c3c13d9123aabf75f46b08a528a",
+    "entry_id": "fff8f659-0a9c-4516-aab6-bbfddf1535d3",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:be8cdf51f78ccd9486c335c10e71a20470c5c084602d282ad97cd112eed829f1",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136723+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:dd1dc47831e54a81846abd658dc1633680069da81087305fc2dde03ff3d8be60",
+    "entry_id": "85b58243-1000-4834-b745-7aded4864af2",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:9445782cf23e41fb2ba9ae42396240e0695a0c3c13d9123aabf75f46b08a528a",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136755+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.07200000000000004,
+      "turns_used": 27
+    },
+    "entry_hash": "sha256:bde0831ed1dbfb4e42265a91d34eb58da53a80071c2f1565aa71a9a00510143f",
+    "entry_id": "a6fb2c3f-7bd8-4208-8fc6-5d14c42d6605",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:dd1dc47831e54a81846abd658dc1633680069da81087305fc2dde03ff3d8be60",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136804+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:6c0ed91d6fff1b9423c461e68ad4a26e7b9645d375bcbe778b743d45338e95b4",
+    "entry_id": "db74fc16-9ae1-4f1d-a49c-fa3b2cff3aa2",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:bde0831ed1dbfb4e42265a91d34eb58da53a80071c2f1565aa71a9a00510143f",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136839+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.07600000000000004,
+      "turns_used": 28
+    },
+    "entry_hash": "sha256:4ad5061fa03df70b7773c715f9e026d15f42a399ce465cf38200ef96360a208f",
+    "entry_id": "87839b88-4d1c-4929-a03b-11a8fe526326",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:6c0ed91d6fff1b9423c461e68ad4a26e7b9645d375bcbe778b743d45338e95b4",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136879+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:6c7dd99a5ac2d079c95ac70b0d5bd43d6c4b4f824c3cd4063d322ff3208fb771",
+    "entry_id": "56eff27e-6d36-4951-95c9-9c0e486520fb",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:4ad5061fa03df70b7773c715f9e026d15f42a399ce465cf38200ef96360a208f",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136913+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.004,
+      "cost_usd_used": 0.08000000000000004,
+      "turns_used": 29
+    },
+    "entry_hash": "sha256:9fe7f53ffb8ad4ee470f412d28be1fd3d3bf91c1872066e5cfa4f7cafc3b1b8b",
+    "entry_id": "72d2fab3-9247-4a2f-93e9-c66a870d9944",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:6c7dd99a5ac2d079c95ac70b0d5bd43d6c4b4f824c3cd4063d322ff3208fb771",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.136950+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:170bd934550ad050b883379e635045b2c3adb308e57bafadd29803aa5e82c0eb",
+    "entry_id": "8c336825-885b-4464-8e1c-3fa99adae32a",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:9fe7f53ffb8ad4ee470f412d28be1fd3d3bf91c1872066e5cfa4f7cafc3b1b8b",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.136981+00:00",
+    "tool_name": "propose_action"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "doc_num": 958,
+      "evidence_slot": "document_pdfs"
+    },
+    "entry_hash": "sha256:90d6c27d6bcb2c405e6dee1f7098aa9b70bed21af29e87bc653f8bfb197240b2",
+    "entry_id": "1d5b1921-8907-4fdd-b943-131a39676db0",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:170bd934550ad050b883379e635045b2c3adb308e57bafadd29803aa5e82c0eb",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.137022+00:00",
+    "tool_name": "mcp__reads__get_source_document"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "cost_usd": 0.009,
+      "cost_usd_used": 0.08900000000000004,
+      "turns_used": 30
+    },
+    "entry_hash": "sha256:b597adf9380cfb3a0154ae9b411f8cf9fc5a315066d32cc2cd637b2d34a9fe23",
+    "entry_id": "5f0af103-7c31-4db6-93c9-1035ac9bd55c",
+    "justification": null,
+    "outcome": "allowed",
+    "prev_hash": "sha256:90d6c27d6bcb2c405e6dee1f7098aa9b70bed21af29e87bc653f8bfb197240b2",
+    "tier": 0,
+    "timestamp": "2026-06-16T07:27:00.137036+00:00",
+    "tool_name": "budget_increment"
+  },
+  {
+    "blocked_reason": null,
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "entry_hash": "sha256:0925dde759519ed1e4f129c44ceab22f7d44632d5f1085b47c8f04d21782ff36",
+    "entry_id": "0cef5426-cb33-42b4-a09c-c43eb9f0d5be",
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "outcome": "allowed",
+    "prev_hash": "sha256:b597adf9380cfb3a0154ae9b411f8cf9fc5a315066d32cc2cd637b2d34a9fe23",
+    "tier": 1,
+    "timestamp": "2026-06-16T07:27:00.137068+00:00",
+    "tool_name": "propose_action"
+  }
+]

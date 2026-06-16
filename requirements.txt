@@ -6,6 +6,7 @@ python-dotenv
 PyYAML
 reportlab
 pdfplumber
+streamlit
 pytest
 pytest-xdist
 anthropic
