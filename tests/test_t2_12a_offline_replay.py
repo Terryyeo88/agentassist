@@ -13,15 +13,17 @@ This is a TEST HARNESS, not the product adapter. It injects frozen fixtures via
 test-only monkeypatches at the fetch primitives; it does NOT build the Excel/CSV
 adapter (T2.12) and does NOT validate accuracy (T2.11). orchestrator/ is untouched.
 
+The fixture-injection patch set now lives in tests/replay_shim.py (reused by T5.3h);
+this gate's behaviour is UNCHANGED — same patches, same assertions.
+
 Consumed surfaces (recon S0/S1/S2/S3/S5; S4 is reasoning-pass only, not read by
 run_chain). See exploration-notes/t2.12a-read-surface-inventory.md.
 """
 from __future__ import annotations
 
-import copy
+import importlib.util
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -37,25 +39,24 @@ import sap_b1_server  # noqa: E402 — path set above
 from audit_bundle.canonical import canonical_json  # noqa: E402
 from config.loader import load_client_config  # noqa: E402
 
+# Load the shared replay harness from the sibling module (tests/ is not a package).
+_shim_spec = importlib.util.spec_from_file_location(
+    "t2_12a_replay_shim", Path(__file__).resolve().parent / "replay_shim.py"
+)
+replay_shim = importlib.util.module_from_spec(_shim_spec)
+_shim_spec.loader.exec_module(replay_shim)
+
+# The guard the shim raises — same identity used in the fixture and the test bodies.
+NoContactError = replay_shim.NoContactError
+
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "sbodemosg-extract"
 ORACLE_PATH = FIXTURE_DIR / "_replay-oracle.compiled.json"
 MANIFEST_PATH = FIXTURE_DIR / "capture-manifest.json"
 
 
-class NoContactError(AssertionError):
-    """Raised if any real SAP login/request is attempted during the replay."""
-
-
-def _load(name: str):
-    return json.load(open(FIXTURE_DIR / name, encoding="utf-8"))
-
-
 def _period() -> dict:
     """Pin the period from the capture manifest (fallback: chain-run-sample)."""
-    if MANIFEST_PATH.exists():
-        return json.load(open(MANIFEST_PATH, encoding="utf-8"))["period"]
-    sample = _REPO_ROOT / "tests" / "fixtures" / "chain-run-sample.json"
-    return json.load(open(sample, encoding="utf-8"))["period"]
+    return replay_shim.period_from_manifest(FIXTURE_DIR)
 
 
 def _first_divergence(a, b, path="$"):
@@ -93,86 +94,11 @@ def _first_divergence(a, b, path="$"):
 def replay_patches(monkeypatch):
     """Install the fixture-injection shims, no-contact guard, and frozen clock.
 
-    Returns the call-tracking dict so the test can assert no SAP contact occurred.
+    Delegates to the shared tests/replay_shim.py patch set (behaviour-preserving:
+    identical patches). Returns the call-tracking dict so the test can assert no SAP
+    contact occurred.
     """
-    # Frozen extract data — deepcopy per call so each (redundant) call site gets
-    # fresh objects, exactly as live SAP returns a fresh payload every fetch.
-    invoices_by_entity = {
-        "Invoices": _load("invoices.raw.json"),
-        "PurchaseInvoices": _load("purchase-invoices.raw.json"),
-        "CreditNotes": _load("credit-notes.raw.json"),
-        "PurchaseCreditNotes": _load("purchase-credit-notes.raw.json"),
-    }
-    credit_notes_by_type = {
-        "sales": _load("credit-notes.raw.json"),
-        "purchases": _load("purchase-credit-notes.raw.json"),
-    }
-    listing = _load("listing-headers.json")
-    business_partners = _load("business-partners.raw.json")
-    inline_counts = _load("inline-counts.json")["counts"]
-
-    contact = {"login": 0, "request": 0}
-
-    # --- S1 + fetch()'s CN reads: _fetch_invoices_paginated dispatch on entity ---
-    def fake_fetch_invoices(entity, period_start, period_end):
-        assert entity in invoices_by_entity, f"unexpected entity {entity!r}"
-        return copy.deepcopy(invoices_by_entity[entity])
-
-    # --- S2: _fetch_credit_notes_paginated dispatch on entity_type ---
-    def fake_fetch_credit_notes(entity_type, period_start, period_end):
-        assert entity_type in credit_notes_by_type, f"unexpected type {entity_type!r}"
-        return copy.deepcopy(credit_notes_by_type[entity_type])
-
-    # --- S5: fetch_listing_data (patched in chain's namespace) ---
-    def fake_fetch_listing_data(client_config, period):
-        return copy.deepcopy(listing)
-
-    # --- S0 + S3: SAPB1Client.get fake (class-level; serves the only two sap.get
-    #     call sites left after the high-level patches: count-probe + BP lookup) ---
-    def fake_get(self, endpoint, params=None):
-        params = params or {}
-        if "$inlinecount" in params:
-            # S0 count-probe. Return the count under the @-prefixed key only, so
-            # the current code's resp.get("odata.count") -> None (Gate-1 dormancy),
-            # reproducing TODAY's behaviour rather than the future fix.
-            entity = endpoint.lstrip("/")
-            return {"@odata.count": inline_counts.get(entity), "value": []}
-        if endpoint.startswith("/BusinessPartners('") and endpoint.endswith("')"):
-            card_code = endpoint[len("/BusinessPartners('"):-2]
-            assert card_code in business_partners, f"unfrozen supplier {card_code!r}"
-            return copy.deepcopy(business_partners[card_code])
-        raise NoContactError(f"unexpected offline GET: {endpoint} params={params}")
-
-    # --- No-contact guard: the only network entry points must never fire ---
-    def guard_login(self, *a, **kw):
-        contact["login"] += 1
-        raise NoContactError("SAPB1Client.login attempted during offline replay")
-
-    def guard_request(self, method, endpoint, **kw):
-        contact["request"] += 1
-        raise NoContactError(f"SAPB1Client.request attempted: {method} {endpoint}")
-
-    monkeypatch.setattr(sap_b1_server, "_fetch_invoices_paginated", fake_fetch_invoices)
-    monkeypatch.setattr(sap_b1_server, "_fetch_credit_notes_paginated", fake_fetch_credit_notes)
-    monkeypatch.setattr("orchestrator.chain.fetch_listing_data", fake_fetch_listing_data)
-    monkeypatch.setattr(sap_b1_server.SAPB1Client, "get", fake_get)
-    monkeypatch.setattr(sap_b1_server.SAPB1Client, "login", guard_login)
-    monkeypatch.setattr(sap_b1_server.SAPB1Client, "request", guard_request)
-
-    # --- Frozen-clock pin: fetch() stamps fetch_manifest["fetched_at"] via
-    #     datetime.now(); pin it to the oracle's instant so the re-stamped string
-    #     byte-matches. Scoped to orchestrator.steps.datetime only — nothing else
-    #     in the run_chain path stamps a timestamp. ---
-    oracle_fetched_at = _load("_replay-oracle.compiled.json")["compile_output"]["fetch_manifest"]["fetched_at"]
-    fixed = datetime.fromisoformat(oracle_fetched_at)
-
-    class _FrozenClock(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return fixed
-
-    monkeypatch.setattr("orchestrator.steps.datetime", _FrozenClock)
-    return contact
+    return replay_shim.install_replay_patches(monkeypatch, FIXTURE_DIR)
 
 
 def test_offline_replay_byte_identical_to_oracle(replay_patches):
