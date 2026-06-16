@@ -80,6 +80,7 @@ def run_chain(
     client_config: ClientConfig,
     period: Period,
     declared_f5: dict | None = None,
+    reader: "sap_b1_server.ChainReader | None" = None,
 ) -> tuple[dict, dict]:
     """Run the full six-step deterministic chain for a client and period.
 
@@ -102,6 +103,16 @@ def run_chain(
         declared_f5:   Optional validated declared-F5 dict from
                        check_declared_f5.load_declared_f5().  When None,
                        declared_f5_findings in the returned CompileOutput is [].
+        reader:        Optional ChainReader (T2.23 chain source seam) supplying
+                       the five raw-read surfaces (S0/S1/S2/S3/S5). When None,
+                       the default SAP-backed reader is used and behaviour is
+                       byte-identical to the pre-seam chain. A T2.12 CSV/Excel
+                       adapter injects a different ChainReader here. When a reader
+                       is injected it is threaded (shared) through every step; on
+                       the default path each step constructs its own stateless
+                       SapChainReader — behaviourally identical — so the step
+                       functions keep their (client_config, period) call shape
+                       and step-level test patches stay valid.
 
     Returns:
         tuple[dict, dict]: A two-element tuple:
@@ -142,6 +153,16 @@ def run_chain(
         client_config.effective_tax_code_mappings,
     )
 
+    # T2.23 chain source seam: thread the injected ChainReader through every step
+    # when one was supplied. The four step functions (fetch/calculate/classify/
+    # detect) are patched at this module's namespace by test_chain.py with 2-arg
+    # (client_config, period) stand-ins; passing reader ONLY when injected keeps
+    # the default path (and those step-level patches) on the unchanged call shape,
+    # while injected runs (the offline-replay gate, a future T2.12 adapter) share
+    # one reader across all surfaces. On the default path each step constructs its
+    # own stateless SapChainReader — behaviourally identical.
+    _reader_kw: dict = {"reader": reader} if reader is not None else {}
+
     # Mutable accumulator closed over by _rec; collects one entry per gate
     # in execution order so gate_results preserves the chain's gate sequence.
     _records: list[dict] = []
@@ -171,7 +192,7 @@ def run_chain(
 
     # --- Step 1: fetch + gate 1 ---
 
-    manifest = fetch(client_config, period)
+    manifest = fetch(client_config, period, **_reader_kw)
     try:
         checked = gate_1_record_count(manifest)
         # SAP $inlinecount is an optional OData hint; when the Service Layer
@@ -189,7 +210,7 @@ def run_chain(
 
     # --- Step 2: calculate + gate 2 ---
 
-    calc = calculate(client_config, period)
+    calc = calculate(client_config, period, **_reader_kw)
     try:
         checked = gate_2_box_reconciliation(calc)
         _rec(2, "box-reconciliation", "calculate", "PASS", True, checked)
@@ -199,7 +220,7 @@ def run_chain(
 
     # --- Step 3: classify + gate 3 ---
 
-    cls = classify(client_config, period)
+    cls = classify(client_config, period, **_reader_kw)
     try:
         checked = gate_3_inventory_consistency(cls)
         _rec(3, "inventory-consistency", "classify", "PASS", True, checked)
@@ -209,7 +230,7 @@ def run_chain(
 
     # --- Step 4: detect + gate 4 ---
 
-    det = detect(client_config, period)
+    det = detect(client_config, period, **_reader_kw)
     try:
         checked = gate_4_detect_consistency(det, manifest)
         _rec(4, "detect-consistency", "detect", "PASS", True, checked)
@@ -246,7 +267,7 @@ def run_chain(
     # equality after to catch any accidental mutation.
     _boxes_before = dict(result["calculate"]["boxes"])
     try:
-        listing_data = fetch_listing_data(client_config, period)
+        listing_data = fetch_listing_data(client_config, period, **_reader_kw)
         seq_gap = detect_seq_gaps(
             listing_data["period_sales_headers"],
             listing_data["all_sales_headers"],

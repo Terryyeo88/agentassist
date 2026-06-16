@@ -9,12 +9,16 @@ Passing proves two things:
       frozen fixtures; a missing field would error or diverge here; and
   (b) the chain is reproducible offline — no live SAP required.
 
-This is a TEST HARNESS, not the product adapter. It injects frozen fixtures via
-test-only monkeypatches at the fetch primitives; it does NOT build the Excel/CSV
+This is a TEST HARNESS, not the product adapter. It does NOT build the Excel/CSV
 adapter (T2.12) and does NOT validate accuracy (T2.11). orchestrator/ is untouched.
 
-The fixture-injection patch set now lives in tests/replay_shim.py (reused by T5.3h);
-this gate's behaviour is UNCHANGED — same patches, same assertions.
+T2.23 rewire: the frozen surfaces are now injected through the PUBLIC chain source
+seam — run_chain(..., reader=FrozenExtractReader(...)) — NOT by monkeypatching the
+_fetch_* / SAPB1Client.get internals. Only the no-contact guards + frozen clock
+remain patched (they live in tests/replay_shim.py, reused by T5.3h). The injected
+reader serves the same frozen payloads (deepcopy-per-call), so the byte-identity
+result is UNCHANGED. test_seam_param_is_load_bearing proves the injection point is
+real (every surface routes through the injected reader).
 
 Consumed surfaces (recon S0/S1/S2/S3/S5; S4 is reasoning-pass only, not read by
 run_chain). See exploration-notes/t2.12a-read-surface-inventory.md.
@@ -92,23 +96,27 @@ def _first_divergence(a, b, path="$"):
 
 @pytest.fixture()
 def replay_patches(monkeypatch):
-    """Install the fixture-injection shims, no-contact guard, and frozen clock.
+    """Install the no-contact guards + frozen clock (T2.23: reads injected via the seam).
 
-    Delegates to the shared tests/replay_shim.py patch set (behaviour-preserving:
-    identical patches). Returns the call-tracking dict so the test can assert no SAP
-    contact occurred.
+    Delegates to the shared tests/replay_shim.py guard set. Returns the call-tracking
+    dict so the test can assert no SAP contact occurred. The frozen reads themselves are
+    supplied through the public run_chain(reader=...) seam, not by patching internals.
     """
     return replay_shim.install_replay_patches(monkeypatch, FIXTURE_DIR)
 
 
 def test_offline_replay_byte_identical_to_oracle(replay_patches):
-    """run_chain off frozen fixtures, SAP unreachable, == frozen oracle (bytes)."""
+    """run_chain off frozen fixtures (injected via the seam), SAP unreachable, == oracle bytes."""
     # Hermetic config: same sbodemosg.yaml the capture used (identical tax-code
     # mappings / gst rate); creds are conftest stubs and never used (network blocked).
     cfg = load_client_config("sbodemosg", check_connectivity=False)
     period = _period()
 
-    compile_output, gate_results = run_chain(cfg, period)
+    # T2.23: inject the frozen extract through the PUBLIC chain source seam. If the seam
+    # param were absent or unwired, run_chain would ignore this and fall through to real
+    # SAP — the no-contact guard would then fire and fail the run.
+    reader = replay_shim.build_frozen_reader(FIXTURE_DIR)
+    compile_output, gate_results = run_chain(cfg, period, reader=reader)
 
     replayed = canonical_json({
         "period": period,
@@ -125,6 +133,54 @@ def test_offline_replay_byte_identical_to_oracle(replay_patches):
         pytest.fail(f"offline replay diverged from oracle at {diff}")
 
     # No-contact guard must have stayed silent — proves the run was fully offline.
+    assert replay_patches == {"login": 0, "request": 0}
+
+
+def test_seam_param_is_load_bearing(replay_patches):
+    """Every raw read routes through the INJECTED reader (the seam is real, not bypassed).
+
+    Wraps the frozen reader in a call-recorder and injects it via run_chain(reader=...).
+    After a full chain run each of the five surface methods (S0/S1/S2/S3/S5) must have
+    been invoked on the injected instance — proving run_chain threads the reader to every
+    surface rather than silently constructing its own default. A regression that dropped
+    the threading on any surface would leave that method's recorder empty here.
+    """
+    cfg = load_client_config("sbodemosg", check_connectivity=False)
+    period = _period()
+
+    inner = replay_shim.build_frozen_reader(FIXTURE_DIR)
+    calls: dict[str, int] = {
+        "count": 0, "fetch_invoices": 0, "fetch_credit_notes": 0,
+        "get_business_partner": 0, "fetch_listing": 0,
+    }
+
+    class _RecordingReader:
+        """ChainReader that counts calls then delegates to the frozen reader."""
+        def count(self, entity, ps, pe):
+            calls["count"] += 1
+            return inner.count(entity, ps, pe)
+
+        def fetch_invoices(self, entity, ps, pe):
+            calls["fetch_invoices"] += 1
+            return inner.fetch_invoices(entity, ps, pe)
+
+        def fetch_credit_notes(self, entity_type, ps, pe):
+            calls["fetch_credit_notes"] += 1
+            return inner.fetch_credit_notes(entity_type, ps, pe)
+
+        def get_business_partner(self, card_code):
+            calls["get_business_partner"] += 1
+            return inner.get_business_partner(card_code)
+
+        def fetch_listing(self, period):
+            calls["fetch_listing"] += 1
+            return inner.fetch_listing(period)
+
+    run_chain(cfg, period, reader=_RecordingReader())
+
+    # Every surface must have been driven through the injected reader.
+    assert all(n > 0 for n in calls.values()), f"surface not routed through seam: {calls}"
+    # And still no real SAP contact.
     assert replay_patches == {"login": 0, "request": 0}
 
 
