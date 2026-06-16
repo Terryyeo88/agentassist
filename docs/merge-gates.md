@@ -46,6 +46,18 @@ The correct allowed/forbidden map:
 | `documents/` | YES (lazy, multimodal path) | NO | NO | NO |
 | `agent/` | YES (lazy, SDK) | — | YES | NO |
 | `run_agent.py` | NO (orchestrator glue) | YES | YES | YES |
+| `ui/` (T5.8 demo) | **NO** (direct) | YES | YES | via `engine/` |
+
+**`ui/` import posture (T5.8 demo showcase — documentation only, NOT a Gate-a grep):**
+The `ui/` package is a new top-level consumer. It **may** import `agent/`, `engine/`, and `report/`
+(it renders over the engine seam and the existing report path), but the Mock + Sign render path **must
+not** import `anthropic`, the Claude Agent SDK, or `agent.loop` — the default demo stays hermetic
+(MockEngine loads frozen artifacts; RealEngine defers its `engine.review` import to call time). This
+posture is **enforced by a T5.8 guard test** (`tests/test_t58_mock_engine.py` — asserts those modules
+are absent from `sys.modules` after the Mock+Sign path runs), **not** by Gate a's `orchestrator/`
+import-scan grep, and **no CI gate is added for `ui/` in this docs-sync** (adding one is a code change,
+out of scope here). *Consider promoting this to a grep gate later* (an import-scan over `ui/` for
+`anthropic`/`claude_agent_sdk`) if `ui/` grows beyond the demo or the guard test proves insufficient.
 
 **Why this exact form — not `grep -r "anthropic" orchestrator/`:**
 
