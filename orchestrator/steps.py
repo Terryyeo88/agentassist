@@ -118,19 +118,19 @@ def _doc_to_record(doc: dict, doc_type: str) -> InvoiceRecord:
 
 
 def _fetch_entity(
-    entity: str, period_start: str, period_end: str
+    entity: str, period_start: str, period_end: str, reader: "sap_b1_server.ChainReader"
 ) -> tuple[list[dict], int | None]:
     """Fetch all records for one OData entity and probe for the SAP inline count.
 
-    Performs two calls to the Service Layer:
-        1. A count-only probe ($top=0, $inlinecount=allpages) to retrieve
-           the total record count without fetching any document payloads.
-        2. The full paginated fetch via sap_b1_server._fetch_invoices_paginated.
+    Reads both surfaces through the injected ChainReader (T2.23 chain source seam):
+        1. reader.count          — the S0 count-only probe ($top=0, $inlinecount).
+        2. reader.fetch_invoices — the S1 full paginated line-level fetch.
 
     Args:
         entity:       OData entity set name (e.g. "Invoices", "CreditNotes").
         period_start: Inclusive start date as YYYY-MM-DD.
         period_end:   Inclusive end date as YYYY-MM-DD.
+        reader:       ChainReader providing the S0/S1 reads.
 
     Returns:
         tuple[list[dict], int | None]: A two-element tuple:
@@ -139,82 +139,17 @@ def _fetch_entity(
               or None if the Service Layer did not return the field.  A None
               here causes Gate 1 to emit a WARN_PASS rather than failing.
     """
-    date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
-
-    # Probe for total count using OData v3 $inlinecount=allpages.
-    # SAP B1 Service Layer returns the total as "odata.count" (no @ prefix).
-    inline_count: int | None = None
-    try:
-        count_resp = sap_b1_server.sap.get(f"/{entity}", params={
-            "$filter": date_filter,
-            # $top=0 returns only the metadata (including the inline count)
-            # without fetching any actual document payloads — an efficient
-            # count-only probe that avoids an extra full-page round trip.
-            "$top": 0,
-            "$inlinecount": "allpages",
-        })
-        raw = count_resp.get("odata.count")
-        if raw is not None:
-            inline_count = int(raw)
-    except Exception as exc:
-        log.warning(f"fetch: $inlinecount probe for {entity} failed ({exc}) — Gate 1 will warn")
-
-    records = sap_b1_server._fetch_invoices_paginated(entity, period_start, period_end)
+    inline_count = reader.count(entity, period_start, period_end)
+    records = reader.fetch_invoices(entity, period_start, period_end)
     return records, inline_count
-
-
-def _fetch_headers_paginated(
-    entity: str,
-    select_fields: str,
-    date_filter: str | None = None,
-    page_size: int = 20,
-) -> list[dict]:
-    """Fetch header-only records for an OData entity, paginating via $skip.
-
-    Uses $select to limit returned fields — no DocumentLines, no expensive
-    line-level data.  Designed for the lightweight header reads needed by
-    listing checks (SEQ_GAP, DUP_CLAIM).
-
-    page_size defaults to 20 to match the SAP B1 Service Layer's server-side
-    page cap — requesting more than the server returns per page causes the
-    pagination loop to stop prematurely (returned < requested = "last page"
-    sentinel), so the value must not exceed the server's actual page size.
-
-    Args:
-        entity:        OData entity name (e.g. "Invoices").
-        select_fields: Comma-separated field names for $select.
-        date_filter:   OData $filter expression, or None for company-wide.
-        page_size:     Records per page; must not exceed SAP's server cap (default 20).
-
-    Returns:
-        List of dicts containing only the requested fields.
-    """
-    results: list[dict] = []
-    skip = 0
-    while True:
-        params: dict = {"$select": select_fields, "$top": page_size, "$skip": skip}
-        if date_filter:
-            params["$filter"] = date_filter
-        try:
-            resp = sap_b1_server.sap.get(f"/{entity}", params=params)
-            page = resp.get("value", [])
-        except Exception as exc:
-            log.warning(f"_fetch_headers_paginated: {entity} skip={skip} failed ({exc})")
-            break
-        if not page:
-            break
-        results.extend(page)
-        if len(page) < page_size:
-            break
-        skip += page_size
-    return results
 
 
 # ---------------------------------------------------------------------------
 # Step functions
 # ---------------------------------------------------------------------------
 
-def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
+def fetch(client_config: ClientConfig, period: Period,
+          reader: "sap_b1_server.ChainReader | None" = None) -> FetchManifest:
     """Step a — pull all four document types from SAP and build the FetchManifest.
 
     Fetches Invoices, PurchaseInvoices, CreditNotes, and PurchaseCreditNotes
@@ -227,12 +162,15 @@ def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
         client_config: Validated ClientConfig (not used directly here but
                        required for step-function signature consistency).
         period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+        reader:        Optional ChainReader (T2.23). None -> default SAP-backed
+                       reader. run_chain threads one shared reader through the run.
 
     Returns:
         FetchManifest: All four document types in a flat list with fetch
             metadata.  fetched_at is stamped at completion, not start, so
             it brackets the full SAP round-trip time.
     """
+    reader = reader if reader is not None else sap_b1_server.SapChainReader()
     period_start = period["start"]
     period_end = period["end"]
 
@@ -251,7 +189,7 @@ def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
     inline_available = True
 
     for entity, doc_type in _ENTITIES:
-        docs, count = _fetch_entity(entity, period_start, period_end)
+        docs, count = _fetch_entity(entity, period_start, period_end, reader)
         for doc in docs:
             all_records.append(_doc_to_record(doc, doc_type))
         if count is not None:
@@ -275,10 +213,14 @@ def fetch(client_config: ClientConfig, period: Period) -> FetchManifest:
     }
 
 
-def fetch_listing_data(client_config: ClientConfig, period: Period) -> dict:
+def fetch_listing_data(client_config: ClientConfig, period: Period,
+                       reader: "sap_b1_server.ChainReader | None" = None) -> dict:
     """Fetch minimal header data for T2.10 SEQ_GAP and DUP_CLAIM listing checks.
 
-    Makes four lightweight header-only OData queries (no DocumentLines):
+    The four header-only OData queries (no DocumentLines) — two period-scoped and
+    two company-wide — are the S5 read surface; T2.23 routes them through
+    reader.fetch_listing (default = SAP-backed). The reader returns the same
+    four-key dict this step has always returned:
       - period_sales_headers:  Invoices in the reviewed period (DocNum,Series,Cancelled)
       - period_purch_headers:  PurchaseInvoices in period (DocNum,Series,Cancelled,
                                CardCode,NumAtCard,DocTotal)
@@ -292,44 +234,26 @@ def fetch_listing_data(client_config: ClientConfig, period: Period) -> dict:
         client_config: Validated ClientConfig (not used directly; present for
                        step-function signature consistency).
         period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+        reader:        Optional ChainReader (T2.23). None -> default SAP-backed reader.
 
     Returns:
         dict with keys: period_sales_headers, period_purch_headers,
                         all_sales_headers, all_purch_headers.
     """
-    period_start = period["start"]
-    period_end = period["end"]
-    date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
-
-    period_sales = _fetch_headers_paginated(
-        "Invoices", "DocNum,Series,Cancelled", date_filter=date_filter
-    )
-    period_purch = _fetch_headers_paginated(
-        "PurchaseInvoices",
-        "DocNum,Series,Cancelled,CardCode,NumAtCard,DocTotal",
-        date_filter=date_filter,
-    )
-    all_sales = _fetch_headers_paginated(
-        "Invoices", "DocNum,Series,Cancelled", date_filter=None
-    )
-    all_purch = _fetch_headers_paginated(
-        "PurchaseInvoices", "DocNum,Series,Cancelled", date_filter=None
-    )
+    reader = reader if reader is not None else sap_b1_server.SapChainReader()
+    result = reader.fetch_listing(period)
 
     log.info(
-        f"fetch_listing_data: period_sales={len(period_sales)} "
-        f"period_purch={len(period_purch)} "
-        f"all_sales={len(all_sales)} all_purch={len(all_purch)}"
+        f"fetch_listing_data: period_sales={len(result['period_sales_headers'])} "
+        f"period_purch={len(result['period_purch_headers'])} "
+        f"all_sales={len(result['all_sales_headers'])} "
+        f"all_purch={len(result['all_purch_headers'])}"
     )
-    return {
-        "period_sales_headers": period_sales,
-        "period_purch_headers": period_purch,
-        "all_sales_headers": all_sales,
-        "all_purch_headers": all_purch,
-    }
+    return result
 
 
-def calculate(client_config: ClientConfig, period: Period) -> F5ReturnOutput:
+def calculate(client_config: ClientConfig, period: Period,
+              reader: "sap_b1_server.ChainReader | None" = None) -> F5ReturnOutput:
     """Step c — invoke calculate_f5_return and return as F5ReturnOutput.
 
     Delegates entirely to the sap_b1_server tool, which owns all F5 box
@@ -340,6 +264,7 @@ def calculate(client_config: ClientConfig, period: Period) -> F5ReturnOutput:
         client_config: Validated ClientConfig (not used directly; present for
                        signature consistency across all step functions).
         period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+        reader:        Optional ChainReader (T2.23). None -> default SAP-backed reader.
 
     Returns:
         F5ReturnOutput: Parsed result from calculate_f5_return, containing
@@ -347,14 +272,15 @@ def calculate(client_config: ClientConfig, period: Period) -> F5ReturnOutput:
             Box keys are the canonical Gate 2 keys — verified against
             sap_b1_server.py lines 441-449.  No remapping needed.
     """
-    result_str = sap_b1_server.calculate_f5_return(period["start"], period["end"])
+    result_str = sap_b1_server.calculate_f5_return(period["start"], period["end"], reader=reader)
     result: dict = json.loads(result_str)
     # Box keys emitted by calculate_f5_return are the canonical Gate 2 keys —
     # verified against sap_b1_server.py lines 441-449. No remapping needed.
     return result  # type: ignore[return-value]
 
 
-def classify(client_config: ClientConfig, period: Period) -> ClassifyOutput:
+def classify(client_config: ClientConfig, period: Period,
+             reader: "sap_b1_server.ChainReader | None" = None) -> ClassifyOutput:
     """Step b — invoke validate_invoice_tax_codes and return as ClassifyOutput.
 
     Passes applicable_gst_rate from the client config so the tool applies the
@@ -364,6 +290,7 @@ def classify(client_config: ClientConfig, period: Period) -> ClassifyOutput:
         client_config: Validated ClientConfig; applicable_gst_rate is forwarded
                        to the SAP tool as the expected GST rate.
         period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+        reader:        Optional ChainReader (T2.23). None -> default SAP-backed reader.
 
     Returns:
         ClassifyOutput: Parsed result from validate_invoice_tax_codes, containing
@@ -374,11 +301,13 @@ def classify(client_config: ClientConfig, period: Period) -> ClassifyOutput:
         period["start"],
         period["end"],
         expected_rate=client_config.applicable_gst_rate,
+        reader=reader,
     )
     return json.loads(result_str)  # type: ignore[return-value]
 
 
-def detect(client_config: ClientConfig, period: Period) -> DetectOutput:
+def detect(client_config: ClientConfig, period: Period,
+           reader: "sap_b1_server.ChainReader | None" = None) -> DetectOutput:
     """Step d — invoke detect_gst_errors and return as DetectOutput.
 
     Passes applicable_gst_rate from the client config so the tool can
@@ -388,6 +317,7 @@ def detect(client_config: ClientConfig, period: Period) -> DetectOutput:
         client_config: Validated ClientConfig; applicable_gst_rate is forwarded
                        to the SAP tool as the expected GST rate.
         period:        Audit date range with "start" and "end" YYYY-MM-DD keys.
+        reader:        Optional ChainReader (T2.23). None -> default SAP-backed reader.
 
     Returns:
         DetectOutput: Parsed result from detect_gst_errors, containing
@@ -398,6 +328,7 @@ def detect(client_config: ClientConfig, period: Period) -> DetectOutput:
         period["start"],
         period["end"],
         expected_rate=client_config.applicable_gst_rate,
+        reader=reader,
     )
     return json.loads(result_str)  # type: ignore[return-value]
 
