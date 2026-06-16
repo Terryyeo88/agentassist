@@ -48,6 +48,16 @@ _ALLOW_LIST: frozenset[str] = frozenset({
     # reviewer see the declared override alongside the mapping that was
     # actually in effect for this run.
     "effective_tax_code_mappings",
+    # T2.18: GST scheme-status flags. Scheme participation is engagement-relevant
+    # and not secret — a reviewer auditing the sealed bundle benefits from seeing
+    # the client's exempt-supplies / MES / IGDS / reverse-charge posture, exactly
+    # as for source_system / tax_code_mappings above. All are booleans; False is
+    # meaningful (it records "scheme not in effect") and survives redaction because
+    # redact_config only drops None.
+    "actively_makes_exempt_supplies",
+    "participates_in_mes",
+    "participates_in_igds",
+    "reverse_charge_applicable",
 })
 
 # Fields that must never enter the bundle even if inadvertently added to the allow-list.
