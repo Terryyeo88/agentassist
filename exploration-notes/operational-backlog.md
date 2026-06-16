@@ -22,11 +22,17 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
    (local disk vs. object storage), and who has read access. See Appendix C #25 for the
    broader PDPA context.
 5. **Gate 1 latent bug — `@odata.count` key mismatch (found T2.12a recon, 2026-06-16).**
-   - **Root cause:** `orchestrator/steps.py:156` reads `count_resp.get("odata.count")`, but the
+   - **Root cause:** the count-probe reads `count_resp.get("odata.count")`, but the
      v2 Service Layer returns the total under **`@odata.count`** (with the `@` prefix). The key
      never matches → `inline_count` is always `None`. This is a v1→v2 OData key-prefix
      mismatch, not a missing SAP feature. (Probe 2026-06-16: count-probe response keys were
      `['@odata.count', '@odata.context', 'value']` — the count *is* present.)
+   - **Location update (T2.23, 2026-06-16):** the probe + buggy extraction moved from
+     `orchestrator/steps.py::_fetch_entity` into `SapChainReader.count` in
+     `mcp-servers/custom/sap_b1_server.py` (the S0 surface of the chain source seam). The bug
+     was **preserved verbatim** — T2.23 is behaviour-preserving and the frozen oracle encodes
+     today's `None` → Gate-1 dormancy. The fix still belongs to a separate failing-test-first
+     task and should now target `SapChainReader.count`.
    - **Impact:** Gate 1 warn-passes **unconditionally** on this instance, so incomplete
      pagination is currently uncaught — the gate is effectively dormant; completeness rests only
      on the structural `len(page) < 20` sentinel, never on a SAP-reported arithmetic total.

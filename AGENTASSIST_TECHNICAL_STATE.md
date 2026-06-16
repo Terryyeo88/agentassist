@@ -2635,8 +2635,10 @@ deterministic chain.
   product adapter (T2.12).
 - **S4 (the reasoning-pass surface) was OUT OF SCOPE** — it is frozen in the extract but
   **not** replay-validated, because `run_chain` (the deterministic path) does not read it.
-- It is a **test harness, not the product adapter**: it injects the frozen fixtures via
-  test-only monkeypatches at the fetch primitives; `orchestrator/` is untouched.
+- It is a **test harness, not the product adapter**: it injects the frozen fixtures into the
+  chain (originally via test-only monkeypatches at the fetch primitives; **rewired by T2.23**
+  to inject a `FrozenExtractReader` through the public `run_chain(reader=...)` seam — see the
+  §T2.23 section). The byte-identity result is unchanged.
 - **T2.19 provenance:** the oracle was captured 2026-06-16 with the tax-code normalization
   layer (T2.19, `normalize_vat_group`) **present-but-passthrough** — SBODEMOSG declares no
   `tax_code_mappings`, so the layer is a no-op and the oracle is unaffected. Recorded so the
@@ -2665,6 +2667,83 @@ round-trip — `adapter(synthetic-export) == frozen fixtures` — and it carries
 that closes only when a **real client export** is obtained. That gap is **GTM-gated, not
 infra-gated**. Recording the offline-replay gate as passed does **not** flip the roadmap to
 Excel-primary — see the roadmap T2.12 / T2.12a entries.
+
+---
+
+## T2.23 — Chain source seam (per-surface injectable read provider) (PR open, NOT merged; behaviour-preserving; offline-replay-validated)
+
+### Status
+
+The Surface-B counterpart to T5.1's `line_source` seam, **one layer down**: an injectable
+per-surface read provider for `run_chain`'s raw SAP reads, defaulting to the current SAP
+implementation, **changing no behaviour**. Built on branch `t2.23-chain-source-seam`; PR
+open; **not merged** (Terry merges). T5.1's `line_source` feeds only Surface A (the reduced
+9-key line-dict for the Reg 26/27 + documents passes); `run_chain` reads Surface B (the full
+raw S1/S2/S3/S5 payload), which T2.23 now makes injectable. This is the dependency that lets
+**T2.12 become a clean adapter against a seam** instead of a rewrite of the deterministic
+backbone.
+
+### The seam — `ChainReader` (in `mcp-servers/custom/sap_b1_server.py`)
+
+A `typing.Protocol` with one method per recon read surface; each returns **already-shaped
+record lists**, not raw OData envelopes (the wire shape stays inside the default impl — what
+the per-surface "B2" altitude buys T2.12):
+
+| Method | Surface | Reads |
+|---|---|---|
+| `count(entity, start, end)` | S0 | record-count probe (Gate 1) |
+| `fetch_invoices(entity, start, end)` | S1 | full line-level documents |
+| `fetch_credit_notes(entity_type, start, end)` | S2 | credit notes (tags `is_credit_note=True`) |
+| `get_business_partner(card_code)` | S3 | BusinessPartner master (`FederalTaxID` → NO_GST_REG) |
+| `fetch_listing(period)` | S5 | four header-only listing queries (period + company-wide) |
+
+`SapChainReader` is the default implementation — it wraps the existing fetch primitives
+(`_fetch_invoices_paginated`, `_fetch_credit_notes_paginated`, `sap.get`, and the relocated
+`_fetch_headers_paginated`) **verbatim**; a wrapper, not a rewrite. The type lives in
+`sap_b1_server.py` (**top-level, NOT `engine/`**) so the `engine/ → orchestrator/` import
+direction holds and the three MCP tool functions can default-construct it with no circular
+import.
+
+### DI wiring (param-threading; NO module-global swap)
+
+`reader=None` added to `run_chain` and to `calculate_f5_return` / `validate_invoice_tax_codes`
+/ `detect_gst_errors` (`None → SapChainReader()`). On the `@mcp.tool` functions `reader` is
+left **untyped on purpose**: a `ChainReader`-typed annotation makes FastMCP/pydantic raise
+`PydanticInvalidForJsonSchema` at tool registration (import time). It is internal DI never set
+by MCP/agent callers — the agent connects to its own `mcp__reads__` / engine servers, not to
+these sap-b1 tools, and no test snapshots their schema. When a reader is injected, `run_chain`
+threads the **one** instance through every surface; on the default path each step constructs
+its own stateless `SapChainReader` (behaviourally identical). The four step functions patched
+at `orchestrator.chain` by `test_chain.py` keep their `(client_config, period)` call shape —
+the reader is passed **only when injected** — so those step-level tests pass **unchanged** (a
+deliberate altitude tripwire: if `test_chain.py` had needed edits the seam would be at the
+wrong layer).
+
+### Byte-identity — the DoD spine
+
+`tests/test_t2_12a_offline_replay.py` is rewired to inject a `FrozenExtractReader` (in
+`tests/replay_shim.py`) through the **public seam param** — no more monkeypatching the
+`_fetch_*` / `SAPB1Client.get` internals; only the no-contact guards and the `_FrozenClock`
+pin remain patched. `run_chain` off the frozen extract reproduces `_replay-oracle.compiled.json`
+**byte-for-byte** via `canonical_json`, with SAP physically unreachable. A new
+`test_seam_param_is_load_bearing` wraps the reader in a call-recorder and asserts every one of
+the five surfaces is driven through the injected instance — proving the injection point is real,
+not bypassed. This is a **stronger rung than T5.1** reached, because the frozen Surface-B
+fixtures + oracle now exist (T2.12a). The per-call-freshness hazard (the `is_credit_note=True`
+tag leaking into the untagged invoice read) is **designed out**: `SapChainReader` returns a
+fresh HTTP payload per call and `FrozenExtractReader` deepcopies per call. The shim's other
+consumer — the T5.3h loop-context (`replay_review`/`replay_chain`) — is behaviour-preserved
+(same frozen payloads, byte-identical compile output).
+
+### Scope / honest
+
+Behaviour-preserving refactor. **No** extract/CSV logic, **no** new source adapter, **no**
+check-disabling, **no** Surface-B field-absence decision (NumAtCard / FederalTaxID / Series /
+company-wide coverage all remain T2.12). The `@odata.count` dormancy (operational-backlog #5)
+is **preserved verbatim, not fixed** — `SapChainReader.count` and `FrozenExtractReader.count`
+both reproduce today's `None` → Gate-1 warn-pass. `config/loader.py` and
+`check_listing_reference.py` untouched; BOX-ISOLATION intact (the F5 boxes sit above the seam,
+unchanged). Nothing customer-facing moves — **T2.11 still gates**.
 
 ---
 
