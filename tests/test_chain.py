@@ -149,6 +149,21 @@ def _patch_chain(monkeypatch, manifest=None, calc=None, cls=None, det=None, tmp_
     monkeypatch.setattr("orchestrator.chain.calculate",  lambda cfg, p: calc)
     monkeypatch.setattr("orchestrator.chain.classify",   lambda cfg, p: cls)
     monkeypatch.setattr("orchestrator.chain.detect",     lambda cfg, p: det)
+    # Mock the post-gate-5 listing fetch too. Without this the clean-run path makes a
+    # REAL OData call to the config's fake SAP URL and hangs ~84s on connect-timeout
+    # before chain.py's except swallows it. The empty success-shaped listing yields no
+    # SEQ_GAP/DUP_CLAIM findings -> listing_findings == [], byte-identical to what the
+    # timeout path already produced, so downstream assertions are unchanged.
+    monkeypatch.setattr("orchestrator.chain.fetch_listing_data", lambda cfg, p: {
+        "period_sales_headers": [], "period_purch_headers": [],
+        "all_sales_headers": [],   "all_purch_headers": [],
+    })
+    # No-contact guard: any real SAP login/request now fails fast (ms) instead of
+    # hanging 84s, so a future forgotten mock surfaces immediately.
+    def _guard(*a, **kw):
+        raise AssertionError("real SAP contact attempted in hermetic test")
+    monkeypatch.setattr(sap_b1_server.SAPB1Client, "login", _guard)
+    monkeypatch.setattr(sap_b1_server.SAPB1Client, "request", _guard)
     # tmp_path accepted for call-site compatibility but chain no longer writes JSON
 
 
