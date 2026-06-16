@@ -42,7 +42,7 @@ from agent.read_tools import (
     read_prior_period_treatment,
     read_vendor_gst_status,
 )
-from agent.read_tools_server import canonical_slot
+from agent.read_tools_server import canonical_slot, qualified_read_name
 from agent.schemas import Tier
 
 
@@ -78,10 +78,12 @@ def _apply_scripted_read(event: ToolUseEvent, finding: Finding, ctx: LoopContext
         value = read_prior_period_treatment(ctx.prior_period_store, key)
     else:
         value = None
-    # T5.3g: the slot is CODE-DEFINED (canonical_slot), not the scripted evidence_slot.
+    # T5.3g: the slot is CODE-DEFINED (canonical_slot), resolved on the BARE name.
     sink[canonical_slot(name)] = value
+    # T5.7b: ledger the read under the LIVE namespaced name (the SDK hook records the
+    # mcp__reads__<tool> form); slot binding above still uses the bare name.
     ledger.append(
-        tool_name=name, tier=Tier.ZERO, justification=None,
+        tool_name=qualified_read_name(name), tier=Tier.ZERO, justification=None,
         call_params={k: v for k, v in ti.items() if k != "justification"},
         outcome="allowed", blocked_reason=None,
     )
