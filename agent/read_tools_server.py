@@ -67,6 +67,26 @@ READ_TOOLS_QUALIFIED: tuple[str, ...] = tuple(
     f"mcp__{READS_SERVER_NAME}__{n}" for n in READ_TOOL_NAMES
 )
 
+#: bare read name -> SDK-facing qualified name, DERIVED from the shipping
+#: READ_TOOLS_QUALIFIED constant (not re-formatted) so the two cannot drift.
+_QUALIFIED_BY_BARE: dict[str, str] = dict(zip(READ_TOOL_NAMES, READ_TOOLS_QUALIFIED))
+
+
+def qualified_read_name(bare_name: str) -> str:
+    """The SDK-facing MCP name a Tier-0 read is LEDGERED under (``mcp__reads__<bare>``).
+
+    On the live path the SDK delivers this namespaced name to the PreToolUse hook,
+    which records it verbatim (see round-2 ledger.json). The hermetic gather-fakes bind
+    against THIS helper so their ledger entries match production. It is the single
+    source of truth for the read-name namespace, mirroring how ``canonical_slot`` is the
+    SSOT for slots — and slot lookups continue to resolve on the BARE name, never this.
+
+    The mapping is derived from ``READ_TOOLS_QUALIFIED`` (the constant appended to
+    ``allowed_tools``); a name outside the registry tuple falls back to the same
+    ``mcp__<server>__<tool>`` shape so the helper is total.
+    """
+    return _QUALIFIED_BY_BARE.get(bare_name) or f"mcp__{READS_SERVER_NAME}__{bare_name}"
+
 # Model-facing input schemas. The model passes ONLY the finding's identifier — it does
 # NOT name the evidence slot (T5.3g: the slot is bound in code, not by the model). Tier-0
 # reads need no justification (the PreToolUse hook always allows Tier-0 + logs).

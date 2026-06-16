@@ -29,6 +29,7 @@ from agent.loop import (
     run_casefile_loop,
 )
 from agent.proposals import StagingStore
+from agent.read_tools_server import qualified_read_name
 from agent.schemas import Tier
 
 
@@ -54,8 +55,10 @@ class _GatherFake:
         self.gather_calls.append(finding.finding_id)
         for slot, val in self._evidence.items():
             evidence_sink[slot] = val
+            # T5.7b: ledger under the LIVE namespaced read name (mcp__reads__<tool>).
             self._ledger.append(
-                tool_name="get_source_document", tier=Tier.ZERO, justification=None,
+                tool_name=qualified_read_name("get_source_document"),
+                tier=Tier.ZERO, justification=None,
                 call_params={"evidence_slot": slot}, outcome="allowed", blocked_reason=None,
             )
         yield FramingEvent(text=self._framing)
@@ -153,7 +156,7 @@ def test_reads_ledgered_by_transport_not_driver():
     # Constraint B: the transport (here the fake) writes the Tier-0 read entries.
     result, ledger, budget, store, transport, invoke = _run()
     reads = [e for e in ledger.entries if e.tier == Tier.ZERO.value
-             and e.tool_name == "get_source_document"]
+             and e.tool_name == qualified_read_name("get_source_document")]
     assert len(reads) == 1
     ledger.verify()
 
