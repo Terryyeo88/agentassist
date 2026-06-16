@@ -119,6 +119,26 @@ class ClientConfig:
                                  in the client YAML. Empty by default. See
                                  effective_tax_code_mappings for the mapping
                                  that callers should actually use.
+        actively_makes_exempt_supplies:
+                                 Whether the client makes exempt supplies as a
+                                 principal activity (vs. incidentally). Default
+                                 False. When True, exempt-supply E2 findings route
+                                 to IRAS ASK Template 4 instead of Template 5.
+                                 (T2.18 — scheme-LEVEL fact; no check logic here.)
+        participates_in_mes:     Whether the client is enrolled in the IRAS Major
+                                 Exporter Scheme (MES). Default False. Scheme-status
+                                 fact consumed by downstream checks; no behaviour
+                                 in this module.
+        participates_in_igds:    Whether the client is enrolled in the IRAS Import
+                                 GST Deferment Scheme (IGDS). Default False. Distinct
+                                 from the per-VatGroup-code "IGDS" treatment — this
+                                 is a scheme-LEVEL participation flag.
+        reverse_charge_applicable:
+                                 Whether reverse charge applies to the client
+                                 (imported services / low-value goods procured by a
+                                 GST-registered customer not entitled to full input
+                                 tax credit). Default False. Single bool — not split
+                                 into per-code RC families.
     """
     client_id: str
     client_name: str
@@ -145,6 +165,17 @@ class ClientConfig:
     source_system: str = "sap_b1"
     # Source tax code (uppercase) -> canonical VatGroup, as declared in the YAML.
     tax_code_mappings: dict = field(default_factory=dict)
+    # GST scheme-status flags (T2.18) — flat, scheme-LEVEL participation facts,
+    # all default OFF. These are distinct from per-VatGroup-code treatment (T2.2).
+    # This task adds NO check logic; downstream D+ checks (3E.1, ME/MC reverse
+    # charge, Template-4 routing) bind to these field names as their contract.
+    # actively_makes_exempt_supplies is a PROMOTION of the former
+    # getattr(client_config, "actively_makes_exempt_supplies", False) read in
+    # report/report.py — default False == the existing behaviour for every client.
+    actively_makes_exempt_supplies: bool = False
+    participates_in_mes: bool = False
+    participates_in_igds: bool = False
+    reverse_charge_applicable: bool = False
 
     @property
     def effective_tax_code_mappings(self) -> dict:
@@ -190,6 +221,9 @@ def load_client_config(
          failure mode. Skipped by consumers that manage their own sessions.
       9. Validate tax_code_mappings — every mapped-to value must be a
          canonical VatGroup code; keys are normalized to uppercase.
+     10. Validate GST scheme-status flags (T2.18) — actively_makes_exempt_supplies,
+         participates_in_mes, participates_in_igds, reverse_charge_applicable must
+         each be boolean; absent/null defaults to False.
 
     Args:
         client_id:          Filename stem in config/clients/ (e.g. "sbodemosg").
@@ -351,6 +385,30 @@ def load_client_config(
                 f"mapped to canonical VatGroup(s): {missing}."
             )
 
+    # --- Step 10: GST scheme-status flags (T2.18) ---
+
+    # Flat top-level booleans, all default OFF. Absent key OR explicit YAML null
+    # -> False. Non-bool values (e.g. the quoted-"yes" truthy-string surprise) are
+    # rejected with the same isinstance(bool) guard used for show_ai_candidates
+    # above, so the failure is loud at load time, not a silent truthy/falsy bug.
+    # NOTE: this is config infrastructure only — no check logic reads these here.
+    scheme_flags: dict[str, bool] = {}
+    for _flag in (
+        "actively_makes_exempt_supplies",
+        "participates_in_mes",
+        "participates_in_igds",
+        "reverse_charge_applicable",
+    ):
+        _val = raw.get(_flag, False)
+        if _val is None:  # explicit YAML null -> default OFF
+            _val = False
+        if not isinstance(_val, bool):
+            raise ConfigError(
+                f"{_flag} in '{client_id}.yaml' must be a boolean "
+                f"(true or false), got: {_val!r}"
+            )
+        scheme_flags[_flag] = _val
+
     return ClientConfig(
         client_id=raw["client_id"],
         client_name=raw["client_name"],
@@ -369,6 +427,8 @@ def load_client_config(
         show_ai_candidates=show_ai,
         source_system=source_system,
         tax_code_mappings=tax_code_mappings,
+        # Scheme-status flags (T2.18); keys match the kwarg names exactly.
+        **scheme_flags,
     )
 
 

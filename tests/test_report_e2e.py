@@ -220,6 +220,31 @@ def test_exempt_default_is_template_5(raw_data):
     )
 
 
+def test_exempt_template_4_via_real_clientconfig_field(raw_data):
+    """T2.18: actively_makes_exempt_supplies set as the REAL validated field
+    (a ClientConfig constructor kwarg, not a dynamic attribute) activates
+    Template-4 routing; default (field absent from kwargs -> False) stays T5."""
+    data_with_es33 = _inject_es33_e2(raw_data)
+
+    def _find_es33(m: ReportModel):
+        for g in m.findings.groups:
+            for f in g.findings:
+                if f.doc_num == 9999 and f.error_code == "E2":
+                    return f
+        return None
+
+    # Default field value (False) -> Template 5.
+    cfg_default = _make_cfg()
+    m_default = build_report(data_with_es33, cfg_default, generated_at=_GENERATED_AT)
+    assert _find_es33(m_default).template_ref["number"] == 5
+
+    # Real field set True via the constructor -> Template 4.
+    cfg_exempt = _make_cfg(actively_makes_exempt_supplies=True)
+    assert cfg_exempt.actively_makes_exempt_supplies is True
+    m_exempt = build_report(data_with_es33, cfg_exempt, generated_at=_GENERATED_AT)
+    assert _find_es33(m_exempt).template_ref["number"] == 4
+
+
 def test_human_in_loop_invariant(model):
     """
     No generated text asserts a compliance conclusion or mandatory filing action.
