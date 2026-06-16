@@ -1,1 +1,5 @@
 *.pdf binary
+
+# T2.12a ground-truth fixtures: pin to LF so sha256 manifest hashes are
+# byte-stable on every platform (Windows capture must not introduce CRLF).
+tests/fixtures/sbodemosg-extract/*.json text eol=lf
