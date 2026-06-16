@@ -1,0 +1,10 @@
+{
+  "_note": "v2 Service Layer returns the period record count under the '@odata.count' key (with @ prefix). orchestrator/steps.py reads 'odata.count' (no @), so Gate 1 warn-passes unconditionally — operational-backlog item 5. Freezing both the values and the key name makes the future Gate-1 fix testable.",
+  "inlinecount_key": "@odata.count",
+  "counts": {
+    "Invoices": 50,
+    "PurchaseInvoices": 34,
+    "CreditNotes": 1,
+    "PurchaseCreditNotes": 1
+  }
+}
