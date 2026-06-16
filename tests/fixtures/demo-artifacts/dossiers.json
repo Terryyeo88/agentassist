@@ -1,0 +1,868 @@
+[
+  {
+    "candidate_framing_text": "Document 958 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E1",
+    "completeness": {
+      "check_id": "E1",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "sales_invoices": {
+        "card_name": "SG Electronics",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-02",
+        "doc_num": 958,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      },
+      "vat_group_mapping": {
+        "card_name": "SG Electronics",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-02",
+        "doc_num": 958,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      }
+    },
+    "finding_id": "detect:E1:958",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:fb52b5cd1de2fc8abe2c90ac8b939b4b4353c21446efa26da9234fac3681e5cb"
+  },
+  {
+    "candidate_framing_text": "Document 964 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E1",
+    "completeness": {
+      "check_id": "E1",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "sales_invoices": {
+        "card_name": "Aquent Systems",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-09",
+        "doc_num": 964,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      },
+      "vat_group_mapping": {
+        "card_name": "Aquent Systems",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-09",
+        "doc_num": 964,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      }
+    },
+    "finding_id": "detect:E1:964",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:04a0a9ad2b42589076018a2822b315445a6eac76c047ad3238f23622cc1bafb2"
+  },
+  {
+    "candidate_framing_text": "Document 965 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E1",
+    "completeness": {
+      "check_id": "E1",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "sales_invoices": {
+        "card_name": "Aquent Systems",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-09",
+        "doc_num": 965,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      },
+      "vat_group_mapping": {
+        "card_name": "Aquent Systems",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-09",
+        "doc_num": 965,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      }
+    },
+    "finding_id": "detect:E1:965",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:69299592529bce36c52fb671e0c802f212000dd671c97b9d484cea7f3390039c"
+  },
+  {
+    "candidate_framing_text": "Document 974 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E1",
+    "completeness": {
+      "check_id": "E1",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "sales_invoices": {
+        "card_name": "SG Electronics",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-11",
+        "doc_num": 974,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      },
+      "vat_group_mapping": {
+        "card_name": "SG Electronics",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-11",
+        "doc_num": 974,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      }
+    },
+    "finding_id": "detect:E1:974",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:fbd49542652ef10cdb35731ed16ad9a29f06f00b526cd31d64af8aff50c6eabe"
+  },
+  {
+    "candidate_framing_text": "Document 605 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "NO_GST_REG",
+    "completeness": {
+      "check_id": "NO_GST_REG",
+      "missing": [],
+      "present": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "required": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Input tax claimed from supplier V10000 (Acme Associates) without a GST registration number — may not be claimable.",
+        "doc_date": "2024-07-15",
+        "doc_num": 605,
+        "error_code": "NO_GST_REG",
+        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "severity": "HIGH"
+      },
+      "supplier_catalog": {
+        "card_name": "Acme Associates",
+        "found": true,
+        "gst_reg_no": null,
+        "gst_registered": false
+      }
+    },
+    "finding_id": "detect:NO_GST_REG:605",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:adeec1306e5a0aaea5a014c5309774f741aad3cdc70fa9a4d4fbceca524c64fc"
+  },
+  {
+    "candidate_framing_text": "Document 592 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "NO_GST_REG",
+    "completeness": {
+      "check_id": "NO_GST_REG",
+      "missing": [],
+      "present": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "required": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Far East Imports",
+        "description": "Input tax claimed from supplier V1010 (Far East Imports) without a GST registration number — may not be claimable.",
+        "doc_date": "2024-07-16",
+        "doc_num": 592,
+        "error_code": "NO_GST_REG",
+        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "severity": "HIGH"
+      },
+      "supplier_catalog": {
+        "card_name": "Far East Imports",
+        "found": true,
+        "gst_reg_no": null,
+        "gst_registered": false
+      }
+    },
+    "finding_id": "detect:NO_GST_REG:592",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:09510205b167b2f1933085c90d384a5e1c53e5841926cf34c3aa80b6784a08e8"
+  },
+  {
+    "candidate_framing_text": "Document 594 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "NO_GST_REG",
+    "completeness": {
+      "check_id": "NO_GST_REG",
+      "missing": [],
+      "present": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "required": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "SMD Technologies",
+        "description": "Input tax claimed from supplier V70000 (SMD Technologies) without a GST registration number — may not be claimable.",
+        "doc_date": "2024-07-16",
+        "doc_num": 594,
+        "error_code": "NO_GST_REG",
+        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "severity": "HIGH"
+      },
+      "supplier_catalog": {
+        "card_name": "SMD Technologies",
+        "found": true,
+        "gst_reg_no": null,
+        "gst_registered": false
+      }
+    },
+    "finding_id": "detect:NO_GST_REG:594",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:4b4fa2b5c3ec14b18a51eae886b82d9b1d41e3a5f1291fa7ace432120dbfab6f"
+  },
+  {
+    "candidate_framing_text": "Document 595 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "NO_GST_REG",
+    "completeness": {
+      "check_id": "NO_GST_REG",
+      "missing": [],
+      "present": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "required": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Lasercom",
+        "description": "Input tax claimed from supplier V20000 (Lasercom) without a GST registration number — may not be claimable.",
+        "doc_date": "2024-07-20",
+        "doc_num": 595,
+        "error_code": "NO_GST_REG",
+        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "severity": "HIGH"
+      },
+      "supplier_catalog": {
+        "card_name": "Lasercom",
+        "found": true,
+        "gst_reg_no": null,
+        "gst_registered": false
+      }
+    },
+    "finding_id": "detect:NO_GST_REG:595",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:e160681863e7a698410fbf04427ae03c3ce3cbfbed5e2af41d50a846d23665b4"
+  },
+  {
+    "candidate_framing_text": "Document 971 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E1",
+    "completeness": {
+      "check_id": "E1",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "sales_invoices": {
+        "card_name": "ADA Technologies",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-24",
+        "doc_num": 971,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      },
+      "vat_group_mapping": {
+        "card_name": "ADA Technologies",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-24",
+        "doc_num": 971,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      }
+    },
+    "finding_id": "detect:E1:971",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:c0c4335c094d6494d0e775c8a19e6e7d666f57f2024b519609674ed88c3f4aca"
+  },
+  {
+    "candidate_framing_text": "Document 967 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E1",
+    "completeness": {
+      "check_id": "E1",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "sales_invoices": {
+        "card_name": "ADA Technologies",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-28",
+        "doc_num": 967,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      },
+      "vat_group_mapping": {
+        "card_name": "ADA Technologies",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-28",
+        "doc_num": 967,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      }
+    },
+    "finding_id": "detect:E1:967",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:400cf2953ec3c89845bc529d745e5e6625219a0247695b56e7961fe05d53dfd4"
+  },
+  {
+    "candidate_framing_text": "Document 977 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E1",
+    "completeness": {
+      "check_id": "E1",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "sales_invoices": {
+        "card_name": "Aquent Systems",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-29",
+        "doc_num": 977,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      },
+      "vat_group_mapping": {
+        "card_name": "Aquent Systems",
+        "description": "FX invoice (USD) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-07-29",
+        "doc_num": 977,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      }
+    },
+    "finding_id": "detect:E1:977",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:dc47da9d19ded5f000e0bea5ec84b299a45ca37b6278567955bad15c86eedf2e"
+  },
+  {
+    "candidate_framing_text": "Document 982 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E1",
+    "completeness": {
+      "check_id": "E1",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "sales_invoices": {
+        "card_name": "ADA Technologies",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-08-03",
+        "doc_num": 982,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      },
+      "vat_group_mapping": {
+        "card_name": "ADA Technologies",
+        "description": "FX invoice (EUR) with SR code — should likely be ZR for overseas sales",
+        "doc_date": "2024-08-03",
+        "doc_num": 982,
+        "error_code": "E1",
+        "recommendation": "Reclassify as ZR (zero-rated) if this is an export sale.",
+        "severity": "HIGH"
+      }
+    },
+    "finding_id": "detect:E1:982",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:90176a6e7356b551f47c03d1518f9aae193616ba2856391ade261fbe61a9db20"
+  },
+  {
+    "candidate_framing_text": "Document 604 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "NO_GST_REG",
+    "completeness": {
+      "check_id": "NO_GST_REG",
+      "missing": [],
+      "present": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "required": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Lumarx",
+        "description": "Input tax claimed from supplier V50000 (Lumarx) without a GST registration number — may not be claimable.",
+        "doc_date": "2024-08-17",
+        "doc_num": 604,
+        "error_code": "NO_GST_REG",
+        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "severity": "HIGH"
+      },
+      "supplier_catalog": {
+        "card_name": "Lumarx",
+        "found": true,
+        "gst_reg_no": null,
+        "gst_registered": false
+      }
+    },
+    "finding_id": "detect:NO_GST_REG:604",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:76907cab4dc9518f0eaf51ec01db4fd4d1b8384292f3a557992dc14be04ff356"
+  },
+  {
+    "candidate_framing_text": "Document 600 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "NO_GST_REG",
+    "completeness": {
+      "check_id": "NO_GST_REG",
+      "missing": [],
+      "present": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "required": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "CTI Computers",
+        "description": "Input tax claimed from supplier V60000 (CTI Computers) without a GST registration number — may not be claimable.",
+        "doc_date": "2024-08-20",
+        "doc_num": 600,
+        "error_code": "NO_GST_REG",
+        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "severity": "HIGH"
+      },
+      "supplier_catalog": {
+        "card_name": "CTI Computers",
+        "found": true,
+        "gst_reg_no": null,
+        "gst_registered": false
+      }
+    },
+    "finding_id": "detect:NO_GST_REG:600",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:cae9d10f4a4ecaae5eb79135589ca6c62f1e1f9257b9e2a101f25da5d5b4c52f"
+  },
+  {
+    "candidate_framing_text": "Document 601 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "NO_GST_REG",
+    "completeness": {
+      "check_id": "NO_GST_REG",
+      "missing": [],
+      "present": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "required": [
+        "purchase_invoices",
+        "supplier_catalog"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Blockies Corporation",
+        "description": "Input tax claimed from supplier V30000 (Blockies Corporation) without a GST registration number — may not be claimable.",
+        "doc_date": "2024-08-27",
+        "doc_num": 601,
+        "error_code": "NO_GST_REG",
+        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "severity": "HIGH"
+      },
+      "supplier_catalog": {
+        "card_name": "Blockies Corporation",
+        "found": true,
+        "gst_reg_no": null,
+        "gst_registered": false
+      }
+    },
+    "finding_id": "detect:NO_GST_REG:601",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:712088a60c63cde9308015a230d3217cf549d09370e57c3ec14dd315120c9452"
+  },
+  {
+    "candidate_framing_text": "Document 605 (E2) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E2",
+    "completeness": {
+      "check_id": "E2",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 56.00 charged on non-taxable supply (VatGroup=BL)",
+        "doc_date": "2024-07-15",
+        "doc_num": 605,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "sales_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 56.00 charged on non-taxable supply (VatGroup=BL)",
+        "doc_date": "2024-07-15",
+        "doc_num": 605,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "vat_group_mapping": {
+        "card_name": "Acme Associates",
+        "description": "Tax 56.00 charged on non-taxable supply (VatGroup=BL)",
+        "doc_date": "2024-07-15",
+        "doc_num": 605,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      }
+    },
+    "finding_id": "detect:E2:605",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:6d597d5e397f6a9f44d440cacddd7bd9e185eb37d5fbccf06132261e3aadde0f"
+  },
+  {
+    "candidate_framing_text": "Document 607 (E2) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E2",
+    "completeness": {
+      "check_id": "E2",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 84.00 charged on non-taxable supply (VatGroup=ZP)",
+        "doc_date": "2024-07-15",
+        "doc_num": 607,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "sales_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 84.00 charged on non-taxable supply (VatGroup=ZP)",
+        "doc_date": "2024-07-15",
+        "doc_num": 607,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "vat_group_mapping": {
+        "card_name": "Acme Associates",
+        "description": "Tax 84.00 charged on non-taxable supply (VatGroup=ZP)",
+        "doc_date": "2024-07-15",
+        "doc_num": 607,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      }
+    },
+    "finding_id": "detect:E2:607",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:81c0f5d565941f7e11170640592caeaa5a0ca5e0a3562a57f26ac8b1ed55df54"
+  },
+  {
+    "candidate_framing_text": "Document 608 (E2) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E2",
+    "completeness": {
+      "check_id": "E2",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 56.00 charged on non-taxable supply (VatGroup=BL)",
+        "doc_date": "2024-07-15",
+        "doc_num": 608,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "sales_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 56.00 charged on non-taxable supply (VatGroup=BL)",
+        "doc_date": "2024-07-15",
+        "doc_num": 608,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "vat_group_mapping": {
+        "card_name": "Acme Associates",
+        "description": "Tax 56.00 charged on non-taxable supply (VatGroup=BL)",
+        "doc_date": "2024-07-15",
+        "doc_num": 608,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      }
+    },
+    "finding_id": "detect:E2:608",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:763afec376aa62a04f0988d174ba57dde56dd3facae37b6d996865881e78cf2a"
+  },
+  {
+    "candidate_framing_text": "Document 610 (E2) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E2",
+    "completeness": {
+      "check_id": "E2",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 84.00 charged on non-taxable supply (VatGroup=ZP)",
+        "doc_date": "2024-07-15",
+        "doc_num": 610,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "sales_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 84.00 charged on non-taxable supply (VatGroup=ZP)",
+        "doc_date": "2024-07-15",
+        "doc_num": 610,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "vat_group_mapping": {
+        "card_name": "Acme Associates",
+        "description": "Tax 84.00 charged on non-taxable supply (VatGroup=ZP)",
+        "doc_date": "2024-07-15",
+        "doc_num": 610,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      }
+    },
+    "finding_id": "detect:E2:610",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:4b08649d86350599ebceab688116a1445857c885c3e199abf1163d716f58782e"
+  },
+  {
+    "candidate_framing_text": "Document 611 (E2) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "E2",
+    "completeness": {
+      "check_id": "E2",
+      "missing": [],
+      "present": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "required": [
+        "sales_invoices",
+        "purchase_invoices",
+        "vat_group_mapping"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "purchase_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 45.00 charged on non-taxable supply (VatGroup=NR)",
+        "doc_date": "2024-09-15",
+        "doc_num": 611,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "sales_invoices": {
+        "card_name": "Acme Associates",
+        "description": "Tax 45.00 charged on non-taxable supply (VatGroup=NR)",
+        "doc_date": "2024-09-15",
+        "doc_num": 611,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      },
+      "vat_group_mapping": {
+        "card_name": "Acme Associates",
+        "description": "Tax 45.00 charged on non-taxable supply (VatGroup=NR)",
+        "doc_date": "2024-09-15",
+        "doc_num": 611,
+        "error_code": "E2",
+        "recommendation": "Remove the GST charge or correct the tax code to a standard-rated code.",
+        "severity": "MEDIUM"
+      }
+    },
+    "finding_id": "detect:E2:611",
+    "finding_type": "deterministic",
+    "inputs_hash": "sha256:4f3d37d09552a61897172653fbb000c58292b22e5c7b717fa999b07b213233e8"
+  },
+  {
+    "candidate_framing_text": "Document 958 (gst_amount_mismatch) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
+    "check_id": "gst_amount_mismatch",
+    "completeness": {
+      "check_id": "gst_amount_mismatch",
+      "missing": [],
+      "present": [
+        "document_pdfs",
+        "sap_listing"
+      ],
+      "required": [
+        "document_pdfs",
+        "sap_listing"
+      ],
+      "satisfied": true
+    },
+    "evidence": {
+      "document_pdfs": "tests/fixtures/demo-artifacts/INV-958.txt",
+      "sap_listing": {
+        "check_id": "gst_amount_mismatch",
+        "determinability": "born_digital",
+        "doc_num": 958,
+        "extracted_value": 74.0,
+        "listing_value": 70.0,
+        "message": "Invoice PDF GST (74.00) appears to differ from the SAP line (70.00).",
+        "severity": "MEDIUM"
+      }
+    },
+    "finding_id": "doc:gst_amount_mismatch:958",
+    "finding_type": "probabilistic",
+    "inputs_hash": "sha256:8a81f6eb725f99aed2676d050e1042a5879e5148df4f040d1795c498af270655"
+  }
+]
