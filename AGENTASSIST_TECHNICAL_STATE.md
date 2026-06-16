@@ -347,7 +347,7 @@ sap-b1-ai-agent/
 │   ├── clients/
 │   │   ├── example.yaml                   ← Schema template for per-client config
 │   │   └── sbodemosg.yaml                 ← SBODEMOSG client config (credentials via env vars)
-│   ├── loader.py                          ← T1.3: load_client_config → ClientConfig; 8-step validation
+│   ├── loader.py                          ← T1.3: load_client_config → ClientConfig; 10-step validation
 │   └── env.example                        ← Template for SAP B1 connection env vars
 ├── exploration-notes/
 │   ├── baseline-test-results.md           ← Primary experimental log; production-ready document
@@ -632,17 +632,21 @@ One resolved and one remaining design question:
 
 `config/loader.py` provides `load_client_config(client_id, *, check_connectivity=True) → ClientConfig`. Per-client config YAML lives in `config/clients/<id>.yaml`; `sbodemosg.yaml` is the first.
 
-**Validation pipeline** (each step fails with a human-readable message; 8 steps — README's 8-step count is correct):
+**Validation pipeline** (each step fails with a human-readable message; 10 steps as enumerated in the `load_client_config` docstring):
 1. File existence check (`config/clients/<id>.yaml` must exist)
 2. YAML parse (`config/clients/<id>.yaml`)
 3. Validate required fields (`client_id`, `client_name`, `applicable_gst_rate`, `sap_b1` block)
 4. `client_id` must match filename stem
 5. Resolve credential env-var names to values (stores values, never stores var names)
 6. Sanity-check `applicable_gst_rate` in `[0.05, 0.15]`
-7. Detect `custom_vat_groups` collisions with the 18 standard IRAS VatGroup codes (SO, DS, ZR, ES33, ESN33, OS, SI, ZP, IM, IGDS, ME, NR, BL, EP, OP, TX-E33, TX-N33, TX-RE)
+7. Detect `custom_vat_groups` collisions with the standard IRAS VatGroup codes
 8. Optional SAP login probe (logs out immediately on success; skipped by consumers that manage sessions)
+9. Validate `tax_code_mappings` (T2.19) — every mapped-to value must be a canonical VatGroup code; keys normalized to uppercase
+10. Validate GST scheme-status flags (T2.18) — `actively_makes_exempt_supplies`, `participates_in_mes`, `participates_in_igds`, `reverse_charge_applicable` must each be boolean; absent/null → `False`
 
-**`ClientConfig` fields**: `client_id`, `client_name`, `gst_registration_number`, `applicable_gst_rate`, `service_layer_url`, `company_db`, `username`, `password`, `ssl_verify`, `fiscal_year_start_month`, `custom_vat_groups`, `completeness_threshold`, `reviewer_name`, `firm_name`.
+**`ClientConfig` fields**: `client_id`, `client_name`, `gst_registration_number`, `applicable_gst_rate`, `service_layer_url`, `company_db`, `username`, `password`, `ssl_verify`, `fiscal_year_start_month`, `custom_vat_groups`, `completeness_threshold`, `reviewer_name`, `firm_name`, `show_ai_candidates`, `source_system`, `tax_code_mappings` (+ `effective_tax_code_mappings` property), and the T2.18 GST scheme-status flags `actively_makes_exempt_supplies`, `participates_in_mes`, `participates_in_igds`, `reverse_charge_applicable` (all `bool`, default `False`).
+
+**GST scheme-status flags (T2.18)**: four flat top-level booleans, all default `False`, validated in `load_client_config()` Step 10 with the same `isinstance(bool)` guard as `show_ai_candidates` (non-bool YAML value → `ConfigError`; absent/null → `False`). These are scheme-LEVEL participation facts (distinct from per-VatGroup-code treatment, T2.2). `actively_makes_exempt_supplies` is a **promotion** of the former `getattr(client_config, "actively_makes_exempt_supplies", False)` read in `report/report.py` — default `False` == prior behaviour, so existing clients are unaffected. `participates_in_mes` (Major Exporter Scheme), `participates_in_igds` (Import GST Deferment Scheme), `reverse_charge_applicable` (imported services / LVG) are new. **Config infrastructure only — no check logic; the downstream consumers (3E.1, ME/MC reverse charge, Template-4 routing) are separate tasks that bind to these field names as their contract.** All four are added to `audit_bundle/config_redaction.py`'s `_ALLOW_LIST` (scheme status is engagement-relevant, not secret) and survive redaction even when `False`.
 
 **Independence contract**: `config/loader.py` has zero dependency on `mcp-servers/` or `scripts/`. Both may import it; they must not import each other.
 
@@ -750,7 +754,7 @@ The join key is `(doc_num, error_code)`. COMPLETENESS findings (`doc_num=None`) 
 - **E2-by-VatGroup branching**: the applicable template depends on the specific zero-rated or exempt VatGroup — the E2 error code alone is not sufficient for routing.
 - **Template 5 default**: findings without a specific Document-2 assignment route to Template 5.
 - **Template 4** is used instead of Template 5 when `actively_makes_exempt_supplies` is set in `ClientConfig` — reflecting the IRAS distinction between businesses that make exempt supplies as a principal activity vs. incidentally.
-- **`actively_makes_exempt_supplies` unimplemented (known state)**: `actively_makes_exempt_supplies` is read via `getattr(client_config, "actively_makes_exempt_supplies", False)` and is NOT yet a `ClientConfig` field (`report/report.py:169`); all clients route exempt E2 findings to Template 5. Activating Template 4 for an actively-exempt client is a documented one-line `ClientConfig` addition (planned, not built).
+- **`actively_makes_exempt_supplies` now a real field (T2.18)**: `actively_makes_exempt_supplies` is a validated `ClientConfig` boolean (default `False`), set per-client in YAML — no longer only a `getattr` default. `report/report.py` still reads it via `getattr(client_config, "actively_makes_exempt_supplies", False)` (left intentionally forward-compat-safe; the field default `False` makes this behaviour-identical for clients that omit it). A client that sets `actively_makes_exempt_supplies: true` routes exempt E2 findings to Template 4; all others still route to Template 5. The routing logic in `report/routing.py` is unchanged — T2.18 only gave clients a validated way to set the flag.
 - **ZP → Template 1 fall-through (known state)**: ZP E2 findings currently route to the default Template 1. `ZP` is absent from every E2 routing branch in `report/routing.py` — not in `_ZERO_RATED_VGS` (`{"ZR","OS"}`), `_EXEMPT_VGS` (`{"ES33","ESN33"}`), or `_BLOCKED_INPUT_VGS` (`{"BL","NR"}`). Routing ZP E2 to Template 6 alongside BL/NR input-tax findings is a documented refinement candidate, not a defect.
 
 ### Eight report sections
@@ -798,7 +802,7 @@ The generated report is a **working paper** — a structured, reviewer-signed do
 | Module | Role |
 |--------|------|
 | `canonical.py` | `canonical_json(obj) → bytes`: keys sorted recursively, no whitespace, UTF-8; sets serialised as sorted lists so runtime `set` fields and JSON-loaded `list` fields hash identically. `sha256_bytes(data)` and `sha256_file(path)` return `"sha256:<hex>"`; file variant streams in 64 KiB chunks. |
-| `config_redaction.py` | `redact_config(cfg: ClientConfig) → dict`: explicit allow-list of 11 fields; `username`, `password`, `ssl_verify` unconditionally excluded via `_DENY_ALWAYS` (disjoint from the allow-list). A future `ClientConfig` field is excluded by default — the allow-list is positive, not a deny-list. |
+| `config_redaction.py` | `redact_config(cfg: ClientConfig) → dict`: explicit allow-list of 18 fields (incl. `source_system`, `tax_code_mappings`, `effective_tax_code_mappings`, and the four T2.18 GST scheme-status flags); `username`, `password`, `ssl_verify` unconditionally excluded via `_DENY_ALWAYS` (disjoint from the allow-list). A future `ClientConfig` field is excluded by default — the allow-list is positive, not a deny-list. |
 | `provenance.py` | `gather_provenance(expected_rate)`: repo commit (`git rev-parse --short HEAD`; `"unknown"` on failure), `chain_version="t1.6"`, `report_template_version="t1.4"`, `system_prompt_hash`, `kb_slice_hash`, `rederivation_grade="same-SAP-state"`. |
 | `manifest.py` | `build_manifest(engagement, provenance, artefact_paths, bundle_dir) → dict`: per-artefact `{path, sha256, bytes}` sorted by POSIX path; root hash = `sha256_bytes(canonical_json(manifest-minus-root_hash))`. |
 | `gate_record.py` | `build_gate_results(records) → dict`: shapes `{all_passed, gates:[{gate, name, after_step, status, passed, checked, message?}]}`. WARN_PASS counts as passed; FAIL sets `all_passed: false`. |
@@ -851,7 +855,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 
 ### Secrets policy
 
-`config.json` is written from `_ALLOW_LIST` (11 fields). `username`, `password`, and `ssl_verify` are absent from the allow-list and additionally guarded by `_DENY_ALWAYS`. Tests assert `"HUNTER2_TEST"` never appears in any bundle file (binary scan covers JSON + PDF alike); tests assert `_ALLOW_LIST ∩ _DENY_ALWAYS = ∅`.
+`config.json` is written from `_ALLOW_LIST` (18 fields). `username`, `password`, and `ssl_verify` are absent from the allow-list and additionally guarded by `_DENY_ALWAYS`. Tests assert `"HUNTER2_TEST"` never appears in any bundle file (binary scan covers JSON + PDF alike); tests assert `_ALLOW_LIST ∩ _DENY_ALWAYS = ∅`.
 
 ### Read-only caveat
 
