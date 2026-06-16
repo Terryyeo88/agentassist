@@ -1,0 +1,74 @@
+{
+  "run": "T5.3-V round 2 (real-ctx, option B)",
+  "pinned_master": "19eb62e",
+  "model": "claude-opus-4-8",
+  "budget": {
+    "max_turns": 12,
+    "max_cost_usd": 3.0
+  },
+  "findings": [
+    [
+      "detect:NO_GST_REG:605",
+      "NO_GST_REG",
+      "Acme Associates"
+    ],
+    [
+      "detect:NO_GST_REG:592",
+      "NO_GST_REG",
+      "Far East Imports"
+    ],
+    [
+      "detect:NO_GST_REG:594",
+      "NO_GST_REG",
+      "SMD Technologies"
+    ]
+  ],
+  "total_cost_usd": 1.013447,
+  "budget_exceeded": false,
+  "agent_layer_complete": true,
+  "pending_count": 3,
+  "staged": [
+    "NO_GST_REG",
+    "NO_GST_REG",
+    "NO_GST_REG"
+  ],
+  "attempts_per_finding": {
+    "detect:NO_GST_REG:605": 1,
+    "detect:NO_GST_REG:592": 1,
+    "detect:NO_GST_REG:594": 1
+  },
+  "tool_calls_seen": [
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__read_prior_period_treatment"
+  ],
+  "reads_called_in_turn": [
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_vendor_gst_status",
+    "mcp__reads__read_prior_period_treatment"
+  ],
+  "read_ledger_tool_names": [
+    "mcp__reads__get_source_document",
+    "mcp__reads__read_prior_period_treatment",
+    "mcp__reads__read_vendor_gst_status"
+  ],
+  "ledger_tier_counts": {
+    "1": 4,
+    "0": 12
+  },
+  "denied_entries": [],
+  "dossier_completeness_rate": 1.0,
+  "language_lint_pass_rate": 1.0
+}
