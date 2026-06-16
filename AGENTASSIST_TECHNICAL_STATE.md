@@ -1838,6 +1838,48 @@ suppression via the live options (`disallowed_tools` / tighter `allowed_tools`).
 complete→stage path has **NOT** been shown on a live model — that is the T5.3-V round-2 run, after the
 slot-contract fix. T2.11 still gates everything customer-facing.
 
+### Live validation (T5.3-V) — round-2 real-ctx live run (2026-06-16)
+
+Second supervised live run, the one round-1 flagged as pending: the arch-A `run_casefile_loop` driven by
+a real model over a **REAL `LoopContext`** (T5.3h `build_loop_context`) and **REAL findings** (the
+offline-replayed deterministic chain off the frozen SBODEMOSG extract — `tests/replay_shim.replay_review`,
+SAP unreachable), at master `19eb62e`, model **`claude-opus-4-8`**, cost **$1.013447** (under the **$3.00**
+cap; `max_turns=12`). **Finding set (option B):** the first 3 `NO_GST_REG` findings — Acme Associates
+(605), Far East Imports (592), SMD Technologies (594) — chosen so the loop exercises the T5.3g
+`supplier_catalog` slot LIVE via `read_vendor_gst_status` over the real S3 vendor catalog. Evidence (raw
+saved BEFORE any scoring): `exploration-notes/live-loop-run-20260616-round2/` (`SESSION-REPORT.md`,
+`summary.json`, `raw/ledger.json`, `raw/stream.json` — 64.8 KB, under the ~1 MB cap so retained;
+`run_round2_realctx.py` the thin run-script). Branch `t5.3v-round2-live-loop`.
+
+**MECHANISM validated live (round-1 0-PENDING gap CLOSED):**
+- **3 PENDING `ProposalArtifact`s staged**, 1 attempt each (round-1 staged 0 over 6 attempts). The full
+  `gather → complete → stage` machinery runs end-to-end on a real model over real data.
+- **T5.3g slot fix working LIVE on real data:** the model passed only `card_name`; the canonical
+  **`supplier_catalog`** slot (code-bound via `READ_TOOL_SLOT`/`canonical_slot`, removed from the
+  model-facing schema) filled non-null for all 3 → the code-defined completeness was satisfied →
+  `dossier_completeness_rate = 1.0`, `language_lint_pass_rate = 1.0`.
+- **CAGE HELD:** 16 ledger entries = 1× Tier-1 `run_review_chain` (gather) + 3×(3 Tier-0 `mcp__reads__*`
+  reads + Tier-0 `budget_increment` + Tier-1 `propose_action`). **Zero Tier-2**, nothing sealed/emitted,
+  **zero Tier-3 denials** (Opus never reached for `ToolSearch`; `tool_allowlist=READ_TOOLS_QUALIFIED` +
+  `disallowed_tools=["ToolSearch"]` + the PreToolUse hook backstop). Staging is **driver-decided** — the
+  model cannot call `propose_action`.
+- **Budget non-blocking (Invariant 7):** `$1.013447 ≤ $3.00`, `budget_exceeded=False`,
+  `agent_layer_complete=True`.
+
+**Honest scope — slot coverage (per Terry, 2026-06-16):**
+- **`supplier_catalog` validated live ×3** (the required slot for `NO_GST_REG`; completeness met through it).
+- **`document_pdfs` NOT live-exercised through complete→stage.** The model *did* call `get_source_document`
+  in-turn and the handler correctly wrote to the canonical `document_pdfs` slot — but over
+  `AbsentDocumentProvider` it returned ABSENT (`None`), and **no document-requiring check was in the set**
+  (`NO_GST_REG` does not need `document_pdfs`). So the slot **binding** is structurally correct and was
+  exercised, but the **complete→stage path through `document_pdfs`** was not (a finding type needing it +
+  a real PDF provider would be a future run).
+
+**MECHANISM, not accuracy.** This validates the agentic-shell mechanism only. It does **NOT** validate
+finding accuracy (that is T2.11). Frozen flags untouched (`validation_status="unvalidated"`,
+`show_ai_candidates=False` — `git diff` empty on `config/`/`engine/`/`ui/`); no source/test change (the
+only new files are under `exploration-notes/`). T2.11 still gates everything customer-facing.
+
 ### Real LoopContext from the frozen extract (T5.3h)
 
 T5.3h merged to `master` (2026-06-16, PR #35 from branch `t5.3h-loop-context`, feat commit `8785f92`).
