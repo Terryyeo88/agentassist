@@ -1,17 +1,27 @@
 """
 tests/replay_shim.py — reusable offline-replay harness for the frozen SBODEMOSG extract.
 
-Behaviour-preserving extraction of the patch set that was inline in
-``tests/test_t2_12a_offline_replay.py``. The SAME fixture-injection shims (S0/S1/S2/S3/S5
-+ frozen clock + no-contact guard) are defined ONCE here and exposed two ways:
+Drives the deterministic chain (``run_chain``) against the frozen ``sbodemosg-extract``
+fixtures with SAP physically unreachable.
 
-  * ``install_replay_patches(monkeypatch, extract_dir)`` — installs the patch set via a
-    pytest ``monkeypatch`` and returns the call-tracking ``contact`` dict. The T2.12a
-    byte-identity gate uses this; the patch set is IDENTICAL to the old inline fixture,
-    so the gate is unchanged.
+T2.23 rewire: the frozen surfaces (S0/S1/S2/S3/S5) are now injected through the PUBLIC
+chain source seam — ``run_chain(..., reader=FrozenExtractReader(...))`` — instead of
+monkeypatching the ``_fetch_*`` / ``SAPB1Client.get`` internals. Only the no-contact
+guards (``login``/``request``) and the frozen clock remain as patches: the guards prove
+the run never touched real SAP, the clock pins ``fetch_manifest["fetched_at"]`` so the
+re-stamped string byte-matches the oracle. The replayed bytes are unchanged (the reader
+serves the same frozen payloads, deepcopy-per-call), so the T2.12a byte-identity gate and
+the T5.3h loop-context consumers are behaviour-preserved.
+
+Exposed:
+  * ``FrozenExtractReader(extract_dir)`` / ``build_frozen_reader(extract_dir)`` — a
+    ``ChainReader`` backed by the frozen extract (the injectable seam value).
+  * ``install_replay_patches(monkeypatch, extract_dir)`` — installs the no-contact guards
+    + frozen clock via a pytest ``monkeypatch``; returns the call-tracking ``contact`` dict.
   * ``frozen_extract_sap(extract_dir)`` — a stdlib ``unittest.mock``-based context manager
-    yielding the same ``contact`` dict, for callers that have no pytest ``monkeypatch``.
-  * ``replay_chain(period, ...)``  → ``(compile_output, gate_results)`` from ``run_chain``.
+    installing the same guards + clock, yielding ``contact``.
+  * ``replay_chain(period, ...)``  → ``(compile_output, gate_results)`` from ``run_chain``
+    with the frozen reader injected.
   * ``replay_review(period, ...)`` → a chain-only ``ReviewResult`` (T5.3h, decision B1):
     real findings via the byte-identity-gated deterministic chain, with
     ``reasoning_artefact=None`` (the Reg 26/27 pass is NOT run here) and
@@ -20,8 +30,8 @@ Behaviour-preserving extraction of the patch set that was inline in
     case-file loop consumes all live in ``compile_output``.
 
 This is a TEST HARNESS, not the product adapter (mirroring the T2.12a docstring): it
-injects frozen fixtures by patching the live SAP fetch primitives. It builds NO Excel/CSV
-adapter (T2.12) and validates NO accuracy (T2.11). ``orchestrator/`` is untouched.
+injects frozen fixtures via the chain source seam. It builds NO Excel/CSV adapter (T2.12)
+and validates NO accuracy (T2.11). ``orchestrator/`` is untouched.
 """
 from __future__ import annotations
 
@@ -60,66 +70,89 @@ def period_from_manifest(extract_dir: Path = FIXTURE_DIR) -> dict:
     return json.load(open(sample, encoding="utf-8"))["period"]
 
 
-def _build_replay_specs(extract_dir: Path) -> "tuple[list[tuple[str, Any]], dict]":
-    """Return ``(specs, contact)``: the fixture-injection patch set + contact tracker.
+# ---------------------------------------------------------------------------
+# Frozen-extract ChainReader — the injectable seam value (S0/S1/S2/S3/S5)
+# ---------------------------------------------------------------------------
+
+class FrozenExtractReader:
+    """A ``sap_b1_server.ChainReader`` backed by the frozen SBODEMOSG extract.
+
+    Returns the same verbatim payloads the capture froze, ``deepcopy``-per-call so each
+    (redundant) read site gets fresh objects — exactly as live SAP returns a fresh payload
+    every fetch. The deepcopy is load-bearing: the ``is_credit_note=True`` tag baked into
+    the credit-note fixtures can never leak into the untagged invoice read via a shared
+    mutable object (the per-call-freshness hazard).
+    """
+
+    def __init__(self, extract_dir: Path = FIXTURE_DIR):
+        # fetch()'s S1 reads dispatch on entity; CreditNotes / PurchaseCreditNotes map to
+        # the (already-tagged) credit-note fixtures, exactly as the old shim did.
+        self._invoices_by_entity = {
+            "Invoices": _load(extract_dir, "invoices.raw.json"),
+            "PurchaseInvoices": _load(extract_dir, "purchase-invoices.raw.json"),
+            "CreditNotes": _load(extract_dir, "credit-notes.raw.json"),
+            "PurchaseCreditNotes": _load(extract_dir, "purchase-credit-notes.raw.json"),
+        }
+        self._credit_notes_by_type = {
+            "sales": _load(extract_dir, "credit-notes.raw.json"),
+            "purchases": _load(extract_dir, "purchase-credit-notes.raw.json"),
+        }
+        self._listing = _load(extract_dir, "listing-headers.json")
+        self._business_partners = _load(extract_dir, "business-partners.raw.json")
+        self._inline_counts = _load(extract_dir, "inline-counts.json")["counts"]
+
+    def count(self, entity: str, period_start: str, period_end: str):
+        """S0 — reproduce TODAY's Gate-1 dormancy (backlog #5, OUT OF SCOPE).
+
+        The v2 probe response carries the total under "@odata.count" (with @), but the
+        production code reads "odata.count" (no @) → None. We reconstruct that exact wire
+        response and apply the same extraction so the freeze stays bug-fix-following and the
+        oracle's ``sap_inline_count: null`` is reproduced.
+        """
+        resp = {"@odata.count": self._inline_counts.get(entity), "value": []}
+        raw = resp.get("odata.count")
+        return int(raw) if raw is not None else None
+
+    def fetch_invoices(self, entity: str, period_start: str, period_end: str) -> list:
+        assert entity in self._invoices_by_entity, f"unexpected entity {entity!r}"
+        return copy.deepcopy(self._invoices_by_entity[entity])
+
+    def fetch_credit_notes(self, entity_type: str, period_start: str, period_end: str) -> list:
+        assert entity_type in self._credit_notes_by_type, f"unexpected type {entity_type!r}"
+        return copy.deepcopy(self._credit_notes_by_type[entity_type])
+
+    def get_business_partner(self, card_code: str) -> dict:
+        assert card_code in self._business_partners, f"unfrozen supplier {card_code!r}"
+        return copy.deepcopy(self._business_partners[card_code])
+
+    def fetch_listing(self, period: dict) -> dict:
+        return copy.deepcopy(self._listing)
+
+
+def build_frozen_reader(extract_dir: Path = FIXTURE_DIR) -> FrozenExtractReader:
+    """Return a FrozenExtractReader — the value injected through the chain source seam."""
+    return FrozenExtractReader(extract_dir)
+
+
+# ---------------------------------------------------------------------------
+# No-contact guards + frozen clock (the only remaining patches)
+# ---------------------------------------------------------------------------
+
+def _build_guard_specs(extract_dir: Path) -> "tuple[list[tuple[str, Any]], dict]":
+    """Return ``(specs, contact)``: no-contact guards + frozen-clock patch set.
 
     ``specs`` is a list of ``(dotted_target, replacement)`` installable via EITHER
-    ``monkeypatch.setattr(target, replacement)`` OR ``unittest.mock.patch(target,
-    replacement)`` — the SINGLE definition of the replay patch set, so the pytest-fixture
-    installer and the standalone context manager cannot drift. ``contact`` counts any
-    real SAP login/request (must stay zero for a fully-offline run).
+    ``monkeypatch.setattr`` OR ``unittest.mock.patch`` — the SINGLE definition so the
+    pytest-fixture installer and the standalone context manager cannot drift. The frozen
+    SAP reads are NOT patched here: they are served by an injected FrozenExtractReader via
+    the public ``run_chain(reader=...)`` seam. ``contact`` counts any real SAP login/request
+    (must stay zero — the request guard catches every ``SAPB1Client.get`` that would slip
+    through to the network).
     """
-    import sap_b1_server  # noqa: E402,F401 — path inserted at import; resolves dotted targets
-
-    # Frozen extract data — deepcopy per call so each (redundant) call site gets fresh
-    # objects, exactly as live SAP returns a fresh payload every fetch.
-    invoices_by_entity = {
-        "Invoices": _load(extract_dir, "invoices.raw.json"),
-        "PurchaseInvoices": _load(extract_dir, "purchase-invoices.raw.json"),
-        "CreditNotes": _load(extract_dir, "credit-notes.raw.json"),
-        "PurchaseCreditNotes": _load(extract_dir, "purchase-credit-notes.raw.json"),
-    }
-    credit_notes_by_type = {
-        "sales": _load(extract_dir, "credit-notes.raw.json"),
-        "purchases": _load(extract_dir, "purchase-credit-notes.raw.json"),
-    }
-    listing = _load(extract_dir, "listing-headers.json")
-    business_partners = _load(extract_dir, "business-partners.raw.json")
-    inline_counts = _load(extract_dir, "inline-counts.json")["counts"]
+    import sap_b1_server  # noqa: F401 — path inserted at import; resolves dotted targets
 
     contact = {"login": 0, "request": 0}
 
-    # --- S1 + fetch()'s CN reads: _fetch_invoices_paginated dispatch on entity ---
-    def fake_fetch_invoices(entity, period_start, period_end):
-        assert entity in invoices_by_entity, f"unexpected entity {entity!r}"
-        return copy.deepcopy(invoices_by_entity[entity])
-
-    # --- S2: _fetch_credit_notes_paginated dispatch on entity_type ---
-    def fake_fetch_credit_notes(entity_type, period_start, period_end):
-        assert entity_type in credit_notes_by_type, f"unexpected type {entity_type!r}"
-        return copy.deepcopy(credit_notes_by_type[entity_type])
-
-    # --- S5: fetch_listing_data (patched in chain's namespace) ---
-    def fake_fetch_listing_data(client_config, period):
-        return copy.deepcopy(listing)
-
-    # --- S0 + S3: SAPB1Client.get fake (class-level; serves the only two sap.get call
-    #     sites left after the high-level patches: count-probe + BP lookup) ---
-    def fake_get(self, endpoint, params=None):
-        params = params or {}
-        if "$inlinecount" in params:
-            # S0 count-probe. Return the count under the @-prefixed key only, so the
-            # current code's resp.get("odata.count") -> None (Gate-1 dormancy),
-            # reproducing TODAY's behaviour rather than the future fix.
-            entity = endpoint.lstrip("/")
-            return {"@odata.count": inline_counts.get(entity), "value": []}
-        if endpoint.startswith("/BusinessPartners('") and endpoint.endswith("')"):
-            card_code = endpoint[len("/BusinessPartners('"):-2]
-            assert card_code in business_partners, f"unfrozen supplier {card_code!r}"
-            return copy.deepcopy(business_partners[card_code])
-        raise NoContactError(f"unexpected offline GET: {endpoint} params={params}")
-
-    # --- No-contact guard: the only network entry points must never fire ---
     def guard_login(self, *a, **kw):
         contact["login"] += 1
         raise NoContactError("SAPB1Client.login attempted during offline replay")
@@ -128,10 +161,10 @@ def _build_replay_specs(extract_dir: Path) -> "tuple[list[tuple[str, Any]], dict
         contact["request"] += 1
         raise NoContactError(f"SAPB1Client.request attempted: {method} {endpoint}")
 
-    # --- Frozen-clock pin: fetch() stamps fetch_manifest["fetched_at"] via datetime.now();
-    #     pin it to the oracle's instant so the re-stamped string byte-matches. Scoped to
-    #     orchestrator.steps.datetime only — nothing else in the run_chain path stamps a
-    #     timestamp. ---
+    # Frozen-clock pin: fetch() stamps fetch_manifest["fetched_at"] via datetime.now();
+    # pin it to the oracle's instant so the re-stamped string byte-matches. Scoped to
+    # orchestrator.steps.datetime only — nothing else in the run_chain path stamps a
+    # timestamp.
     oracle_fetched_at = _load(
         extract_dir, "_replay-oracle.compiled.json"
     )["compile_output"]["fetch_manifest"]["fetched_at"]
@@ -143,10 +176,6 @@ def _build_replay_specs(extract_dir: Path) -> "tuple[list[tuple[str, Any]], dict
             return fixed
 
     specs: list[tuple[str, Any]] = [
-        ("sap_b1_server._fetch_invoices_paginated", fake_fetch_invoices),
-        ("sap_b1_server._fetch_credit_notes_paginated", fake_fetch_credit_notes),
-        ("orchestrator.chain.fetch_listing_data", fake_fetch_listing_data),
-        ("sap_b1_server.SAPB1Client.get", fake_get),
         ("sap_b1_server.SAPB1Client.login", guard_login),
         ("sap_b1_server.SAPB1Client.request", guard_request),
         ("orchestrator.steps.datetime", _FrozenClock),
@@ -155,12 +184,12 @@ def _build_replay_specs(extract_dir: Path) -> "tuple[list[tuple[str, Any]], dict
 
 
 def install_replay_patches(monkeypatch, extract_dir: Path = FIXTURE_DIR) -> dict:
-    """Install the replay patch set via a pytest ``monkeypatch``; return ``contact``.
+    """Install the no-contact guards + frozen clock via a pytest ``monkeypatch``.
 
-    Behaviour-preserving extraction of the old T2.12a fixture body: identical patch set,
-    installed with ``monkeypatch.setattr`` (auto-undone at fixture teardown).
+    Returns the ``contact`` tracker. The frozen reads are injected separately via the
+    chain source seam (``build_frozen_reader`` -> ``run_chain(reader=...)``).
     """
-    specs, contact = _build_replay_specs(extract_dir)
+    specs, contact = _build_guard_specs(extract_dir)
     for target, replacement in specs:
         monkeypatch.setattr(target, replacement)
     return contact
@@ -168,12 +197,12 @@ def install_replay_patches(monkeypatch, extract_dir: Path = FIXTURE_DIR) -> dict
 
 @contextlib.contextmanager
 def frozen_extract_sap(extract_dir: Path = FIXTURE_DIR) -> Iterator[dict]:
-    """Context manager installing the replay patch set via ``unittest.mock``; yields ``contact``.
+    """Context manager installing the no-contact guards + frozen clock via ``unittest.mock``.
 
     For callers with no pytest ``monkeypatch`` (e.g. ``replay_chain``/``replay_review``).
-    All patches are reverted on exit.
+    All patches are reverted on exit. The frozen reads are injected via the seam separately.
     """
-    specs, contact = _build_replay_specs(extract_dir)
+    specs, contact = _build_guard_specs(extract_dir)
     with contextlib.ExitStack() as stack:
         for target, replacement in specs:
             stack.enter_context(mock.patch(target, replacement))
@@ -188,8 +217,9 @@ def replay_chain(
 ) -> "tuple[dict, dict]":
     """Run ``run_chain`` off the frozen extract (SAP unreachable) → ``(compile_output, gate_results)``.
 
-    This is the exact deterministic-chain path the T2.12a gate protects byte-for-byte.
-    Raises ``NoContactError`` if any real SAP login/request was attempted.
+    Injects a FrozenExtractReader through the public chain source seam; this is the exact
+    deterministic-chain path the T2.12a gate protects byte-for-byte. Raises
+    ``NoContactError`` if any real SAP login/request was attempted.
     """
     from config.loader import load_client_config
     from orchestrator.chain import run_chain
@@ -199,8 +229,9 @@ def replay_chain(
     if period is None:
         period = period_from_manifest(extract_dir)
 
+    reader = build_frozen_reader(extract_dir)
     with frozen_extract_sap(extract_dir) as contact:
-        compile_output, gate_results = run_chain(client_config, period)
+        compile_output, gate_results = run_chain(client_config, period, reader=reader)
 
     if contact != {"login": 0, "request": 0}:  # pragma: no cover - guard fires as AssertionError first
         raise NoContactError(f"SAP contact during replay: {contact}")

@@ -43,7 +43,7 @@ import sys
 import json
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 from datetime import datetime, timedelta
 
 import httpx
@@ -564,6 +564,186 @@ def _fetch_credit_notes_paginated(entity_type: str, period_start: str, period_en
     return results
 
 
+def _fetch_headers_paginated(
+    entity: str,
+    select_fields: str,
+    date_filter: Optional[str] = None,
+    page_size: int = 20,
+) -> list:
+    """Fetch header-only records for an OData entity, paginating via $skip.
+
+    Uses $select to limit returned fields — no DocumentLines, no expensive
+    line-level data.  Designed for the lightweight header reads needed by the
+    T2.10 listing checks (SEQ_GAP, DUP_CLAIM).
+
+    page_size defaults to 20 to match the SAP B1 Service Layer's server-side
+    page cap — requesting more than the server returns per page causes the
+    pagination loop to stop prematurely (returned < requested = "last page"
+    sentinel), so the value must not exceed the server's actual page size.
+
+    T2.23: relocated verbatim from orchestrator/steps.py so the default
+    SapChainReader.fetch_listing (the S5 read surface) and the four header
+    queries it issues live next to the other SAP fetch primitives. Behaviour
+    is unchanged — same queries, same pagination sentinel.
+
+    Args:
+        entity:        OData entity name (e.g. "Invoices").
+        select_fields: Comma-separated field names for $select.
+        date_filter:   OData $filter expression, or None for company-wide.
+        page_size:     Records per page; must not exceed SAP's server cap (default 20).
+
+    Returns:
+        List of dicts containing only the requested fields.
+    """
+    results: list = []
+    skip = 0
+    while True:
+        params: dict = {"$select": select_fields, "$top": page_size, "$skip": skip}
+        if date_filter:
+            params["$filter"] = date_filter
+        try:
+            resp = sap.get(f"/{entity}", params=params)
+            page = resp.get("value", [])
+        except Exception as exc:
+            logger.warning(f"_fetch_headers_paginated: {entity} skip={skip} failed ({exc})")
+            break
+        if not page:
+            break
+        results.extend(page)
+        if len(page) < page_size:
+            break
+        skip += page_size
+    return results
+
+
+# ---------------------------------------------------------------------------
+# T2.23 — Chain source seam: per-surface injectable read provider
+# ---------------------------------------------------------------------------
+#
+# run_chain reads SAP only through five raw-read surfaces (recon S0/S1/S2/S3/S5),
+# all bottoming out at SAPB1Client.get on the module-global ``sap``. ChainReader
+# is the per-surface contract; SapChainReader is the default implementation that
+# wraps the existing fetch primitives VERBATIM (no logic change — a wrapper, not a
+# rewrite). A T2.12 CSV/Excel adapter supplies a different ChainReader without
+# touching the deterministic chain. The type lives here (top-level sap_b1_server,
+# NOT engine/) so the engine/ -> orchestrator/ import direction is preserved and
+# the tool functions below can default-construct it with no circular import.
+
+
+class ChainReader(Protocol):
+    """Per-surface raw-read contract consumed by run_chain (recon S0/S1/S2/S3/S5).
+
+    Each method returns ALREADY-SHAPED record lists (not raw OData envelopes);
+    the OData wire shape stays inside the default SapChainReader. Implementations
+    MUST return a fresh payload per call — the live client does (a fresh HTTP
+    response each fetch) and any fixture-backed reader must deepcopy-per-call —
+    so the ``is_credit_note=True`` tag applied inside the credit-note read can
+    never leak into the untagged invoice read via a shared mutable object.
+    """
+
+    def count(self, entity: str, period_start: str, period_end: str) -> Optional[int]:
+        """S0 — record-count probe for one entity over the period (Gate 1)."""
+        ...
+
+    def fetch_invoices(self, entity: str, period_start: str, period_end: str) -> list:
+        """S1 — full line-level documents for one entity over the period."""
+        ...
+
+    def fetch_credit_notes(self, entity_type: str, period_start: str, period_end: str) -> list:
+        """S2 — credit notes for 'sales'/'purchases', tagged is_credit_note=True."""
+        ...
+
+    def get_business_partner(self, card_code: str) -> dict:
+        """S3 — single BusinessPartner master record by CardCode (FederalTaxID)."""
+        ...
+
+    def fetch_listing(self, period: dict) -> dict:
+        """S5 — the four header-only listing queries (period + company-wide)."""
+        ...
+
+
+class SapChainReader:
+    """Default SAP-backed ChainReader — wraps the existing fetch primitives verbatim.
+
+    Stateless: every method delegates to the module-level fetch helpers / the
+    module-global ``sap`` client at call time, so monkeypatching those primitives
+    (as the offline-replay harness does) still intercepts the reads, and any
+    number of instances behave identically. Constructed by run_chain (one shared
+    instance threaded through the run) or, for standalone/MCP callers, by each
+    tool function when reader is None.
+    """
+
+    def count(self, entity: str, period_start: str, period_end: str) -> Optional[int]:
+        # S0 — relocated verbatim from orchestrator/steps.py::_fetch_entity.
+        # NOTE (backlog #5, OUT OF SCOPE): the v2 Service Layer returns the total
+        # under "@odata.count" (with @), but this reads "odata.count" (no @), so
+        # the probe yields None and Gate 1 warn-passes. Preserved EXACTLY — the
+        # frozen oracle was captured with this behaviour; do NOT fix it here.
+        date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
+        inline_count: Optional[int] = None
+        try:
+            count_resp = sap.get(f"/{entity}", params={
+                "$filter": date_filter,
+                "$top": 0,
+                "$inlinecount": "allpages",
+            })
+            raw = count_resp.get("odata.count")
+            if raw is not None:
+                inline_count = int(raw)
+        except Exception as exc:
+            logger.warning(f"count probe for {entity} failed ({exc}) — Gate 1 will warn")
+        return inline_count
+
+    def fetch_invoices(self, entity: str, period_start: str, period_end: str) -> list:
+        # S1 — full line-level documents (no $select/$expand; DocumentLines default).
+        return _fetch_invoices_paginated(entity, period_start, period_end)
+
+    def fetch_credit_notes(self, entity_type: str, period_start: str, period_end: str) -> list:
+        # S2 — tags is_credit_note=True inside the paginator; callers sign-flip.
+        return _fetch_credit_notes_paginated(entity_type, period_start, period_end)
+
+    def get_business_partner(self, card_code: str) -> dict:
+        # S3 — single-entity GET by key; detect_gst_errors reads FederalTaxID.
+        return sap.get(f"/BusinessPartners('{card_code}')")
+
+    def fetch_listing(self, period: dict) -> dict:
+        # S5 — relocated verbatim from orchestrator/steps.py::fetch_listing_data.
+        # Two period-scoped + two company-wide (no date filter) header queries.
+        period_start = period["start"]
+        period_end = period["end"]
+        date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
+        period_sales = _fetch_headers_paginated(
+            "Invoices", "DocNum,Series,Cancelled", date_filter=date_filter
+        )
+        period_purch = _fetch_headers_paginated(
+            "PurchaseInvoices",
+            "DocNum,Series,Cancelled,CardCode,NumAtCard,DocTotal",
+            date_filter=date_filter,
+        )
+        all_sales = _fetch_headers_paginated(
+            "Invoices", "DocNum,Series,Cancelled", date_filter=None
+        )
+        all_purch = _fetch_headers_paginated(
+            "PurchaseInvoices", "DocNum,Series,Cancelled", date_filter=None
+        )
+        return {
+            "period_sales_headers": period_sales,
+            "period_purch_headers": period_purch,
+            "all_sales_headers": all_sales,
+            "all_purch_headers": all_purch,
+        }
+
+
+def _resolve_reader(reader: Any) -> "ChainReader":
+    """Return ``reader`` if injected, else a fresh default SapChainReader.
+
+    Single defaulting point shared by the chain tool functions so the
+    None -> SAP-backed-default rule is identical across calculate_f5_return,
+    validate_invoice_tax_codes and detect_gst_errors.
+    """
+    return reader if reader is not None else SapChainReader()
+
+
 def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_rate: float = 0.07, credit_note: bool = False) -> list:
     """Check one document line for E1–E4 issues. Returns a list of issue dicts.
 
@@ -745,7 +925,7 @@ def sap_delete(entity: str, key: str) -> str:
 
 
 @mcp.tool()
-def calculate_f5_return(period_start: str, period_end: str) -> str:
+def calculate_f5_return(period_start: str, period_end: str, reader=None) -> str:
     """Calculate GST F5 return boxes 1–8 for a period.
 
     Fetches all SAP B1 invoices and credit notes within the date range and
@@ -757,6 +937,10 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
     Args:
         period_start: ISO date string 'YYYY-MM-DD' for the start of the GST period.
         period_end:   ISO date string 'YYYY-MM-DD' for the end of the GST period.
+        reader:       Optional ChainReader (T2.23 chain source seam). None ->
+                      the default SAP-backed reader. Internal DI only; never set
+                      by MCP/agent callers (left untyped so @mcp.tool JSON-schema
+                      generation does not choke on the ChainReader class).
 
     Returns:
         str: JSON string containing:
@@ -770,11 +954,12 @@ def calculate_f5_return(period_start: str, period_end: str) -> str:
             - credit_notes_applied: detail of each credit note adjustment
             - anomalies: lines with VatGroup codes absent from F5_BOX_MAPPING
     """
-    # --- Fetch ---
-    invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
-    purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
-    sales_credits = _fetch_credit_notes_paginated("sales", period_start, period_end)
-    purchase_credits = _fetch_credit_notes_paginated("purchases", period_start, period_end)
+    # --- Fetch (T2.23: via the chain source seam; default = SAP-backed reader) ---
+    reader = _resolve_reader(reader)
+    invoices = reader.fetch_invoices("Invoices", period_start, period_end)
+    purchases = reader.fetch_invoices("PurchaseInvoices", period_start, period_end)
+    sales_credits = reader.fetch_credit_notes("sales", period_start, period_end)
+    purchase_credits = reader.fetch_credit_notes("purchases", period_start, period_end)
 
     # --- Split SGD vs FX ---
     sgd_sales = [d for d in invoices if _is_sgd(d)]
@@ -1036,7 +1221,7 @@ def _vg_category(vg: str) -> str:
 
 
 @mcp.tool()
-def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07) -> str:
+def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07, reader=None) -> str:
     """Check all invoice and credit note lines in a period for E1–E4 tax code errors.
 
     In addition to the per-line error list, builds a vatgroup_inventory that
@@ -1048,6 +1233,8 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
         period_end:    ISO date string 'YYYY-MM-DD'.
         expected_rate: Expected GST rate as a decimal; defaults to 0.07 (7%).
             Pass 0.09 for post-2024 production data.
+        reader:        Optional ChainReader (T2.23). None -> default SAP-backed
+            reader. Internal DI only; left untyped (see calculate_f5_return).
 
     Returns:
         str: JSON string containing:
@@ -1058,8 +1245,10 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
             - issues: list of E1–E4 issue dicts from _classify_line
             - summary: per-code and total issue counts
     """
-    invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
-    purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
+    # T2.23: reads via the chain source seam; default = SAP-backed reader.
+    reader = _resolve_reader(reader)
+    invoices = reader.fetch_invoices("Invoices", period_start, period_end)
+    purchases = reader.fetch_invoices("PurchaseInvoices", period_start, period_end)
 
     issues = []
     # Tracks all distinct VatGroup codes seen to help auditors understand active codes
@@ -1101,7 +1290,7 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
                     }
                 vg_inventory[vg]["doc_count"] += 1
 
-    for doc in _fetch_credit_notes_paginated("sales", period_start, period_end):
+    for doc in reader.fetch_credit_notes("sales", period_start, period_end):
         for line in doc.get("DocumentLines", []):
             issues.extend(_classify_line(line, doc, entity_type="sales", expected_rate=expected_rate, credit_note=True))
             vg = (line.get("VatGroup") or "").strip()
@@ -1119,7 +1308,7 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
                     }
                 vg_inventory[vg]["doc_count"] += 1
 
-    for doc in _fetch_credit_notes_paginated("purchases", period_start, period_end):
+    for doc in reader.fetch_credit_notes("purchases", period_start, period_end):
         for line in doc.get("DocumentLines", []):
             issues.extend(_classify_line(line, doc, entity_type="purchase", expected_rate=expected_rate, credit_note=True))
             vg = (line.get("VatGroup") or "").strip()
@@ -1154,7 +1343,7 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
 
 
 @mcp.tool()
-def detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07) -> str:
+def detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07, reader=None) -> str:
     """Audit GST compliance: E1–E4 line errors on invoices and credit notes, purchase completeness check, and supplier GST registration validation.
 
     Issues sorted HIGH → MEDIUM → LOW. expected_rate defaults to 0.07; pass 0.09
@@ -1164,6 +1353,8 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
         period_start:  ISO date string 'YYYY-MM-DD'.
         period_end:    ISO date string 'YYYY-MM-DD'.
         expected_rate: Expected GST rate as a decimal. Defaults to 0.07 (7%).
+        reader:        Optional ChainReader (T2.23). None -> default SAP-backed
+            reader. Internal DI only; left untyped (see calculate_f5_return).
 
     Returns:
         str: JSON string containing:
@@ -1176,10 +1367,11 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
                 NO_GST_REG   — input tax claimed from a supplier with no GST
                                registration number on their business partner record
     """
-    # --- Fetch ---
-    invoices = _fetch_invoices_paginated("Invoices", period_start, period_end)
-    purchases = _fetch_invoices_paginated("PurchaseInvoices", period_start, period_end)
-    purchase_credits = _fetch_credit_notes_paginated("purchases", period_start, period_end)
+    # --- Fetch (T2.23: via the chain source seam; default = SAP-backed reader) ---
+    reader = _resolve_reader(reader)
+    invoices = reader.fetch_invoices("Invoices", period_start, period_end)
+    purchases = reader.fetch_invoices("PurchaseInvoices", period_start, period_end)
+    purchase_credits = reader.fetch_credit_notes("purchases", period_start, period_end)
 
     _severity_map = {"E1": "HIGH", "E2": "MEDIUM", "E3": "HIGH", "E4": "MEDIUM"}
     _rec_map = {
@@ -1197,7 +1389,7 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
     for doc in purchases:
         for line in doc.get("DocumentLines", []):
             raw_issues.extend(_classify_line(line, doc, entity_type="purchase", expected_rate=expected_rate))
-    for doc in _fetch_credit_notes_paginated("sales", period_start, period_end):
+    for doc in reader.fetch_credit_notes("sales", period_start, period_end):
         for line in doc.get("DocumentLines", []):
             raw_issues.extend(_classify_line(line, doc, entity_type="sales", expected_rate=expected_rate, credit_note=True))
     for doc in purchase_credits:
@@ -1250,7 +1442,7 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
             continue
         if card_code not in bp_cache:
             try:
-                bp = sap.get(f"/BusinessPartners('{card_code}')")
+                bp = reader.get_business_partner(card_code)
                 bp_cache[card_code] = (bp.get("FederalTaxID") or "").strip()
             except Exception:
                 bp_cache[card_code] = ""
