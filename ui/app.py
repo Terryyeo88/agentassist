@@ -11,6 +11,14 @@ Run:
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Make `streamlit run ui/app.py` work from a fresh checkout. Streamlit puts the
+# entrypoint's own directory (ui/) on sys.path[0], not the repo root, so the
+# `from ui...` package imports below fail unless we add the repo root first.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import streamlit as st
 
 from ui.artifacts import load_demo_artifacts
