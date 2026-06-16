@@ -21,3 +21,18 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
    first real-client run, define: how long bundles are kept, where they live in production
    (local disk vs. object storage), and who has read access. See Appendix C #25 for the
    broader PDPA context.
+5. **Gate 1 latent bug — `@odata.count` key mismatch (found T2.12a recon, 2026-06-16).**
+   - **Root cause:** `orchestrator/steps.py:156` reads `count_resp.get("odata.count")`, but the
+     v2 Service Layer returns the total under **`@odata.count`** (with the `@` prefix). The key
+     never matches → `inline_count` is always `None`. This is a v1→v2 OData key-prefix
+     mismatch, not a missing SAP feature. (Probe 2026-06-16: count-probe response keys were
+     `['@odata.count', '@odata.context', 'value']` — the count *is* present.)
+   - **Impact:** Gate 1 warn-passes **unconditionally** on this instance, so incomplete
+     pagination is currently uncaught — the gate is effectively dormant; completeness rests only
+     on the structural `len(page) < 20` sentinel, never on a SAP-reported arithmetic total.
+   - **Doc correction owed:** `AGENTASSIST_TECHNICAL_STATE.md` (line ~689, Gate-1 dormancy) and
+     line ~1326 attribute this to "Service Layer (version 1000250) does not return `odata.count`".
+     That attribution is **disproven** — fix in the next doc-sync.
+   - **Scope:** the fix itself is **out of scope here** — separate failing-test-first task (write
+     a test asserting Gate 1 reads `@odata.count` and FAILs on a real mismatch, then correct the
+     key). Found read-only during T2.12a read-surface recon; nothing changed in this commit.
