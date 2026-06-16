@@ -1,0 +1,80 @@
+{
+  "_note": "SBODEMOSG is SAP B1 demo/synthetic data — no PDPA constraint; fixtures are committable. Verbatim freeze of recon surfaces S0–S5 + same-session compiled replay oracle. Raw fixtures carry no injected provenance; all provenance lives here.",
+  "captured_at": "2026-06-16T03:23:32.090212+00:00",
+  "instance": "SBODEMOSG",
+  "service_layer_url": "https://35.186.145.230:55000/b1s/v2",
+  "service_layer_version": "v2 (b1s/v2)",
+  "client_id": "sbodemosg",
+  "period": {
+    "start": "2024-07-01",
+    "end": "2024-09-30"
+  },
+  "fixtures": {
+    "invoices.raw.json": {
+      "source_function": "_fetch_invoices_paginated(\"Invoices\")",
+      "sha256": "sha256:527ad035eb979df717ec49820933e2e9ebc3e842e3962ddbe01bc0c0003ca02e",
+      "record_count": 50
+    },
+    "purchase-invoices.raw.json": {
+      "source_function": "_fetch_invoices_paginated(\"PurchaseInvoices\")",
+      "sha256": "sha256:31dcf03d553dfa90231b1282cfe0826a1ad640cc527d108b24d928e4e85263fc",
+      "record_count": 34
+    },
+    "credit-notes.raw.json": {
+      "source_function": "_fetch_credit_notes_paginated(\"sales\")",
+      "sha256": "sha256:a1fef7501422ee85dfda67be909eafa82073cd6dd31359b4e5de08c7953e7daa",
+      "record_count": 1
+    },
+    "purchase-credit-notes.raw.json": {
+      "source_function": "_fetch_credit_notes_paginated(\"purchases\")",
+      "sha256": "sha256:d05da7265306c48dfb16d6eb4cde148a7053ac12fec83658065f1035a348cdfc",
+      "record_count": 1
+    },
+    "business-partners.raw.json": {
+      "source_function": "GET /BusinessPartners('{CardCode}') per supplier",
+      "sha256": "sha256:f940b25f9a817c46d6fa15417b7d3a8835b937d67ca0f7a78c8d13fcf4adc82c",
+      "record_count": 9,
+      "card_codes": [
+        "V10000",
+        "V1010",
+        "V20000",
+        "V21000",
+        "V22000",
+        "V30000",
+        "V50000",
+        "V60000",
+        "V70000"
+      ]
+    },
+    "si-purchase-lines.json": {
+      "source_function": "reasoning.sap_lines.fetch_si_purchase_lines",
+      "sha256": "sha256:b190e71609f942f7a368276737ab8c77d6402d774d7a5bf1680401f647e24353",
+      "record_count": 61
+    },
+    "listing-headers.json": {
+      "source_function": "orchestrator.steps.fetch_listing_data",
+      "sha256": "sha256:32c413ae642fe638acfcd2bcbbd0da0198daea7a4021cee9f08aed1e603ca588",
+      "counts": {
+        "period_sales_headers": 50,
+        "period_purch_headers": 34,
+        "all_sales_headers": 1005,
+        "all_purch_headers": 624
+      }
+    },
+    "inline-counts.json": {
+      "source_function": "@odata.count probe per entity",
+      "sha256": "sha256:834ff0e458bff2bd3a87cd3d59f3d55a3cc72120db9336135b916b133d8429c0",
+      "counts": {
+        "Invoices": 50,
+        "PurchaseInvoices": 34,
+        "CreditNotes": 1,
+        "PurchaseCreditNotes": 1
+      }
+    },
+    "_replay-oracle.compiled.json": {
+      "source_function": "orchestrator.chain.run_chain (CompileOutput + gate_results)",
+      "serialisation": "audit_bundle.canonical.canonical_json",
+      "sha256": "sha256:ad360e8316e7de5d95f1d5c9dc5321a11d9f70c2fa64f7db369e40a22c377ef7"
+    }
+  }
+}
