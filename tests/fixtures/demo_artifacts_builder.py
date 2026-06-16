@@ -39,6 +39,7 @@ from agent.loop import (
     LoopContext,
     run_casefile_loop,
 )
+from agent.loop_context import build_vendor_catalog
 from agent.ledger import Ledger
 from agent.proposals import StagingStore
 
@@ -147,11 +148,17 @@ def build_scripts(review_result: dict) -> dict:
 
 
 def build_context(review_result: dict) -> LoopContext:
-    """Hermetic Tier-0 read sources covering the findings' card_names / doc_nums."""
-    vendor_catalog = {}
-    for issue in review_result["compile_output"]["detect"]["issues"]:
-        if issue["error_code"] == "NO_GST_REG":
-            vendor_catalog[issue.get("card_name")] = {"gst_registered": False, "gst_reg_no": None}
+    """Hermetic Tier-0 read sources covering the findings' card_names / doc_nums.
+
+    The vendor catalog is REAL frozen-extract-derived ctx (T5.8c): it is assembled by
+    the T5.3h ``build_vendor_catalog`` from tests/fixtures/sbodemosg-extract/
+    business-partners.raw.json — not fabricated. The finding card_names are genuinely
+    unregistered there (which is why they are NO_GST_REG findings), so the supplier_catalog
+    evidence the loop records is real ground truth rather than a placeholder. The source
+    document provider stays a ``FakeProvider`` so the crafted probabilistic document
+    candidate still has a readable source path. No SAP, no model, no tokens.
+    """
+    vendor_catalog = build_vendor_catalog()
     provider = FakeProvider({
         cand["doc_num"]: f"tests/fixtures/demo-artifacts/INV-{cand['doc_num']}.txt"
         for cand in review_result["document_candidates"]
