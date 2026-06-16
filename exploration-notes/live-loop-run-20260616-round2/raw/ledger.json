@@ -1,0 +1,246 @@
+[
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "0f47c17f-e751-4929-a293-7794029c3a95",
+    "tool_name": "run_review_chain",
+    "tier": 1,
+    "justification": "Gather the deterministic GST review findings (full atomic chain) so the agent layer can assemble per-finding case files for human review.",
+    "call_params": {},
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:16.193341+00:00",
+    "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "entry_hash": "sha256:ee0c55abcce9336851b67cfed4770e36159aeff5597491e807fa990cde1e978d"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "8b718ef4-e92a-4808-9b61-91050c8a1f89",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 605
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:23.732827+00:00",
+    "prev_hash": "sha256:ee0c55abcce9336851b67cfed4770e36159aeff5597491e807fa990cde1e978d",
+    "entry_hash": "sha256:c799e960b573070bd2d61a64a86a2a0f3f785a1119c70c6269815ff58ee646ab"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "e60cbf02-d347-496e-9c12-618a908962a0",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Acme Associates"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:24.163977+00:00",
+    "prev_hash": "sha256:c799e960b573070bd2d61a64a86a2a0f3f785a1119c70c6269815ff58ee646ab",
+    "entry_hash": "sha256:d5415e40a7d8617f8493e097f451c6ef26e755412d96a4d0cab9f91f35bc6770"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "ab7a2b41-e7dc-4da1-926b-ef36be983155",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "detect:NO_GST_REG:605"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:24.170251+00:00",
+    "prev_hash": "sha256:d5415e40a7d8617f8493e097f451c6ef26e755412d96a4d0cab9f91f35bc6770",
+    "entry_hash": "sha256:cdade3eda8ed2fa9d2740b8a8eaeeca1c3fc12e252c65fd7dc605e766f7ddd00"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "0467f8cb-503f-4062-bbf5-0c05677bfa13",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.737649,
+      "cost_usd_used": 0.737649,
+      "turns_used": 1
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:32.753766+00:00",
+    "prev_hash": "sha256:cdade3eda8ed2fa9d2740b8a8eaeeca1c3fc12e252c65fd7dc605e766f7ddd00",
+    "entry_hash": "sha256:cd8b21ac62cecef991c0141bcc8769bd251cdf8e7a7526421fd829370740460a"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "663cd0b1-3c9d-402f-8b48-d6069789cd72",
+    "tool_name": "propose_action",
+    "tier": 1,
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:32.753949+00:00",
+    "prev_hash": "sha256:cd8b21ac62cecef991c0141bcc8769bd251cdf8e7a7526421fd829370740460a",
+    "entry_hash": "sha256:00fa26d490afe3ce140c2da615b404f210771ef1f1ba56e990e7a2cf064552fd"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "214303b7-7f0e-47fd-b001-3413fe9dfd0a",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 592
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:41.975900+00:00",
+    "prev_hash": "sha256:00fa26d490afe3ce140c2da615b404f210771ef1f1ba56e990e7a2cf064552fd",
+    "entry_hash": "sha256:9b438d27000689eff104f6a7c4e7eda44c30422ed68a884dfd83f3e553a7ce2d"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "094be268-ec96-44f6-94e8-8d3adbd438df",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "Far East Imports"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:42.416176+00:00",
+    "prev_hash": "sha256:9b438d27000689eff104f6a7c4e7eda44c30422ed68a884dfd83f3e553a7ce2d",
+    "entry_hash": "sha256:64cbb9b84fad27f6e62e1e00d65dd4a7e51a7f3f41fc5b468e0deb677ec05e03"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "2d4e45e3-6ad0-43aa-91da-77a083533a7e",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "detect:NO_GST_REG:592"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:43.180569+00:00",
+    "prev_hash": "sha256:64cbb9b84fad27f6e62e1e00d65dd4a7e51a7f3f41fc5b468e0deb677ec05e03",
+    "entry_hash": "sha256:f2784994a9dfc47173b1341a1855d1e7853b5c3ec5758cf10c7645bb804abf9f"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "792d9214-ebab-4bc2-bff4-aa57388c4f5c",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.1331975,
+      "cost_usd_used": 0.8708465,
+      "turns_used": 2
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:56.891505+00:00",
+    "prev_hash": "sha256:f2784994a9dfc47173b1341a1855d1e7853b5c3ec5758cf10c7645bb804abf9f",
+    "entry_hash": "sha256:7f189d74faccc078ad76824f001a2b2e5006ede6a2768096d5643d73dc0e19f5"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "ced3907d-48c6-438b-b670-7d625f24cdca",
+    "tool_name": "propose_action",
+    "tier": 1,
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:14:56.891685+00:00",
+    "prev_hash": "sha256:7f189d74faccc078ad76824f001a2b2e5006ede6a2768096d5643d73dc0e19f5",
+    "entry_hash": "sha256:b7954f1dbf6aed08c3fd1082426b4b807c1058bbf712c9395648b40a0537beca"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "e4174a52-45ba-46ae-9351-a3213a8290b9",
+    "tool_name": "mcp__reads__get_source_document",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "doc_num": 594
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:15:06.803565+00:00",
+    "prev_hash": "sha256:b7954f1dbf6aed08c3fd1082426b4b807c1058bbf712c9395648b40a0537beca",
+    "entry_hash": "sha256:97398cea67dc50283866abf92437555462c40a44b19f6395329534c2246ef89f"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "7942800e-4965-4ed9-8dd8-841902fb1894",
+    "tool_name": "mcp__reads__read_vendor_gst_status",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "card_name": "SMD Technologies"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:15:07.212627+00:00",
+    "prev_hash": "sha256:97398cea67dc50283866abf92437555462c40a44b19f6395329534c2246ef89f",
+    "entry_hash": "sha256:d264d899de7384cfc0c8cd9946f87c71123177e0f68ba3456885da5de8181c09"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "c354a182-f660-4dcf-81e0-6f39e09712ba",
+    "tool_name": "mcp__reads__read_prior_period_treatment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "key": "detect:NO_GST_REG:594"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:15:07.274003+00:00",
+    "prev_hash": "sha256:d264d899de7384cfc0c8cd9946f87c71123177e0f68ba3456885da5de8181c09",
+    "entry_hash": "sha256:ca6efc7903220e11629d2d5e5be3128659200a0a05bba6521aed14e6c0d297e4"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "05648908-4b76-4b07-9e54-4429bd4ccf3f",
+    "tool_name": "budget_increment",
+    "tier": 0,
+    "justification": null,
+    "call_params": {
+      "cost_usd": 0.1426005,
+      "cost_usd_used": 1.013447,
+      "turns_used": 3
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:15:17.155574+00:00",
+    "prev_hash": "sha256:ca6efc7903220e11629d2d5e5be3128659200a0a05bba6521aed14e6c0d297e4",
+    "entry_hash": "sha256:3328e1d993ac5d3f063cdf1f9708f4ef815cbef121caaa95aa70e42795cea0b0"
+  },
+  {
+    "__type__": "LedgerEntry",
+    "entry_id": "af96c556-d1cd-49df-8489-4763add215f9",
+    "tool_name": "propose_action",
+    "tier": 1,
+    "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
+    "call_params": {
+      "action": "attach_dossier"
+    },
+    "outcome": "allowed",
+    "blocked_reason": null,
+    "timestamp": "2026-06-16T10:15:17.155730+00:00",
+    "prev_hash": "sha256:3328e1d993ac5d3f063cdf1f9708f4ef815cbef121caaa95aa70e42795cea0b0",
+    "entry_hash": "sha256:8d5e9a84423d674eed93799b886f99e5028a8ecdf4ca2f38e72d2a68151e3b99"
+  }
+]
