@@ -42,3 +42,31 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
    - **Scope:** the fix itself is **out of scope here** — separate failing-test-first task (write
      a test asserting Gate 1 reads `@odata.count` and FAILs on a real mismatch, then correct the
      key). Found read-only during T2.12a read-surface recon; nothing changed in this commit.
+
+6. **`finding_id` collision on `(source, check_id, doc_num)` (found T5.3h/T5.8, 2026-06-16).**
+   - **Root cause:** `agent.dossier.extract_findings` derives `finding_id = f"detect:{code}:{doc_num}"`
+     (and analogously `doc:{check_id}:{doc_num}` / `reg2627:{doc_num}:{line_index}`), ignoring line
+     index for detect findings. Two deterministic findings sharing `(source, check_id, doc_num)` — e.g.
+     two E1 line-items on the same invoice — get the SAME `finding_id`. The finding *list* keeps all;
+     any per-finding dict keyed by `finding_id` (the T5.8 demo builder's `scripts` map in
+     `tests/fixtures/demo_artifacts_builder.py`, and any downstream evidence sink keyed the same way)
+     silently keeps only the last.
+   - **Observed:** the T5.3h frozen-extract chain produces 23 raw detect findings that collapse to
+     **20 unique** ids (`detect:E1:974` ×3, `detect:E1:967` ×2); the T5.8 demo build stages **21** of
+     its 23 detect issues for the same reason. Currently masked (demo is mock/unvalidated; box totals
+     unaffected — surfaces, never asserts).
+   - **Decision owed (T2.11-relevant):** when two same-code findings land on one document, **collapse**
+     into one dossier or **keep two distinct findings** (needs a line-discriminating id component, e.g.
+     `line_index`)? Recorded as an open design decision; see `AGENTASSIST_TECHNICAL_STATE.md` Appendix C #33.
+   - **Scope:** no code change here — design decision pending; the fix (id scheme + sink keying) is a
+     separate task.
+
+7. **Streamlit launch-smoke gap (process note, T5.8/T5.8b, 2026-06-16).**
+   - **What happened:** T5.8's acceptance was **headless** (the `ui/` view-models + Sign path were
+     unit-tested, but the `streamlit run ui/app.py` entrypoint itself was never exercised). The
+     entrypoint then failed from a fresh checkout because Streamlit puts the entrypoint's own `ui/`
+     dir on `sys.path[0]`, not the repo root, so the `from ui…` package imports broke. T5.8b
+     (`0f3b20a`, PR #37) added a `sys.path` bootstrap to fix it, verified by an actual launch-smoke.
+   - **Lesson:** for any user-runnable entrypoint, headless unit tests are necessary but not
+     sufficient — exercise the real launch command at least once (a launch-smoke) before claiming the
+     entrypoint works. Cheap to add; would have caught this pre-merge.
