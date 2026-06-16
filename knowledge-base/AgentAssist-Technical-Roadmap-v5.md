@@ -260,7 +260,21 @@ Q1→Q2→Q3 movements; all-zero quarters excluded (Q4 empty on demo). Surfaces 
 never asserts. NOT real-client validated. 31 tests (18 test_check_period_fluctuation.py +
 13 test_analytical_review_integration.py).
 
-### T2.18 — ClientConfig scheme & treatment block — PLANNED
+### T2.18 — ClientConfig scheme & treatment block — DONE (config infrastructure only; synthetic/unit validated, not real-client validated)
+Built on branch `t2.18-config-scheme-block`. Owner Collin. Config infrastructure ONLY — no check logic.
+
+**What was built:**
+- Four flat top-level `bool = False` GST scheme-status fields on `ClientConfig` (`config/loader.py`): `actively_makes_exempt_supplies` (**promoted** from the former `getattr(client_config, "actively_makes_exempt_supplies", False)` read — default `False` == prior behaviour), `participates_in_mes` (Major Exporter Scheme), `participates_in_igds` (Import GST Deferment Scheme), `reverse_charge_applicable` (imported services / LVG; a single bool, not split into per-code RC families).
+- `load_client_config()` Step 10 reads + validates each flag with the `show_ai_candidates` `isinstance(bool)` guard (non-bool YAML value → `ConfigError`; absent/null → `False`); the loader docstring's numbered step list bumped 9 → 10.
+- All four added to `audit_bundle/config_redaction.py`'s `_ALLOW_LIST` (scheme status is engagement-relevant, not secret); they survive redaction even when `False` (`redact_config` drops only `None`). `_DENY_ALWAYS` untouched.
+- `config/clients/example.yaml` documents the four flags as the onboarding schema template.
+- **Field names are the contract T5.2c `config_keys` and the downstream D+ checks (3E.1, ME/MC reverse charge, Template-4 routing) bind to** — those consumers are separate downstream tasks; this task ships NO check logic and no per-VatGroup-code treatment (that is T2.2).
+
+**Testing:** synthetic/unit only — present-true / present-false / invalid-type (`ConfigError`) per flag; backward-compat (`sbodemosg.yaml` + example.yaml load with all four `False`); Template-4 routing activates on the real (promoted) field via a `ClientConfig` constructor kwarg; allow-list test fails if any of the four is absent from the redacted config. Not validated against a real client (T2.11 still gates anything customer-facing). The one behavioural surface (Template-4 routing) stays default-`False` == current behaviour, so existing clients are unaffected.
+
+---
+
+#### Original PLANNED scope (retained for reference)
 Effort PROPOSED 0.5–1 wk. Owner Collin. Config infrastructure ONLY — extends ClientConfig
 with the principal's scheme-status facts the scheme-dependent D+ checks will read. Builds NO
 check logic (the consumers — 3E.1, 3D.1.1.b ME/MC, reverse charge, Template-4 routing — are
