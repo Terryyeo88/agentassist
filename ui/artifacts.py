@@ -13,10 +13,15 @@ Frozen invariants surfaced here (never overridden):
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent.decision_ledger import (
+    DecisionLedger,
+    annotate_and_demote,
+    compute_finding_fingerprint,
+)
 from ui.engine_seam import DEMO_ARTIFACTS_DIR
 
 # Frozen customer-facing gate state — surfaced as a badge, never flipped by the UI.
@@ -33,11 +38,16 @@ _TIER_LABELS: dict[int, str] = {
 
 @dataclass
 class DemoArtifacts:
-    """The four frozen artifact surfaces the UI renders."""
+    """The frozen artifact surfaces the UI renders.
+
+    ``decision_ledger`` holds the seeded prior-period reviewer adjudications (T5.5b);
+    it is empty when no decision-ledger fixture is present.
+    """
     review_result: dict
     dossiers: list[dict]
     proposals: list[dict]
     ledger: list[dict]
+    decision_ledger: list[dict] = field(default_factory=list)
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -47,13 +57,14 @@ def _read_json(path: Path, default: Any) -> Any:
 
 
 def load_demo_artifacts(artifacts_dir: Path | str = DEMO_ARTIFACTS_DIR) -> DemoArtifacts:
-    """Load the frozen review_result / dossiers / proposals / ledger JSONs."""
+    """Load the frozen review_result / dossiers / proposals / ledger / decision-ledger JSONs."""
     d = Path(artifacts_dir)
     return DemoArtifacts(
         review_result=_read_json(d / "review_result.json", {}),
         dossiers=_read_json(d / "dossiers.json", []),
         proposals=_read_json(d / "proposals.json", []),
         ledger=_read_json(d / "ledger.json", []),
+        decision_ledger=_read_json(d / "decision-ledger.json", []),
     )
 
 
@@ -164,8 +175,76 @@ def adjudication_items(artifacts: DemoArtifacts) -> list[dict]:
     items: list[dict] = []
     for d in artifacts.dossiers:
         view = dossier_view(d)
+        view["finding_id"] = d.get("finding_id", "—")
+        view["finding_type"] = d.get("finding_type", "—")
         proposal = by_hash.get(d.get("inputs_hash"))
         view["proposal_id"] = proposal.get("proposal_id") if proposal else None
         view["proposal_status"] = proposal.get("status") if proposal else None
         items.append(view)
     return items
+
+
+def _detect_issues_by_finding_id(review_result: dict) -> dict[str, dict]:
+    """Map ``detect:{error_code}:{doc_num}`` -> the detect-issue payload.
+
+    The frozen dossier carries no ``card_name``; the counterparty the decision-ledger
+    fingerprint keys on lives only on the compile_output detect-issue. We re-join the two
+    by the dossier's finding_id (mirrors agent.dossier's finding_id construction).
+    """
+    issues = (
+        ((review_result or {}).get("compile_output") or {}).get("detect") or {}
+    ).get("issues") or []
+    out: dict[str, dict] = {}
+    for issue in issues:
+        code = str(issue.get("error_code", "UNKNOWN"))
+        out[f"detect:{code}:{issue.get('doc_num')}"] = issue
+    return out
+
+
+def annotated_adjudication_items(
+    artifacts: DemoArtifacts,
+    decision_ledger: DecisionLedger | None = None,
+) -> list[dict]:
+    """The adjudication panel items decorated with decision-ledger memory (T5.5b).
+
+    A PURE view-model READ: runs ``annotate_and_demote`` over the panel's DETERMINISTIC
+    findings (re-keyed to their counterparty-bearing detect-issue payloads) and attaches
+    ``demoted`` / ``annotation`` / ``fingerprint`` / ``prior_dispositions`` to each item.
+
+    Invariant 5 (never suppress) is STRUCTURAL here: cardinality is preserved — every
+    dossier still yields exactly one item; demoted items are merely ordered AFTER
+    non-demoted ones (stable). The decision ledger applies to deterministic findings
+    only; probabilistic candidates pass through unannotated. Neither the dossiers nor the
+    review_result (F5 boxes) are mutated.
+    """
+    items = adjudication_items(artifacts)
+    if decision_ledger is None:
+        decision_ledger = DecisionLedger.from_entries(artifacts.decision_ledger or [])
+
+    issues_by_fid = _detect_issues_by_finding_id(artifacts.review_result)
+
+    # Deterministic items we can fingerprint (joined to a detect-issue), in panel order.
+    det_positions = [
+        i for i, it in enumerate(items)
+        if it.get("finding_type") == "deterministic" and it.get("finding_id") in issues_by_fid
+    ]
+    findings = [issues_by_fid[items[i]["finding_id"]] for i in det_positions]
+    annotated = annotate_and_demote(findings, decision_ledger)
+
+    # Default passthrough (probabilistic / unjoinable items): present, never demoted.
+    for it in items:
+        it["fingerprint"] = None
+        it["demoted"] = False
+        it["annotation"] = None
+        it["prior_dispositions"] = ()
+
+    for pos, i in enumerate(det_positions):
+        af = annotated[pos]
+        items[i]["fingerprint"] = af.fingerprint
+        items[i]["demoted"] = af.demoted
+        items[i]["annotation"] = af.annotation
+        items[i]["prior_dispositions"] = af.prior_dispositions
+
+    # Demote-to-bottom: stable sort keeps original order within each group. Cardinality
+    # is unchanged — demotion lowers prominence, it never drops a finding.
+    return sorted(items, key=lambda it: it["demoted"])
