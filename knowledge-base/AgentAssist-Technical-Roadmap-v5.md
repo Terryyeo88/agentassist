@@ -601,7 +601,7 @@ Operationalises cross-cutting requirement (a): the scenario harness that makes "
 
 **On the horizon — RealEngine ← T5.3h convergence (not yet scheduled).** T5.8's `RealEngine` seam (`ui/engine_seam.py`, currently a lazy drop-in over `engine.review.review`) and T5.3h's real `BuiltLoopContext` (`agent/loop_context.py`) are the two halves of a real (non-mock) demo. The convergence step is to feed a `build_loop_context`-driven `run_casefile_loop` through `RealEngine` so the UI renders REAL findings/dossiers instead of frozen artifacts — a configuration wiring, not a rewrite. It stays GATED behind the same caveats (NOT live-validated until T5.3-V round-2 + T5.3g; NOT accuracy-validated until T2.11) and is out of scope for the current showcase slice.
 
-### T5.9 — Intent surface (end-user) — PLANNED, GATED ON THE DEMO (not a paying customer)
+### T5.9 — Intent surface (end-user) — T5.9a/b/c DONE, GATED ON THE DEMO (not a paying customer)
 Owner Terry. Effort PROPOSED — needs Terry confirmation. Sequenced AFTER T5.4.
 
 **The end-user-facing intent surface** — the front door through which a user expresses what they
@@ -686,8 +686,35 @@ distinction is deliberate — the two are easy to conflate and must not be.
   declared-slots-only/no-fingerprint; hermetic live-backend parse + named import-scan checks), full suite
   **1807 passed, 1 skipped**. NO chat UI (T5.9c); not live/accuracy validated; T2.11 gates customer-facing.
   See `AGENTASSIST_TECHNICAL_STATE.md` §T5.9b.
-- **T5.9c — demo hardening**: curated utterances + MockEngine canned answers + a buttons fallback,
-  so the demo is robust without a live model in the path.
+- **T5.9c — demo hardening: classifier command bar into the review surface + routing-accuracy eval —
+  DONE (2026-06-17, branch `t5.9c-demo-chatbot`; demo command bar MOCK-wired, routing-accuracy eval
+  OPT-IN/tokened).** The chatbot front door: the T5.9b classifier (over the T5.9a/a1 menu) is wired
+  into the T5.8d review surface as a quiet command bar ("one way in"; review still happens on the
+  dashboard). MOCK-FIRST — the demo command bar uses `IntentClassifier(ScriptedClassifierBackend(curated))`
+  ONLY (canned answers for a curated utterance set; NO live model, NO tokens in the demo path) + a
+  buttons fallback (the four menu intents as buttons; zero typing). A `Classified` intent maps to WHICH
+  review-surface SECTION to open (`RUN_REVIEW`→Review queue, `SHOW_LEDGER`→Justification ledger,
+  `SHOW_PROPOSALS`→PENDING proposals, `SHOW_PRIOR_ADJUDICATIONS`→Adjudication panel); `NeedsClarification`
+  →inline clarify (never guess client/period); `OutOfScope`→polite message + buttons. It maps
+  intent→section, it does NOT execute the read tools (dispatch-EXECUTION is downstream; the
+  client/period→fingerprint gap stays untouched). classify-never-obey holds in the demo via the SAME
+  ⊆-menu boundary — a HOSTILE backend output (a raw registry tool name claimed as an "intent") is
+  contained to `OutOfScope`, never an action. Separately, a curated-utterance ROUTING-ACCURACY eval
+  (`agent/eval/intent_routing.py`, OUTSIDE `ui/`) measures the LIVE Haiku backend: hermetic scripted
+  path scores 100% (SANITY only); opt-in/env-gated (`INTENT_ROUTING_LIVE=1` + `ANTHROPIC_API_KEY`,
+  TOKENED) live run scores a basket (per-intent accuracy, clarify precision/recall, out-of-scope recall,
+  injection containment) with raw outputs saved as evidence BEFORE scoring. This is **ROUTING accuracy
+  (utterance→intent), NOT GST-truth** — distinct from T2.11, needs no accredited specialist. The curated
+  set is AUTHOR-CONSTRUCTED and SMALL (~2/cell), so the basket is a **smoke/repertoire sanity measure,
+  NOT a generalization claim** — a real routing number needs a larger independently-sourced set; the set
+  is EVAL-ONLY, never training. Failing-test-first; **+13 tests** (`tests/test_t59c_demo_chatbot.py`,
+  all hermetic): Classified→section; missing-slot→clarify-never-guess; out-of-scope→polite+buttons-never-
+  tool; injection contained incl. the hostile raw-tool-name backend output; buttons dispatch the four
+  intents directly; scripted eval 100% sanity; + NAMED import-scans (`ui/` no-anthropic; eval harness the
+  only `AnthropicClassifierBackend` toucher, deferred; `orchestrator/` purity unchanged). Full suite
+  **1829 passed, 1 skipped** (origin/master `b9901b3` baseline 1817 collected + 13). NOT live/accuracy
+  validated; demo command bar robust without a live model; T2.11 gates customer-facing; T4.1 platform
+  stays gated. See `AGENTASSIST_TECHNICAL_STATE.md` §T5.9c.
 
 **Honest caveat:** the intent surface ROUTES TO UNVALIDATED machinery. `show_ai_candidates` stays
 `False`; the demo shows **bounded autonomy + human-in-the-loop, NOT validated accuracy.** T2.11
@@ -815,6 +842,11 @@ The `rewired by T2.23` cross-refs and the `operational-backlog.md` #5 location n
 Build (not docs-only): `agent/intent_classifier.py` — the natural-language front door, the ONE model-bearing piece of the intent surface. `IntentClassifier(backend).classify(utterance, menu)` maps a free-text utterance onto the FIXED `INTENT_MENU` and returns a VALIDATED `ClassificationResult = Classified(intent ∈ menu, candidate_params) | NeedsClarification | OutOfScope` that feeds `agent.intent.dispatch` UNCHANGED. **Classify-never-obey is STRUCTURAL via two independent guards:** (1) the LIVE backend (`AnthropicClassifierBackend`) is one constrained `messages.create` with a SINGLE forced structured-output tool and NO executable tools (`claude-haiku-4-5-20251001`, v0/PROVISIONAL) — the model can only EMIT a `{verdict,intent,params}` label; (2) **⊆-MENU AT THE BOUNDARY** (`_enforce_menu_boundary`, PURE) validates every backend's raw label against `INTENT_MENU` before return — an off-menu/hallucinated intent (even a raw tool name) is REJECTED to `OutOfScope`, candidate params RESTRICTED to the bound intent's declared `required_params`. The slot set IS exactly the declared `required_params`; the classifier never guesses `client_id`/`period` (absent/blank → `NeedsClarification`) and never extracts a `fingerprint` nor attempts `client/period → fingerprint` reconciliation (that v0 menu gap stays DOWNSTREAM, untouched). The model sits behind a `ClassifierBackend` seam with a SCRIPTED fake (`ScriptedClassifierBackend`) — every test uses it, zero tokens; `anthropic` imported lazily/confined so `agent/intent.py` stays pure and `intent_classifier.py` is the only new `anthropic` importer (permitted in `agent/` per `docs/merge-gates.md`). Failing-test-first; **+37 tests** (`tests/test_t59b_nl_classifier.py`: (a) clear→Classified→dispatch; (b) missing/ambiguous→clarify-never-guess; (c) out-of-scope; (d) injection contained; (e) off-menu backend→OutOfScope; (f) prior-adjudications declared-slots-only/no-fingerprint; + hermetic live-backend parse/forced-tool + named import-scan checks). Full suite **1807 passed, 1 skipped** (origin/master `ba4cd85` base 1770 + 37). Hermetic; provisioning off fresh `origin/master` `ba4cd85` (local master known-stale; worktree per STEP 0).
 `AGENTASSIST_TECHNICAL_STATE.md`: **§T5.9b** subsection added under §T5.9; §T5.9 heading/status flipped to "T5.9a/b DONE; T5.9c PLANNED"; footer D22 added. Roadmap: **T5.9b slice PLANNED→DONE** (T5.9c stays PLANNED); D22 added.
 `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md`: **checked — no change required.** T5.9b is a product-surface NL-routing layer; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content. Honest scope: classifier built + hermetically tested; LIVE backend built but NOT measured (curated-utterance accuracy is T5.9c); model choice v0/PROVISIONAL; NO chat UI (T5.9c); not live/accuracy validated; T2.11 gates customer-facing; T4.1 platform stays gated.
+
+### D23 — T5.9c demo command bar (chatbot front door) + routing-accuracy eval build + docs-sync — DONE (2026-06-17, branch t5.9c-demo-chatbot)
+Build (not docs-only). Phase-1 STOP-and-report first: on first check T5.8d (`ui/views/review.py`) was UNMERGED so the slice STOPPED; once PR #53 (`b9901b3`) merged it re-confirmed BOTH preconditions (T5.9b `intent_classifier.py` + T5.8d `review.py`), live-verified importing `IntentClassifier`/`ScriptedClassifierBackend` pulls NO `anthropic`, reported the intent→section map + eval location (outside `ui/`), then stopped. Terry approved with two additions, both honoured: (1) docs/honest-status state the curated set is AUTHOR-CONSTRUCTED + SMALL (~2/cell) → smoke/repertoire sanity NOT a generalization claim (a real number needs a larger independently-sourced set); (2) the injection test scripts a HOSTILE backend output (raw registry tool name `emit_final_pdf` claimed as "intent") and asserts the ⊆-menu boundary contains it (→`OutOfScope`) + the command bar shows the polite message + buttons, NO action. Built: `agent/intent_curated.py` (pure data, anthropic-free) — the curated set, each entry carrying BOTH the scripted `RawClassification` (canned answer) AND the expected `ClassificationResult` (gold label), one source for demo answers + eval labels; spans 4 intents + clarify + out-of-scope + injection (incl. hostile); EVAL-ONLY never training. `ui/views/review.py` — command bar (quiet input) + four-intent buttons fallback over pure `route_intent`/`handle_command`/`handle_button`: `Classified`→section, `NeedsClarification`→clarify-never-guess, `OutOfScope`→polite+buttons; uses `ScriptedClassifierBackend` ONLY (MUST NOT instantiate `AnthropicClassifierBackend`); classify-never-obey via the SAME ⊆-menu boundary. `agent/eval/intent_routing.py` (OUTSIDE `ui/`) — hermetic scripted path 100% (SANITY); opt-in/env-gated (`INTENT_ROUTING_LIVE=1`+`ANTHROPIC_API_KEY`, TOKENED) LIVE basket (per-intent accuracy, clarify P/R, out-of-scope recall, injection containment) with raw evidence saved BEFORE scoring; ROUTING-not-GST accuracy. Failing-test-first; **+13 tests** (`tests/test_t59c_demo_chatbot.py`: Classified→section; missing-slot→clarify-never-guess; out-of-scope→polite+buttons-never-tool; injection contained incl. hostile raw-tool-name backend output; buttons dispatch 4 intents directly; scripted eval 100% sanity; + NAMED import-scans `ui/` no-anthropic / eval-only-`AnthropicClassifierBackend`-toucher-deferred / `orchestrator/` purity). Full suite **1829 passed, 1 skipped** (origin/master `b9901b3` base 1817 collected + 13). Hermetic demo path (no live model/tokens); provisioning off fresh `origin/master` `b9901b3` (worktree per STEP 0).
+`AGENTASSIST_TECHNICAL_STATE.md`: **§T5.9c** subsection added under §T5.9; §T5.9 heading/status flipped to "T5.9a/b/c DONE"; footer D23 added. Roadmap: **T5.9c slice PLANNED→DONE**; §T5.9 heading flipped to "T5.9a/b/c DONE"; D23 added.
+`exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md`: **checked — no change required.** T5.9c is a product-surface demo/eval layer; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content. Honest scope: demo command bar MOCK/scripted (no live model/tokens in the demo path); live routing-accuracy OPT-IN/tokened, v0/PROVISIONAL, ROUTING-not-GST (distinct from T2.11, no accredited specialist); scripted 100% is sanity NOT the accuracy claim; curated set AUTHOR-CONSTRUCTED/SMALL/EVAL-ONLY never training; classify-never-obey enforced; "one way in", review on the dashboard; T2.11 gates customer-facing; T4.1 platform gated.
 
 ---
 
