@@ -2215,9 +2215,9 @@ later step. See the roadmap "on the horizon" note.
 
 ---
 
-## T5.9 — Intent surface (end-user) (PLANNED; gated on the DEMO, not a paying customer)
+## T5.9 — Intent surface (end-user) (T5.9a DONE; T5.9b/c PLANNED; gated on the DEMO, not a paying customer)
 
-**Status: PLANNED — not built.** The end-user-facing intent surface: the front door through which a
+**Status: T5.9a DONE (bounded menu + dispatch); T5.9b/c not built.** The end-user-facing intent surface: the front door through which a
 user expresses what they want, mapped onto the bounded, tier-classified action sequences the cage
 already enforces (Tier-5 Invariant 6). **Pulled forward to pre-demo, decoupled from the
 paying-customer gate** — it is product-intrinsic UX, not a delivery-model feature. The prior
@@ -2246,6 +2246,55 @@ the delivery model. Agreed demo narrative: **"the menu is the cage at the produc
 **Honest caveat:** the intent surface routes to UNVALIDATED machinery. `show_ai_candidates` stays
 `False`; the demo shows bounded autonomy + human-in-the-loop, **NOT validated accuracy**; T2.11 still
 gates everything customer-facing.
+
+### §T5.9a — bounded intent menu + dispatch — DONE (2026-06-17, branch `t5.9a-intent-surface`)
+
+**Built + hermetically tested; NOT live/accuracy validated.** `agent/intent.py` is the FOUNDATION
+of the intent surface: a FIXED `INTENT_MENU` (v0/PROVISIONAL) plus a deterministic
+`dispatch(intent, params)` router. It is ROUTING, not authority — dispatch routes to EXISTING
+tier-classified `agent/registry.py` actions; it can never grant an out-of-tier capability or emit a
+non-menu intent. NO natural-language classifier (T5.9b) and NO chat UI (T5.9b/c) here.
+
+**The v0/PROVISIONAL menu** — every sequence element is a registered Tier-0/1 tool:
+
+| Intent | Sequence (registered) | Tier via `get_tier` | Required params |
+| --- | --- | --- | --- |
+| `RUN_REVIEW` | `run_review_chain` | 1 | `client_id, period` |
+| `SHOW_LEDGER` | `read_ledger` | 0 | `client_id` |
+| `SHOW_PROPOSALS` | `read_ledger` | 0 | `client_id` |
+| `SHOW_PRIOR_ADJUDICATIONS` | `read_prior_period_treatment` | 0 | `client_id, period` |
+
+`SHOW_PROPOSALS` shares `read_ledger` with `SHOW_LEDGER` — there is no dedicated proposals-read tool
+yet (proposals are staged artifacts / ledgered `propose_action` justifications), so v0 routes it to
+the same in-tier Tier-0 read: distinct product intents, identical underlying read, no added
+authority. The exact menu and required-param set are NOT a frozen contract (v0/PROVISIONAL).
+
+**Two structural guarantees (the T5.9 twins of the planner's ⊆-registry):**
+- **⊆-MENU.** `dispatch` asserts `intent ∈ INTENT_MENU` and raises `IntentError` otherwise — a
+  non-menu intent (or a raw tool name like `run_review_chain`, which is an action, not an intent) is
+  rejected, never dispatched. A build-time `_assert_menu_well_formed` asserts every declared action
+  is a real registry tool (`get_tier(action) is not Tier.THREE`), so the menu can never name a
+  non-existent / structurally-impossible action.
+- **No tier escalation.** `DispatchResult.tiers` is READ from `registry.get_tier` per action at
+  dispatch time; the surface never assigns a tier. The product surface therefore dispatches only to
+  the Tier-0/1 actions the registry already defines — never a Tier-2 effect (that stays behind
+  `propose_action` + human approval), never a Tier-3 (absent) action.
+
+**Identity-bearing slots are never guessed.** A missing — or present-but-blank — `client_id` /
+`period` yields a structured `NeedsClarification(intent, missing_params, message)` result (an
+expected front-door outcome, NOT an exception), naming the missing slots. The surface never
+fabricates a default client/period; the caller binds params explicitly.
+
+**Hermetic + pure.** `agent/intent.py` imports only stdlib + `agent.registry` / `agent.schemas`;
+zero anthropic, zero SDK, zero SAP, zero network. `orchestrator/` imports nothing from `agent/`
+(layer-separation invariant). Failing-test-first. +29 tests (`tests/test_t59a_intent_surface.py`):
+each menu intent dispatches to its declared sequence; a non-menu intent is rejected (⊆-menu); a
+missing required param → `NeedsClarification` (never a guess); dispatched actions resolve to their
+existing `get_tier` (the surface adds none). Full suite **1744 passed, 1 skipped**.
+
+**Honest scope.** Bounded menu + dispatch only. `INTENT_MENU` is v0/PROVISIONAL; not live /
+accuracy validated; T2.11 still gates customer-facing; the T4.1 multi-vertical PLATFORM stays gated.
+Next: T5.9b (NL classifier + clarify-on-miss), T5.9c (demo hardening).
 
 ---
 
@@ -3654,3 +3703,5 @@ Updated 2026-06-17 (T5.5 decision-ledger PURE CORE — build + docs-sync on bran
 Updated 2026-06-16 (D17: T5.8 demo UI + T5.3h real LoopContext docs-sync — verification-first; confirmed BOTH merged to master (T5.3h PR #35/`8785f92`, T5.8 PR #36/`79e451f`, T5.8b shim PR #37/`0f3b20a`; master ff'd to `426185b`) and read the merged code before writing. Added a **§T5.3h** subsection under §T5.3 (`agent/loop_context.py` `build_loop_context` — decision A1 inject the OFFLINE-replayed `ReviewResult`, pure assembler, no SAP/monkeypatch/SDK; `build_vendor_catalog` from the S3 business-partners surface re-keyed by CardName surfacing only `gst_registered`/`gst_reg_no` from `FederalTaxID`; `AbsentDocumentProvider` + empty prior-period store = honest SBODEMOSG degraded case; `BuiltLoopContext`; decision B1 chain-only — `reasoning_artefact=None`/`document_candidates=None`; reusable `tests/replay_shim.py` extracted byte-preserving from the inline T2.12a fixture, `install_replay_patches`/`frozen_extract_sap`/`replay_chain`/`replay_review`; honest — hermetic/scripted, NOT live-validated (T5.3-V round-2 + T5.3g PENDING), NOT accuracy-validated, T2.12a byte-identity gate intact). Added a **§T5.8** section (`ui/` package — `app.py` fixed-nav 4 views + T5.8b `sys.path` shim so `streamlit run ui/app.py` works from a fresh checkout; `engine_seam.py` MockEngine default / RealEngine lazy drop-in over `engine.review.review`; `artifacts.py` pure view-models with frozen `VALIDATION_STATUS="unvalidated"`; four views; `sign.py` adjudication→Sign over the EXISTING `report.build_report`→`render_pdf` path with `show_ai_candidates` RESPECTED (read from YAML, default False) + no secrets + box-isolation; build-time `freeze()` vs render-time boundary + schema-stability tripwire; honest — mock-first, showcase-not-product, GATED, built ≠ demo-validated; Mock+Sign path imports no anthropic/SDK/`agent.loop`, guard-tested). Exec-summary running-count paragraph + master-total line updated 1513 → **1608 passed, 1 skipped** (authoritative full-suite recount run once in the worktree, 801.93s). Added **Appendix C #33** — the `finding_id` collision on `(source, check_id, doc_num)` (23→20 unique on the frozen extract, 23→21 staged in the demo; open T2.11 decision collapse-vs-keep). `docs/merge-gates.md` — **doc-note added** (a `ui/` row in the allowed/forbidden map + a note that the posture is enforced by the T5.8 guard test, NOT Gate a's grep, no CI gate; plus a "consider promoting to a grep gate later" pointer). `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md` checked — **no change required** (T5.8/T5.3h are UI/agent-layer infra; they change no deterministic IRAS-ASK coverage cell and touch no VatGroup→F5-box routing or tax-domain content). `exploration-notes/operational-backlog.md` — added item 6 (`finding_id` collision) + item 7 (Streamlit launch-smoke process note). Pedagogical reference docs out of repo — not chased. Docs-only; staged diff `.md`-only. D17 added to roadmap docs tasks).*
 
 Updated 2026-06-17 (D18: T5.4 check planner — build + docs-sync on branch `t5.4-check-planner` (off `origin/master` `cff57fb`, the T5.2c v1 merge). Phase-1 recon first confirmed the precondition: `CHECKSPEC_STATUS="v1"` + `config_keys` is a real `CheckSpec` field on `origin/master` (local master was 2 commits stale — `cff57fb`/PR #45 was on the remote, not local; the worktree branched fresh from origin and carries v1). Added `agent/planner.py` (`plan_checks(client_config)` deterministic router over the FIXED v1 `CHECK_REGISTRY`; `CheckPlan`/`PlanResult`/`ApprovedPlanStore`/`compute_plan_fingerprint`/`confirm_approved_plan`; applicability = `config_keys ⊆ satisfied T2.18 flags`, empty == always; hard `_assert_subset` ⊆-registry invariant; fingerprint via the shared public `compute_inputs_hash` over sorted check_ids + the four flags, period excluded; Tier model first/drift→Tier-2 relay-only `build_proposal`+stage, match→Tier-1, approved plan recorded ON APPROVAL only). Added a **§T5.4** section under §T5.3/before §T5.7a. Roadmap **T5.4 PLANNED→DONE**. **+21 hermetic tests** in `tests/test_t54_planner.py` (failing-test-first; cases a/b/c/d + the SYNTHETIC `config_keys=["participates_in_mes"]` mechanism test + fingerprint determinism + orchestrator-purity/no-anthropic AST import-scan). Full-suite recount on the branch: **1683 passed, 1 skipped** (= the current origin/master `cff57fb`/post-T5.2c base of 1662 + 21 from T5.4; the prior **1641** figure was the T5.8c master recount, since superseded on origin/master by intervening merges incl. T5.2c). Honest: built + hermetically tested, NOT live/real-client validated; T2.11 gates customer-facing; frozen T2.18 flags + v1 CheckSpec untouched; `orchestrator/` purity intact (planner in `agent/`). `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md` checked — **no change required** (T5.4 is agent-layer routing infra; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content). Branch not yet merged; the 1641/1662 master figures elsewhere in this doc are left for their owning entries to reconcile at merge. D18 added to roadmap docs tasks).*
+
+Updated 2026-06-17 (D19: T5.9a intent surface — bounded menu + dispatch — build + docs-sync on branch `t5.9a-intent-surface` (off `origin/master` `dffed8f`, the T5.5 merge; local master was stale ahead-1/behind-6 — the T5.2c→T5.4→T5.5 merges were on the remote, not local, and `agent/intent.py`/`agent/planner.py` were absent from the local checkout — so the worktree branched off origin per STEP 0; the local-only docs-only `3f5fe3b` carrying the T5.9 roadmap entry + Invariant 6 amendment, which `origin/master` lacked, was cherry-picked forward as commit `18fe954` so this branch's docs are honest). Phase-1 STOP-and-report first confirmed T5.4 present (`agent/planner.py::plan_checks`, `CHECKSPEC_STATUS="v1"`), reported the existing action surface + tiers (Tier-0 reads, Tier-1 `run_review_chain`/engine tool, `plan_checks` as an internal planner FUNCTION not a registry tool), the canonical Invariant 6 (roadmap line 520), and proposed the v0 menu — then stopped for approval. Added `agent/intent.py`: FIXED `INTENT_MENU` v0/PROVISIONAL (`RUN_REVIEW`→`run_review_chain` [Tier 1, req `client_id`+`period`]; `SHOW_LEDGER`/`SHOW_PROPOSALS`→`read_ledger` [Tier 0, req `client_id`]; `SHOW_PRIOR_ADJUDICATIONS`→`read_prior_period_treatment` [Tier 0, req `client_id`+`period`]) + deterministic `dispatch(intent, params)`; `IntentSpec`/`DispatchResult`/`NeedsClarification`/`IntentError`. Two structural guarantees (T5.9 twins of the planner's ⊆-registry): **⊆-MENU** — `dispatch` asserts `intent ∈ INTENT_MENU` (else `IntentError`; a raw tool name is not an intent) + build-time `_assert_menu_well_formed` asserts every menu action is a real registry tool (`get_tier ≠ Tier.THREE`); **no tier escalation** — `DispatchResult.tiers` READ from `registry.get_tier` per action, surface assigns none (only Tier-0/1, never Tier-2 effect / Tier-3 absent). Identity-bearing slots never guessed: missing-or-blank `client_id`/`period` → structured `NeedsClarification`, not a fabricated default. `SHOW_PROPOSALS` shares `read_ledger` with `SHOW_LEDGER` (no dedicated proposals-read tool yet; proposals are staged/ledgered) — distinct intents, same in-tier read, no added authority (Terry approved option (a)). Failing-test-first; **+29 tests** in `tests/test_t59a_intent_surface.py` (cases a/b/c/d + menu-integrity + blank-slot + extra-params-ignored + orchestrator-purity/no-anthropic/no-SDK AST import-scan). Full-suite recount on the branch: **1744 passed, 1 skipped** (= origin/master `dffed8f`/T5.5 base of 1715 + 29 from T5.9a). Added the **§T5.9a** subsection under §T5.9 + flipped the §T5.9 heading/status to "T5.9a DONE; T5.9b/c PLANNED". Roadmap **T5.9a slice PLANNED→DONE** (T5.9b/c stay PLANNED). Honest: bounded menu + dispatch only — NO NL classifier (T5.9b), NO chat UI (T5.9b/c); `INTENT_MENU` v0/PROVISIONAL; built + hermetically tested, NOT live/accuracy validated; T2.11 gates customer-facing; T4.1 multi-vertical PLATFORM stays gated; `orchestrator/` purity intact (surface in `agent/`, stdlib + `agent.registry`/`agent.schemas` only, no anthropic/SDK/SAP/network). `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md` checked — **no change required** (T5.9a is a product-surface routing layer; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content). D19 added to roadmap docs tasks).*
