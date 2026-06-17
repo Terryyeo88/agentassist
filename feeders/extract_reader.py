@@ -116,6 +116,9 @@ class ExtractChainReader:
                         "CardCode": schema.to_str(row.get("CardCode")),
                         "CardName": schema.to_str(row.get("CardName")),
                         "DocCurrency": schema.to_str(row.get("DocCurrency")),
+                        # Mirrors project_document — the round-trip asserts the two
+                        # produce identical document shapes, so this must match.
+                        "DocTotal": schema.to_float(row.get("DocTotal")),
                     },
                     "lines": [],
                 }
