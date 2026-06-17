@@ -3177,6 +3177,72 @@ Excel-primary — see the roadmap T2.12 / T2.12a entries.
 
 ---
 
+## T2.12 — Extract feeder, slice A (ChainReader impl + synthetic round-trip) (BUILT, synthetic-format-validated; branch `t2.12a-extract-feeder`, PR pending — NOT merged, 2026-06-17)
+
+### Status
+
+Slice A of the T2.12 Excel/CSV adapter — **the feeder + its parse proof** — built against the
+T2.23 seam verified directly in source (the recon found the doc table's param names were wrong:
+the real signatures use `period_start`/`period_end`, not `start`/`end`; built to the code).
+`feeders/ExtractChainReader` reads a client Excel/CSV GST export and emits the same five shaped
+surfaces the live `SapChainReader` emits, satisfying `ChainReader` **structurally** (duck-typed —
+it neither imports nor widens the Protocol). **One machine, two feeders:** normalisation happens
+AT THE FEEDER; the checking core is untouched and tax-code normalisation still flows through its
+`normalize_vat_group` (T2.19) — never re-implemented per feeder.
+
+### What landed
+
+- **`feeders/extract_schema.py`** — single source of truth for the export column ⇄ canonical
+  field mapping + typed coercers + canonical projections. The canonical field set is exactly what
+  the checking core consumes (verified in recon): per line `VatGroup`/`LineTotal`/`TaxTotal`; per
+  doc `DocNum`/`DocDate`/`CardName`/`CardCode`/`DocCurrency` (+ `DocumentLines`); BP `FederalTaxID`;
+  listing `DocNum`/`Series`/`Cancelled` (+ `CardCode`/`NumAtCard`/`DocTotal` for period purchases).
+- **`feeders/extract_reader.py`** — `ExtractChainReader(source)` reads a CSV directory OR an
+  `.xlsx` workbook (lazy `openpyxl`); groups line rows into documents, tags credit notes
+  `is_credit_note=True`, deepcopy-per-call (the per-call-freshness / tag-leak hazard designed out),
+  raises `KeyError` for an absent CardCode. Plus a **coverage seam** `coverage() → ExtractCoverage`
+  **beside** the Protocol methods (emission only — NOT a Protocol widening; reports which canonical
+  fields the export populated; `is_full()` on a complete export).
+- **`tests/synth_extract_export.py`** — synthetic exporter (test scaffolding, loaded via importlib):
+  frozen ground truth → this slice's *guessed* client column shape (combined sales/purchase ×
+  invoice/credit-note transaction register + BP master + document-number listing) → LF-pinned CSV
+  and `.xlsx`.
+- **`tests/fixtures/extract-export-sbodemosg/*.csv`** — committed synthetic export fixtures
+  (LF-pinned via `.gitattributes`); a byte-stability test regenerates and compares.
+- **`tests/test_t212a_extract_feeder.py`** — +19 tests: round-trip `ExtractChainReader(export) ==
+  frozen S1/S2/S3/S5` field-for-field (canonical projection); `count()` against the known row count;
+  full coverage on a complete export + a missing-column degradation; `.xlsx` round-trip; freshness
+  no-leak. Branch full suite **1826 passed, 1 skipped**, zero regression; the T2.12a offline-replay
+  gate (`FrozenExtractReader` path) stays byte-identical to the oracle; PDF-render retained.
+
+### The count / oracle trap
+
+`ExtractChainReader.count()` returns the export's **TRUE** document count (50/34/1/1) — an export
+has every row, so it counts honestly. This deliberately does NOT reproduce the dormant
+`@odata.count` → None of the live feeder / oracle (operational-backlog #5). It is unit-tested
+against the known count ONLY and is **never** asserted against the frozen S0 / oracle, and is kept
+out of the S1/S2/S3/S5 round-trip. `SapChainReader.count` and `tests/replay_shim.py::FrozenExtractReader.count`
+are **untouched** (both still mirror the bug, both coupled to the pending re-freeze).
+
+### Module-placement decision
+
+A new top-level **leaf** package `feeders/` — NOT `orchestrator/` (keeps the deterministic package
+free of `openpyxl` + feeder concerns), NOT inside `sap_b1_server.py` (avoids pulling FastMCP /
+live-SAP machinery into the adapter; the Protocol is satisfied structurally instead). Pure stdlib
+(+ lazy `openpyxl` on the `.xlsx` path); imports nothing upward; injected-only
+(`run_chain(reader=ExtractChainReader(...))`). Recorded in `docs/merge-gates.md` (allowed/forbidden
+import map + posture note; no CI grep added — a code change, deferred).
+
+### Honest status + what's deferred
+
+**Honest-status ladder:** built + **adapter-round-trip-validated-on-synthetic** — NOT
+real-client-export-validated (the **format-assumption gap**: the export column shape is our guess;
+closes only with a real client export — GTM-gated), NOT accuracy-validated (**T2.11 still gates**).
+The new adapter is **injected-only, not on the default chain** — default-path output is unchanged.
+Deferred to **slice 2B**: the coverage→check-status mapping, the three field-absence/degradation
+cases, the working-paper coverage flow. Adapter-vs-oracle byte-identity (full `run_chain` over the
+feeder) remains gated on the `@odata.count` re-freeze.
+
 ## T2.23 — Chain source seam (per-surface injectable read provider) (DONE; merged to master via PR #39, merge commit 5c48ccb, 2026-06-16; behaviour-preserving; offline-replay-validated)
 
 ### Status
