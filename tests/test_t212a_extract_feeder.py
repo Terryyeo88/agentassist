@@ -106,8 +106,48 @@ def test_invoice_lines_carry_canonical_fields(reader):
     line = inv[0]["DocumentLines"][0]
     assert set(line.keys()) == {"VatGroup", "LineTotal", "TaxTotal"}
     assert set(inv[0].keys()) == {
-        "DocNum", "DocDate", "CardCode", "CardName", "DocCurrency", "DocumentLines"
+        "DocNum", "DocDate", "CardCode", "CardName", "DocCurrency", "DocTotal",
+        "DocumentLines",
     }
+
+
+# ---------------------------------------------------------------------------
+# Gap A regression — doc-level DocTotal (the FX-conversion advisory figure).
+#
+# The recon found DocTotal silently dropped: calculate_f5_return reads
+# doc-level doc.get("DocTotal") to build fx_invoices_requiring_conversion, but
+# project_document / DOCUMENT_COLUMNS never carried it, so a feeder-fed run
+# reported 0.00 for those FX totals. The original round-trip could not catch it
+# because both sides use the SAME projector (symmetric blindness). These two
+# tests break that symmetry by asserting against an INDEPENDENTLY-STATED value
+# read straight from the frozen ground truth — not against the projector's own
+# output.
+#
+# Anchor: frozen sales invoice DocNum=958 is a USD (FX) document whose frozen
+# doc-level DocTotal is 1131.53.
+# ---------------------------------------------------------------------------
+
+_FX_DOC_NUM = 958
+_FX_DOC_TOTAL = 1131.53  # independently read from invoices.raw.json (USD doc 958)
+
+
+def test_document_projection_carries_doctotal():
+    """project_document must surface the doc-level DocTotal (independent value)."""
+    raw = next(
+        d for d in _load_frozen("invoices.raw.json") if d.get("DocNum") == _FX_DOC_NUM
+    )
+    assert raw.get("DocCurrency") == "USD", "anchor doc must be the FX doc"
+    projected = schema.project_document(raw)
+    assert projected["DocTotal"] == _FX_DOC_TOTAL
+
+
+def test_feeder_carries_doctotal_for_fx_doc(reader):
+    """End-to-end through the export round-trip: the FX doc keeps its true total,
+    asserted against the independently-stated frozen value (not the projector)."""
+    inv = reader.fetch_invoices("Invoices", "2024-07-01", "2024-09-30")
+    fx = next(d for d in inv if d["DocNum"] == _FX_DOC_NUM)
+    assert fx["DocCurrency"] == "USD"
+    assert fx["DocTotal"] == _FX_DOC_TOTAL
 
 
 # ---------------------------------------------------------------------------
