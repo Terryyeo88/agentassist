@@ -2325,6 +2325,10 @@ existing `get_tier` (the surface adds none). Full suite **1744 passed, 1 skipped
 accuracy validated; T2.11 still gates customer-facing; the T4.1 multi-vertical PLATFORM stays gated.
 Next: T5.9b (NL classifier + clarify-on-miss), T5.9c (demo hardening).
 
+**Missing-data handling:** mid-task missing-data handling is the T5.3 completeness mechanism; the
+interactive request-resume loop (system requests the missing document → user supplies it → loop
+resumes) is a separate GAP gated on document ingestion — see `exploration-notes/operational-backlog.md`.
+
 ---
 
 ## MCP tools inventory

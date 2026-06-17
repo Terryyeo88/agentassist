@@ -655,6 +655,10 @@ distinction is deliberate — the two are easy to conflate and must not be.
 still gates anything customer-facing. The surface makes the bounded-autonomy model drivable and
 visible; it changes nothing about what is or is not validated underneath.
 
+**Missing-data handling:** mid-task missing-data handling is the T5.3 completeness mechanism; the
+interactive request-resume loop is a separate GAP gated on document ingestion — see
+`operational-backlog.md`.
+
 ### Tier-5 cross-cutting requirements
 (a) Agent-behavior evals: the honest-status taxonomy (built ≠ unit-tested ≠ demo-validated ≠ real-client-validated) applies to agent BEHAVIORS. Scenario eval harness with fixed fixtures measuring: dossier completeness rate, justification-gate hold rate, zero Tier-2 self-executions over N adversarial runs, language-lint pass rate. No entry above advances past "built" without it. Build deliverable: T5.7.
 (b) Prompt-injection resistance: once the agent reads client documents, every vendor PDF is untrusted input to a tool-bearing system. Injection fixtures (adversarial instructions embedded in invoice descriptions/PDF text) are a mandatory eval category. The tier system is the structural containment (worst case: a poisoned proposal a human reads).
