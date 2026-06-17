@@ -70,3 +70,14 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
    - **Lesson:** for any user-runnable entrypoint, headless unit tests are necessary but not
      sufficient — exercise the real launch command at least once (a launch-smoke) before claiming the
      entrypoint works. Cheap to add; would have caught this pre-merge.
+
+8. **Interactive missing-data request-resume loop (GAP, gated on document ingestion).**
+   - Today the T5.3 completeness mechanism DETECTS and SURFACES a missing evidence slot
+     (e.g. `document_pdfs` absent → dossier renders incomplete, never fabricated, never dropped),
+     but there is NO interactive "system requests the missing document → user supplies it →
+     loop resumes" path.
+   - **Gated on:** (1) a real DOCUMENT provider replacing `AbsentDocumentProvider` (the still-owed
+     `document_pdfs` slot source — shares the T2.12 adapter seam; Collin's transaction-data adapter
+     is the foundation, but the document/PDF provider is a separate build), and (2) a request-resume
+     interaction (UI upload + loop re-entry).
+   - **Scope:** NOT part of T5.9 (front-door intent routing only). Document only; do not build.
