@@ -32,6 +32,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from agent.budget import RunBudget
+from agent.decision_ledger import (
+    KNOWN_ACCEPTED,
+    DecisionLedger,
+    compute_finding_fingerprint,
+)
 from agent.loop import (
     FramingEvent,
     ResultEvent,
@@ -147,6 +152,45 @@ def build_scripts(review_result: dict) -> dict:
     return scripts
 
 
+# The seeded prior-period adjudication: a real, genuinely-unregistered NO_GST_REG
+# vendor (doc 592, "Far East Imports"). KNOWN_ACCEPTED -> the recurring current finding
+# renders DEMOTED + annotated in the panel, yet STILL PRESENT (Invariant 5).
+_SEED_ADJUDICATION = {
+    "error_code": "NO_GST_REG",
+    "card_name": "Far East Imports",
+    "reviewer": "Prior-Period Reviewer",
+    "reason": "Standing treatment: supplier confirmed not GST-registered; input tax correctly not claimed.",
+    "period": "2024Q2",
+    "timestamp": "2024-06-30T00:00:00+00:00",
+}
+
+
+def build_decision_ledger(review_result: dict) -> list[dict]:
+    """Seed ONE prior-period KNOWN_ACCEPTED entry keyed to a REAL finding's fingerprint.
+
+    The fingerprint is computed from the genuine detect-issue (error_code + card_name),
+    so it matches the current-period finding the panel re-keys from the same issue —
+    making the demote visible over real data, not a fabricated key. The DecisionLedger is
+    append-only + hash-chained; verify() holds over the frozen entry.
+    """
+    issues = review_result["compile_output"]["detect"]["issues"]
+    target = next(
+        i for i in issues
+        if i.get("error_code") == _SEED_ADJUDICATION["error_code"]
+        and i.get("card_name") == _SEED_ADJUDICATION["card_name"]
+    )
+    ledger = DecisionLedger()
+    ledger.append(
+        fingerprint=compute_finding_fingerprint(target),
+        disposition=KNOWN_ACCEPTED,
+        reviewer=_SEED_ADJUDICATION["reviewer"],
+        reason=_SEED_ADJUDICATION["reason"],
+        period=_SEED_ADJUDICATION["period"],
+        timestamp=_SEED_ADJUDICATION["timestamp"],
+    )
+    return [asdict(e) for e in ledger.entries]
+
+
 def build_context(review_result: dict) -> LoopContext:
     """Hermetic Tier-0 read sources covering the findings' card_names / doc_nums.
 
@@ -198,12 +242,14 @@ def freeze() -> dict:
     _dump("dossiers.json", [asdict(d) for d in result.dossiers])
     _dump("proposals.json", [asdict(p) for p in result.proposals])
     _dump("ledger.json", [asdict(e) for e in ledger.entries])
+    _dump("decision-ledger.json", build_decision_ledger(review_result))
 
     summary = {
         "review_status": result.review_status,
         "dossiers": len(result.dossiers),
         "proposals": len(result.proposals),
         "ledger_entries": len(ledger.entries),
+        "decision_ledger_entries": len(build_decision_ledger(review_result)),
         "staged": sum(1 for o in result.outcomes if o.status == "staged"),
         "skipped": sum(1 for o in result.outcomes if o.status == "skipped"),
         "incomplete": sum(1 for o in result.outcomes if o.status == "incomplete"),
