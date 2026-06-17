@@ -72,6 +72,13 @@ posture is currently verified by the T2.12a round-trip + a feeder-purity check i
 pre-merge run, **not** by a CI grep (adding one is a code change, out of scope for this
 docs-sync). *Consider promoting to an import-scan grep over `feeders/` later* if the package
 grows beyond the extract adapter.
+**Re-checked at T5.8d (review-surface rebuild, 2026-06-17):** posture unchanged. The new
+`ui/views/review.py` imports only `streamlit` + `agent.lint`/`agent.artifacts` view-models + `ui.sign`
+(no `anthropic`/SDK); the two new `ui/artifacts.py` accessors add only `agent.registry` (anthropic-free),
+keeping `artifacts.py` Streamlit-free and model-free; the new `.streamlit/config.toml` is theme config
+only (no imports). The T5.8 guard test still passes, and an additional headless-import test
+(`tests/test_t58d_review_surface.py::test_artifacts_import_is_headless`) asserts importing `ui.artifacts`
+pulls no `streamlit`/`anthropic`/`engine.review`/`agent.loop`. `ui/` row above stays accurate.
 
 **Why this exact form — not `grep -r "anthropic" orchestrator/`:**
 

@@ -1,9 +1,11 @@
 """
 ui/app.py — T5.8 demo showcase Streamlit entry point.
 
-Fixed navigation (NOT an intent router) across the four demo views, rendered over the
-MockEngine / RealEngine seam. Default engine is Mock, loading FROZEN deterministic
-artifacts; no live SAP, no live model, no tokens.
+Task-oriented navigation over the MockEngine / RealEngine seam. The PRIMARY (default)
+surface is the reviewer Review queue (T5.8d); the original four system views are kept
+under a secondary "Audit trail / developer" group. NOT an intent router — fixed nav.
+Default engine is Mock, loading FROZEN deterministic artifacts; no live SAP, no live
+model, no tokens.
 
 Run:
     streamlit run ui/app.py
@@ -23,13 +25,17 @@ import streamlit as st
 
 from ui.artifacts import load_demo_artifacts
 from ui.engine_seam import select_engine
-from ui.views import adjudicate, executor, ledger, proposals
+from ui.views import adjudicate, executor, ledger, proposals, review
 
 _BANNER = (
     "Mock demo. Not customer-facing. Candidates are unvalidated (T2.11 pending)."
 )
 
-_VIEWS = {
+# Task-oriented primary surface for the accountant audience.
+_PRIMARY_VIEW = "Review queue"
+
+# Original system-layer views — kept for the developer/audit-trail audience.
+_AUDIT_VIEWS = {
     "Justification ledger": ledger.render,
     "PENDING proposals": proposals.render,
     "Executor dispatch log": executor.render,
@@ -38,11 +44,11 @@ _VIEWS = {
 
 
 def main() -> None:
-    st.set_page_config(page_title="AgentAssist T5.8 demo", layout="wide")
+    st.set_page_config(page_title="AgentAssist demo", layout="wide")
 
     # Honest banner — surfaces the mock/unvalidated status on every view.
     st.warning(f"⚠️ {_BANNER}")
-    st.title("AgentAssist — Tier-5 demo showcase")
+    st.title("AgentAssist — reviewer demo")
 
     engine = select_engine()
     artifacts = load_demo_artifacts()
@@ -58,9 +64,18 @@ def main() -> None:
         st.write(f"**Review status:** `{review_status}`")
         st.write(f"**Dossiers:** {len(artifacts.dossiers)}  ·  **Proposals:** {len(artifacts.proposals)}")
         st.divider()
-        choice = st.radio("View", list(_VIEWS), index=0)
 
-    _VIEWS[choice](artifacts)
+        # Review queue is primary + default; the four system views are demoted into a
+        # secondary audit/developer group.
+        section = st.radio("Section", ["Review", "Audit trail / developer"], index=0)
+        audit_choice = None
+        if section == "Audit trail / developer":
+            audit_choice = st.radio("View", list(_AUDIT_VIEWS), index=0)
+
+    if section == "Review":
+        review.render(artifacts)
+    else:
+        _AUDIT_VIEWS[audit_choice](artifacts)
 
 
 if __name__ == "__main__":
