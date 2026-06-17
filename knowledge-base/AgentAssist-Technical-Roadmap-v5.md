@@ -641,6 +641,23 @@ distinction is deliberate — the two are easy to conflate and must not be.
   in-tier read, no added authority. +29 tests (`tests/test_t59a_intent_surface.py`), full suite
   **1744 passed, 1 skipped**. T2.11 still gates customer-facing; T4.1 platform stays gated. See
   `AGENTASSIST_TECHNICAL_STATE.md` §T5.9a.
+- **T5.9a1 — menu correction: honest routing for SHOW_PROPOSALS + SHOW_PRIOR_ADJUDICATIONS — DONE
+  (2026-06-17, branch `t5.9a1-menu-correction`; hermetic).** T5.9a routed two intents to the WRONG
+  tool: `SHOW_PROPOSALS`→`read_ledger` (the justification ledger is NOT the pending-proposals queue)
+  and `SHOW_PRIOR_ADJUDICATIONS`→`read_prior_period_treatment` (a per-key prior-period store, NOT the
+  T5.5 decision ledger). This slice registered two semantically-correct Tier-0 reads in
+  `agent/registry.py` — `read_proposals` (wraps `StagingStore.list_pending`) and
+  `read_decision_ledger` (wraps `DecisionLedger.lookup` by finding fingerprint; list-all when
+  omitted), both pure Tier-0 reads in `agent/read_tools.py` — and rewired the two intents so all four
+  dispatch honestly (`SHOW_LEDGER` ≠ `SHOW_PROPOSALS` routing proven; conflation gone). Menu-integrity
+  (`_assert_menu_well_formed`) holds. **v0/PROVISIONAL menu gap flagged:** `SHOW_PRIOR_ADJUDICATIONS`
+  still declares `(client_id, period)` but `read_decision_ledger`'s only axis is the per-finding
+  fingerprint (the T5.5 ledger has no client field) — they reconcile later via a
+  `client/period → findings → fingerprints` lookup or an explicit fingerprint slot. Failing-test-first;
+  +11 tests (`tests/test_t59a1_menu_correction.py`); over-broad T5.5 write-guard narrowed to its
+  documented intent (no adjudication-WRITE tool; a Tier-0 READ helper is allowed). Full suite
+  **1770 passed, 1 skipped**. INTENT_MENU still v0/PROVISIONAL; NOT live/accuracy validated; no NL
+  classifier / chat UI here. See `AGENTASSIST_TECHNICAL_STATE.md` §T5.9a.
 - **T5.9b — NL classifier + clarify-on-miss**: a free-text front door whose intent ROUTER maps
   natural language onto the bounded intent space (free-text → bounded intent). Slot-filling that
   **NEVER guesses identity-bearing slots (client / period)** — on a miss it asks for clarification

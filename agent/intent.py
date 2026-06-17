@@ -115,11 +115,22 @@ class NeedsClarification:
 #
 # v0/PROVISIONAL: the exact set of intents and their required params is not a
 # frozen contract — it is the demo-critical starting menu. Every sequence element
-# is a registered Tier-0/1 tool (see _assert_menu_well_formed). SHOW_PROPOSALS
-# currently resolves to the Tier-0 read_ledger: there is no dedicated
-# proposals-read tool yet (proposals are staged artifacts / ledgered
-# propose_action justifications), so it shares read_ledger with SHOW_LEDGER —
-# distinct product intents, the same in-tier read, the surface adds no authority.
+# is a registered Tier-0/1 tool (see _assert_menu_well_formed).
+#
+# T5.9a1 resolved a conflation: SHOW_PROPOSALS now routes to the dedicated Tier-0
+# read_proposals (the pending-proposals queue), NOT read_ledger (the justification
+# ledger); SHOW_PRIOR_ADJUDICATIONS now routes to the Tier-0 read_decision_ledger
+# (the T5.5 decision ledger of human adjudications), NOT read_prior_period_treatment
+# (a per-key prior-period treatment store). All four intents now dispatch honestly.
+#
+# v0/PROVISIONAL menu gap (flag for the menu owner): SHOW_PRIOR_ADJUDICATIONS still
+# declares required_params=("client_id", "period") — the user-facing intent is
+# naturally client/period-scoped — but read_decision_ledger's only query axis is the
+# per-finding FINGERPRINT (the T5.5 ledger carries no client field). The two do not
+# yet reconcile: the bound client_id/period do not map onto a fingerprint. The
+# eventual fix is a client/period -> findings -> fingerprints lookup (or an explicit
+# fingerprint slot on the intent). Documented here so the mismatch is EXPLICIT, not
+# silent; the surface still routes honestly to the correct tool.
 # ---------------------------------------------------------------------------
 
 INTENT_MENU_STATUS: str = "v0/PROVISIONAL"
@@ -139,13 +150,13 @@ _INTENTS: list[IntentSpec] = [
     ),
     IntentSpec(
         intent="SHOW_PROPOSALS",
-        sequence=("read_ledger",),
+        sequence=("read_proposals",),
         required_params=("client_id",),
         description="Show the staged Tier-2 proposals awaiting human approval.",
     ),
     IntentSpec(
         intent="SHOW_PRIOR_ADJUDICATIONS",
-        sequence=("read_prior_period_treatment",),
+        sequence=("read_decision_ledger",),
         required_params=("client_id", "period"),
         description="Show how findings were adjudicated in a prior period.",
     ),
