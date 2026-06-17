@@ -56,6 +56,8 @@ def build_document_rows(extract_dir: Path) -> list[dict]:
                 "CardCode": schema.ser(doc.get("CardCode")),
                 "CardName": schema.ser(doc.get("CardName")),
                 "DocCurrency": schema.ser(doc.get("DocCurrency")),
+                # Doc-level total, sourced from the frozen ground truth (not fabricated).
+                "DocTotal": schema.ser(doc.get("DocTotal")),
             }
             for idx, line in enumerate(doc.get("DocumentLines", [])):
                 row = dict(base)

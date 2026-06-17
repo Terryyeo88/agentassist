@@ -11,7 +11,7 @@ the T2.23 recon):
 
   * per document line — ``VatGroup``, ``LineTotal``, ``TaxTotal``
   * per document       — ``DocNum``, ``DocDate``, ``CardName``, ``CardCode``,
-                         ``DocCurrency`` (and ``DocumentLines``)
+                         ``DocCurrency``, ``DocTotal`` (and ``DocumentLines``)
   * BusinessPartner    — ``FederalTaxID``
   * listing headers    — ``DocNum``, ``Series``, ``Cancelled`` (+ ``CardCode``,
                          ``NumAtCard``, ``DocTotal`` for the period purchases listing)
@@ -99,7 +99,7 @@ DOC_KIND_COL = "doc_kind"      # "invoice" | "credit_note"
 LINE_INDEX_COL = "line_index"  # 0-based line order within the document
 DOCUMENT_COLUMNS = [
     DOC_TYPE_COL, DOC_KIND_COL,
-    "DocNum", "DocDate", "CardCode", "CardName", "DocCurrency",
+    "DocNum", "DocDate", "CardCode", "CardName", "DocCurrency", "DocTotal",
     LINE_INDEX_COL, "VatGroup", "LineTotal", "TaxTotal",
 ]
 
@@ -162,6 +162,10 @@ def project_document(raw: dict, *, is_credit_note: bool = False) -> dict:
         "CardCode": to_str(raw.get("CardCode")),
         "CardName": to_str(raw.get("CardName")),
         "DocCurrency": to_str(raw.get("DocCurrency")),
+        # Doc-level money total. The core reads this for the FX-conversion advisory
+        # list (calculate_f5_return → fx_invoices_requiring_conversion); it feeds no
+        # F5 box and no finding. Float-coerced like the listing DocTotal.
+        "DocTotal": to_float(raw.get("DocTotal")),
         "DocumentLines": [project_line(ln) for ln in raw.get("DocumentLines", [])],
     }
     if is_credit_note:
