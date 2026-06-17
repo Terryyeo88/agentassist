@@ -658,12 +658,34 @@ distinction is deliberate — the two are easy to conflate and must not be.
   documented intent (no adjudication-WRITE tool; a Tier-0 READ helper is allowed). Full suite
   **1770 passed, 1 skipped**. INTENT_MENU still v0/PROVISIONAL; NOT live/accuracy validated; no NL
   classifier / chat UI here. See `AGENTASSIST_TECHNICAL_STATE.md` §T5.9a.
-- **T5.9b — NL classifier + clarify-on-miss**: a free-text front door whose intent ROUTER maps
-  natural language onto the bounded intent space (free-text → bounded intent). Slot-filling that
-  **NEVER guesses identity-bearing slots (client / period)** — on a miss it asks for clarification
-  rather than guessing. Untrusted-input discipline: the router **classifies, it never obeys**; free
-  text is untrusted input to a tool-bearing system (the Collin reconciliation in Invariant 6).
-  Unconstrained LLM-to-tool chaining inside the product stays forbidden.
+- **T5.9b — NL classifier + clarify-on-miss — DONE (2026-06-17, branch `t5.9b-nl-classifier`;
+  classifier BUILT + hermetically tested via a scripted backend; LIVE backend built but accuracy
+  measured in T5.9c, NOT here).** `agent/intent_classifier.py` is the natural-language front door —
+  the ONE model-bearing piece of the intent surface. `IntentClassifier(backend).classify(utterance,
+  menu)` maps a free-text utterance onto the FIXED `INTENT_MENU` and returns a VALIDATED
+  `ClassificationResult = Classified(intent ∈ menu, candidate_params) | NeedsClarification |
+  OutOfScope` that feeds `agent.intent.dispatch` UNCHANGED. It **classifies, it never obeys**:
+  classify-never-obey is STRUCTURAL via two independent guards — (1) the live backend's call is a
+  single constrained `messages.create` with ONE forced structured-output tool and NO executable
+  tools (`claude-haiku-4-5-20251001`, v0/PROVISIONAL), so the model can only EMIT a label; (2)
+  **⊆-MENU AT THE BOUNDARY** (`_enforce_menu_boundary`, PURE) validates every backend's raw label
+  against `INTENT_MENU` before return — an off-menu / hallucinated intent (even a raw tool name) is
+  REJECTED to `OutOfScope`, and candidate params are RESTRICTED to the bound intent's declared
+  `required_params`. The slot set IS exactly the intent's declared `required_params`: the classifier
+  **NEVER guesses identity-bearing slots (client / period)** — absent/blank → `NeedsClarification` —
+  and **never extracts a `fingerprint` nor attempts the `client/period → fingerprint` reconciliation**
+  (that v0/PROVISIONAL menu gap, recorded in `agent.intent` by T5.9a1, stays DOWNSTREAM of this
+  slice — dispatch-execution, not yet built — and is deliberately NOT "fixed" here). The model sits
+  behind a `ClassifierBackend` seam with a SCRIPTED fake (every test uses it — zero tokens); the live
+  backend imports `anthropic` lazily/confined (`agent/intent.py` stays pure; `agent/intent_classifier.py`
+  is the only new `anthropic` importer, permitted in `agent/` per `docs/merge-gates.md`). Untrusted-input
+  discipline holds: free text is untrusted input to a tool-bearing system (the Collin reconciliation in
+  Invariant 6); unconstrained LLM-to-tool chaining inside the product stays forbidden. Failing-test-
+  first; +37 tests (`tests/test_t59b_nl_classifier.py`: clear→Classified→dispatch; missing/ambiguous→
+  clarify-never-guess; out-of-scope; injection contained; off-menu backend→OutOfScope; prior-adjudications
+  declared-slots-only/no-fingerprint; hermetic live-backend parse + named import-scan checks), full suite
+  **1807 passed, 1 skipped**. NO chat UI (T5.9c); not live/accuracy validated; T2.11 gates customer-facing.
+  See `AGENTASSIST_TECHNICAL_STATE.md` §T5.9b.
 - **T5.9c — demo hardening**: curated utterances + MockEngine canned answers + a buttons fallback,
   so the demo is robust without a live model in the path.
 
@@ -788,6 +810,11 @@ Docs-only status flip off fresh `origin/master` `f3ef8af`. T2.23 (chain source s
 `AGENTASSIST_TECHNICAL_STATE.md`: §T2.23 heading + Status sentence flipped PR-open → merged (`5c48ccb`); D20 footer entry added. Roadmap: T2.23 entry heading flipped → merged (`5c48ccb`); a **T2.23 bullet added to the build-state snapshot** "Validated offline (deterministic chain) — on master" block (it was absent), consistent with T2.12a/T5.7c; D20 added.
 The `rewired by T2.23` cross-refs and the `operational-backlog.md` #5 location note are descriptive, not status claims — left unchanged (re-verified). **No code/test change; test count UNCHANGED at 1715 passed / 1 skipped** (current-master authoritative figure: T5.5 baseline 1683 + 32).
 `docs/merge-gates.md` + `knowledge-base/sg-tax-code-mappings.md` + `exploration-notes/iras-ask-coverage-analysis.md`: **checked — no change required.** A merge-status label correction changes no merge-gate, no VatGroup→F5-box routing, and no deterministic IRAS-ASK coverage cell. Pedagogical reference docs out of repo — not chased. Docs-only; `.md`-only staged diff.
+
+### D22 — T5.9b NL classifier + clarify-on-miss build + docs-sync — DONE (2026-06-17, branch t5.9b-nl-classifier)
+Build (not docs-only): `agent/intent_classifier.py` — the natural-language front door, the ONE model-bearing piece of the intent surface. `IntentClassifier(backend).classify(utterance, menu)` maps a free-text utterance onto the FIXED `INTENT_MENU` and returns a VALIDATED `ClassificationResult = Classified(intent ∈ menu, candidate_params) | NeedsClarification | OutOfScope` that feeds `agent.intent.dispatch` UNCHANGED. **Classify-never-obey is STRUCTURAL via two independent guards:** (1) the LIVE backend (`AnthropicClassifierBackend`) is one constrained `messages.create` with a SINGLE forced structured-output tool and NO executable tools (`claude-haiku-4-5-20251001`, v0/PROVISIONAL) — the model can only EMIT a `{verdict,intent,params}` label; (2) **⊆-MENU AT THE BOUNDARY** (`_enforce_menu_boundary`, PURE) validates every backend's raw label against `INTENT_MENU` before return — an off-menu/hallucinated intent (even a raw tool name) is REJECTED to `OutOfScope`, candidate params RESTRICTED to the bound intent's declared `required_params`. The slot set IS exactly the declared `required_params`; the classifier never guesses `client_id`/`period` (absent/blank → `NeedsClarification`) and never extracts a `fingerprint` nor attempts `client/period → fingerprint` reconciliation (that v0 menu gap stays DOWNSTREAM, untouched). The model sits behind a `ClassifierBackend` seam with a SCRIPTED fake (`ScriptedClassifierBackend`) — every test uses it, zero tokens; `anthropic` imported lazily/confined so `agent/intent.py` stays pure and `intent_classifier.py` is the only new `anthropic` importer (permitted in `agent/` per `docs/merge-gates.md`). Failing-test-first; **+37 tests** (`tests/test_t59b_nl_classifier.py`: (a) clear→Classified→dispatch; (b) missing/ambiguous→clarify-never-guess; (c) out-of-scope; (d) injection contained; (e) off-menu backend→OutOfScope; (f) prior-adjudications declared-slots-only/no-fingerprint; + hermetic live-backend parse/forced-tool + named import-scan checks). Full suite **1807 passed, 1 skipped** (origin/master `ba4cd85` base 1770 + 37). Hermetic; provisioning off fresh `origin/master` `ba4cd85` (local master known-stale; worktree per STEP 0).
+`AGENTASSIST_TECHNICAL_STATE.md`: **§T5.9b** subsection added under §T5.9; §T5.9 heading/status flipped to "T5.9a/b DONE; T5.9c PLANNED"; footer D22 added. Roadmap: **T5.9b slice PLANNED→DONE** (T5.9c stays PLANNED); D22 added.
+`exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md`: **checked — no change required.** T5.9b is a product-surface NL-routing layer; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content. Honest scope: classifier built + hermetically tested; LIVE backend built but NOT measured (curated-utterance accuracy is T5.9c); model choice v0/PROVISIONAL; NO chat UI (T5.9c); not live/accuracy validated; T2.11 gates customer-facing; T4.1 platform stays gated.
 
 ---
 
