@@ -20,8 +20,23 @@ ids / hashes / json sit behind a "Technical details" expander only.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from typing import Optional, Union
+
 import streamlit as st
 
+# NL front door — the command bar uses the SCRIPTED classifier ONLY. Both imports
+# below are anthropic-free (the SDK import is confined to AnthropicClassifierBackend,
+# which is NEVER referenced here), so ui/ keeps the T5.8 no-anthropic guard.
+from agent.intent import INTENT_MENU
+from agent.intent_classifier import (
+    Classified,
+    ClassificationResult,
+    IntentClassifier,
+    NeedsClarification,
+    OutOfScope,
+)
+from agent.intent_curated import build_scripted_classifier
 from agent.lint import lint_framing
 from ui.artifacts import (
     DemoArtifacts,
@@ -42,6 +57,174 @@ _GROUP_LABELS = {
     "marked_known": "Marked known",
     "decided": "Decided",
 }
+
+
+# --------------------------------------------------------------------------- #
+# Command bar — "one way in" over the T5.9b classifier (MOCK/scripted backend).
+#
+# The command bar is a quiet single text input plus a four-intent buttons fallback;
+# review STILL happens on the dashboard below. It maps a Classified intent to WHICH
+# surface SECTION to open — it does NOT execute the read tools with params (dispatch-
+# EXECUTION is downstream; the v0 client/period → fingerprint gap stays untouched).
+#
+# MOCK-FIRST: the bar uses IntentClassifier(ScriptedClassifierBackend(curated)) ONLY
+# (no live model, no tokens). It MUST NOT instantiate AnthropicClassifierBackend — that
+# would pull anthropic into ui/ and break the T5.8 guard. classify-never-obey still
+# holds: the scripted backend's raw output runs through the SAME ⊆-menu boundary, so a
+# hostile/off-menu backend output is contained to OutOfScope, never an action.
+# --------------------------------------------------------------------------- #
+
+#: intent → the app section/view label that intent opens (see ui/app.py nav labels).
+INTENT_SECTION: dict[str, str] = {
+    "RUN_REVIEW": "Review queue",
+    "SHOW_LEDGER": "Justification ledger",
+    "SHOW_PROPOSALS": "PENDING proposals",
+    "SHOW_PRIOR_ADJUDICATIONS": "Adjudication panel",
+}
+
+#: Buttons fallback labels, in menu order — always available, zero typing.
+_BUTTON_LABELS: dict[str, str] = {
+    "RUN_REVIEW": "Run a review",
+    "SHOW_LEDGER": "Show ledger",
+    "SHOW_PROPOSALS": "Show proposals",
+    "SHOW_PRIOR_ADJUDICATIONS": "Prior decisions",
+}
+
+_OUT_OF_SCOPE_MESSAGE = (
+    "I can help with reviews, proposals, or prior decisions. "
+    "Try one of the buttons below."
+)
+
+
+@dataclass(frozen=True)
+class RouteToSection:
+    """A Classified intent mapped to the surface section it opens (no execution)."""
+    intent: str
+    section: str
+    params: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Clarify:
+    """An "ask, don't guess" outcome — a menu intent with a missing identity slot."""
+    intent: str
+    missing_params: tuple[str, ...]
+    message: str
+
+
+@dataclass(frozen=True)
+class OutOfScopeReply:
+    """A polite out-of-scope reply; the buttons fallback is always offered with it."""
+    message: str = _OUT_OF_SCOPE_MESSAGE
+
+
+CommandOutcome = Union[RouteToSection, Clarify, OutOfScopeReply]
+
+
+def route_intent(intent: str) -> str:
+    """Pure: map a menu intent to its surface section label.
+
+    Falls back to the primary Review queue for an unrecognised intent (defensive; the
+    classifier's ⊆-menu boundary already guarantees only menu intents reach here).
+    """
+    return INTENT_SECTION.get(intent, "Review queue")
+
+
+def handle_command(utterance: str, classifier: IntentClassifier) -> CommandOutcome:
+    """Pure: classify an utterance and map the VALIDATED result to a command outcome.
+
+    Classified → RouteToSection (intent → section, never executes the read).
+    NeedsClarification → Clarify (ask client/period — NEVER a guessed identity slot).
+    OutOfScope (incl. a hostile/off-menu backend output the boundary rejected) →
+        OutOfScopeReply (polite message; the buttons fallback stays available).
+    """
+    result: ClassificationResult = classifier.classify(utterance, INTENT_MENU)
+    if isinstance(result, Classified):
+        return RouteToSection(
+            intent=result.intent,
+            section=route_intent(result.intent),
+            params=dict(result.candidate_params),
+        )
+    if isinstance(result, NeedsClarification):
+        return Clarify(
+            intent=result.intent,
+            missing_params=tuple(result.missing_params),
+            message=result.message,
+        )
+    if isinstance(result, OutOfScope):
+        return OutOfScopeReply()
+    return OutOfScopeReply()  # pragma: no cover - defensive (unknown result type)
+
+
+def handle_button(intent: str) -> RouteToSection:
+    """Pure: a buttons-fallback click routes a menu intent DIRECTLY (no classifier).
+
+    The buttons skip the NL step entirely — they bind a known menu intent straight to
+    its section. No params are bound here (the demo maps intent → section; it does not
+    execute the read), so the section opens and the dashboard takes over.
+    """
+    return RouteToSection(intent=intent, section=route_intent(intent), params={})
+
+
+# Built once per process; pulls NO anthropic (scripted backend over the curated set).
+_DEMO_CLASSIFIER: Optional[IntentClassifier] = None
+
+
+def _demo_classifier() -> IntentClassifier:
+    global _DEMO_CLASSIFIER
+    if _DEMO_CLASSIFIER is None:
+        _DEMO_CLASSIFIER = build_scripted_classifier()
+    return _DEMO_CLASSIFIER
+
+
+def _render_outcome(outcome: CommandOutcome) -> None:
+    """Render a command outcome with st.* widgets (presentation only)."""
+    if isinstance(outcome, RouteToSection):
+        if outcome.section == "Review queue":
+            st.success(
+                f"**{outcome.intent}** → you're on the **Review queue** (below)."
+            )
+        else:
+            st.success(
+                f"**{outcome.intent}** → open **{outcome.section}** from the "
+                "*Audit trail / developer* group in the sidebar."
+            )
+        if outcome.params:
+            shown = ", ".join(f"{k}={v}" for k, v in sorted(outcome.params.items()))
+            st.caption(
+                f"Recognised: {shown}. (The demo maps intent → section; it does not "
+                "run the read tool — dispatch-execution is downstream.)"
+            )
+    elif isinstance(outcome, Clarify):
+        st.warning(outcome.message)
+    else:  # OutOfScopeReply
+        st.info(outcome.message)
+
+
+def _render_command_bar() -> None:
+    """The quiet command bar + four-intent buttons fallback (always available)."""
+    st.markdown("##### Ask the assistant")
+    st.caption(
+        "One way in (mock/scripted — no live model, no tokens). Type a request, or use "
+        "the buttons. The assistant only classifies and routes — it never acts on the "
+        "text; review still happens on the dashboard below."
+    )
+
+    utterance = st.text_input(
+        "Ask",
+        key="command_bar",
+        placeholder="e.g. Show me the justification ledger for Acme",
+        label_visibility="collapsed",
+    )
+    if utterance.strip():
+        _render_outcome(handle_command(utterance, _demo_classifier()))
+
+    cols = st.columns(len(_BUTTON_LABELS))
+    for col, (intent, label) in zip(cols, _BUTTON_LABELS.items()):
+        if col.button(label, key=f"intent_btn::{intent}"):
+            _render_outcome(handle_button(intent))
+
+    st.divider()
 
 
 def _decision_key(finding_id: str) -> str:
@@ -99,6 +282,9 @@ def render(artifacts: DemoArtifacts) -> None:
         "compliance verdict. Work the queue: read what we found, why it matters and the "
         "rule, then record your decision and sign the working paper."
     )
+
+    # Command bar / buttons fallback — the chatbot front door over the review surface.
+    _render_command_bar()
 
     items = annotated_adjudication_items(artifacts)
     if not items:
