@@ -495,6 +495,8 @@ Owner Terry. Effort: large; not estimated until the gate is met.
 
 **What to do now toward it (near-zero-cost option-keeping):** nothing UI. Keep the engine cleanly separable behind a stable internal schema/API (the T2.12 input-adapter refactor), and keep per-agent boundaries clean, so a dashboard can wrap the engine later without a rewrite. Architecture readiness is the only platform work that belongs in the present. Tier 5 (the agentic shell) is the engineering substrate of this platform vision — reusable shell + per-vertical validated cores — and the T4.1 gate is unchanged.
 
+**Surface vs platform (2026-06-17).** The end-user intent SURFACE is roadmapped separately as **T5.9** and pulled forward to **pre-demo** — decoupled from the paying-customer gate — because it is product-intrinsic UX, not a delivery-model feature. Only the multi-vertical PLATFORM / dashboard (this T4.1) stays gated. **Pulling the surface forward != pulling the platform forward** (Invariant 6 amendment). The menu T5.9 exposes is the cage at the product layer; T4.1 is the metered, multi-vertical container that menu eventually lives in, and it earns its build only at the gate above.
+
 ---
 
 ## Tier 5 — Agentic shell — bounded-autonomy junior layer (PLANNED, GATED)
@@ -515,7 +517,7 @@ Framing: per Anthropic's workflow/agent distinction (Building Effective Agents, 
 3. Atomicity: the agent orchestrates BETWEEN sealed components, never WITHIN one. run_review_chain is exposed as a single atomic tool (gates included); the agent never invokes individual chain steps. (Rationale: T1.6 — "Claude decided to skip validate_invoice_tax_codes" is not defensible.)
 4. The agent may INVOKE a reasoning check (reg2627 pass, documents pass) as a versioned, separately-measured tool; it may never PERFORM judgment in its own voice. Agent-voiced compliance opinions are a lint failure. Measured accuracy baskets attach to the packaged passes only; T2.11 gating is inherited unchanged (show_ai_candidates governs dossier visibility too).
 5. Decision-ledger entries are context for annotation/demotion only — never suppression, never training. Known-accepted recurring findings render annotated and demoted, never hidden.
-6. Bounded task surface: the product interface is a fixed menu of intents mapping to tier-classified action sequences; free text is permitted only within a task and is treated as untrusted input. Note: input bounding is a product/evaluability measure, NOT a safety mechanism — any safety property that fails under adversarial user input was never a safety property. **Input-surface note (Collin reconciliation):** the front door accepts free text; an intent ROUTER maps it to the bounded intent space; on a miss, the system asks for clarification rather than guessing. Free text is untrusted input — the router classifies, never obeys. This is the agreed reconciliation of the "chatbot" front-end idea with the bounded-task-surface invariant: a natural-language front door is fine; unconstrained LLM-to-tool chaining inside the product is not.
+6. Bounded task surface: the product interface is a fixed menu of intents mapping to tier-classified action sequences; free text is permitted only within a task and is treated as untrusted input. Note: input bounding is a product/evaluability measure, NOT a safety mechanism — any safety property that fails under adversarial user input was never a safety property. **Input-surface note (Collin reconciliation):** the front door accepts free text; an intent ROUTER maps it to the bounded intent space; on a miss, the system asks for clarification rather than guessing. Free text is untrusted input — the router classifies, never obeys. This is the agreed reconciliation of the "chatbot" front-end idea with the bounded-task-surface invariant: a natural-language front door is fine; unconstrained LLM-to-tool chaining inside the product is not. **Surface-forward amendment (2026-06-17):** the intent SURFACE — the end-user front door onto this fixed menu — is pulled forward to **pre-demo as T5.9**, decoupled from the paying-customer gate; the multi-vertical PLATFORM (the T4.1 dashboard) it eventually fronts **stays gated**. Pulling the surface forward is NOT pulling the platform forward — a product feature (how a user drives bounded autonomy) is distinct from the delivery model (who pays). Agreed demo narrative: **"the menu is the cage at the product layer"** — the bounded intent menu is itself the containment the user sees.
 7. Agent-layer failure is non-blocking to the deterministic deliverable. If the agent errors, crashes, or hits its loop/cost cap, the deterministic chain output and the signed working paper still complete — exactly as a reasoning-pass failure is logged but never prevents the audit bundle from sealing. The agent shell may add to the deliverable; it must never be able to prevent it.
 
 ### T5.1 — Engine API seam — DONE (2026-06-12)
@@ -597,6 +599,44 @@ Operationalises cross-cutting requirement (a): the scenario harness that makes "
 **T5.8c — demo convergence: real frozen-extract-derived vendor ctx — DONE (2026-06-16, branch `t5.8c-demo-loopcontext-converge`).** The demo freezer's `build_context` (`tests/fixtures/demo_artifacts_builder.py`) no longer fabricates the vendor catalog; it now sources it from the T5.3h assembler `agent.loop_context.build_vendor_catalog` over the frozen `sbodemosg-extract` business-partners surface — **real frozen-extract-derived vendor ctx, not live SAP / real-client data**. Hermetic (no SAP, no model, no tokens); MockEngine/RealEngine boundary untouched; source-doc provider stays `FakeProvider`. The 7 `NO_GST_REG` findings are genuinely unregistered in the extract, so their `supplier_catalog` evidence is byte-unchanged (`dossiers.json`/`review_result.json` identical); regenerated `proposals.json`/`ledger.json` differ only in volatile ids/timestamps/hashes. Frozen flags + token-gating untouched. +2 tests (`tests/test_t58_real_vendor_ctx.py`), full suite **1641 passed, 1 skipped**.
 
 **On the horizon — RealEngine ← T5.3h convergence (not yet scheduled).** T5.8's `RealEngine` seam (`ui/engine_seam.py`, currently a lazy drop-in over `engine.review.review`) and T5.3h's real `BuiltLoopContext` (`agent/loop_context.py`) are the two halves of a real (non-mock) demo. The convergence step is to feed a `build_loop_context`-driven `run_casefile_loop` through `RealEngine` so the UI renders REAL findings/dossiers instead of frozen artifacts — a configuration wiring, not a rewrite. It stays GATED behind the same caveats (NOT live-validated until T5.3-V round-2 + T5.3g; NOT accuracy-validated until T2.11) and is out of scope for the current showcase slice.
+
+### T5.9 — Intent surface (end-user) — PLANNED, GATED ON THE DEMO (not a paying customer)
+Owner Terry. Effort PROPOSED — needs Terry confirmation. Sequenced AFTER T5.4.
+
+**The end-user-facing intent surface** — the front door through which a user expresses what they
+want done, mapped onto the bounded, tier-classified action sequences the cage already enforces
+(Invariant 6). **Pulled forward to pre-demo, decoupled from the paying-customer gate.**
+**Rationale:** this is product-intrinsic UX, not a delivery-model feature; the prior paying-pilot
+gate conflated a product feature (how an end user drives the bounded autonomy) with the delivery
+model (who pays and how). The SURFACE earns its build for the demo; the multi-vertical PLATFORM
+(T4.1) it eventually fronts stays gated — see the Invariant 6 amendment and the T4.1 entry.
+
+**Explicitly NOT T5.4.** T5.9 (the end-user intent surface — how a human expresses intent into the
+bounded menu) is a different task from T5.4 (the check planner — internal selection/sequencing of
+which deterministic checks run given the client profile). T5.4 routes *checks* inside the engine;
+T5.9 routes a *human's expressed intent* onto a bounded action sequence. T5.9 depends on T5.4 (the
+menu's intents map onto the planner's check sequences) and is sequenced after it. Naming the
+distinction is deliberate — the two are easy to conflate and must not be.
+
+**Three slices:**
+- **T5.9a — bounded intent menu + dispatch** (hermetic, demo-critical; depends on T5.4): a FIXED
+  menu of intents, each mapping to a tier-classified action sequence; selecting an intent dispatches
+  the corresponding bounded sequence. This is Invariant 6's "fixed menu of intents mapping to
+  tier-classified action sequences" made into a surface — **"the menu is the cage at the product
+  layer."**
+- **T5.9b — NL classifier + clarify-on-miss**: a free-text front door whose intent ROUTER maps
+  natural language onto the bounded intent space (free-text → bounded intent). Slot-filling that
+  **NEVER guesses identity-bearing slots (client / period)** — on a miss it asks for clarification
+  rather than guessing. Untrusted-input discipline: the router **classifies, it never obeys**; free
+  text is untrusted input to a tool-bearing system (the Collin reconciliation in Invariant 6).
+  Unconstrained LLM-to-tool chaining inside the product stays forbidden.
+- **T5.9c — demo hardening**: curated utterances + MockEngine canned answers + a buttons fallback,
+  so the demo is robust without a live model in the path.
+
+**Honest caveat:** the intent surface ROUTES TO UNVALIDATED machinery. `show_ai_candidates` stays
+`False`; the demo shows **bounded autonomy + human-in-the-loop, NOT validated accuracy.** T2.11
+still gates anything customer-facing. The surface makes the bounded-autonomy model drivable and
+visible; it changes nothing about what is or is not validated underneath.
 
 ### Tier-5 cross-cutting requirements
 (a) Agent-behavior evals: the honest-status taxonomy (built ≠ unit-tested ≠ demo-validated ≠ real-client-validated) applies to agent BEHAVIORS. Scenario eval harness with fixed fixtures measuring: dossier completeness rate, justification-gate hold rate, zero Tier-2 self-executions over N adversarial runs, language-lint pass rate. No entry above advances past "built" without it. Build deliverable: T5.7.
