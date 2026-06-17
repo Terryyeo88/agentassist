@@ -1,18 +1,26 @@
 """
 agent/read_tools.py — Tier-0 read-only tool implementations for the dossier loop.
 
-T5.3 Slice 1 (plumbing). Three read-only lookups the case-file builder uses to
-assemble per-finding evidence. All are pure reads — no writes, no mutation of the
-source, no network beyond whatever the injected provider performs.
+T5.3 Slice 1 (plumbing). Read-only lookups the case-file builder uses to assemble
+per-finding evidence. All are pure reads — no writes, no mutation of the source, no
+network beyond whatever the injected provider performs.
 
 Public API:
     get_source_document(provider, doc_num) -> str | None
     read_vendor_gst_status(catalog, card_name) -> dict
     read_prior_period_treatment(store, key) -> dict
+    read_proposals(staging_store) -> list[dict]                          # T5.9a1
+    read_decision_ledger(decision_ledger, *, fingerprint) -> list[dict]  # T5.9a1
 
 These wrap their data sources by dependency injection (the provider / catalog /
 store are passed in), so they stay hermetic and Tier-0. Their registry entries
 (Tier 0) live in agent/registry.py; the live MCP wiring is Slice 2.
+
+T5.9a1 added the two product-surface reads the intent menu was conflating onto the
+wrong tools: ``read_proposals`` is the PENDING-proposals queue (StagingStore), NOT
+the justification ledger; ``read_decision_ledger`` is the T5.5 decision ledger of
+human adjudications, NOT the per-key prior-period treatment store. Both stay pure
+Tier-0 reads over a DI'd source.
 
 Zero SDK import. Stdlib only.
 """
@@ -21,6 +29,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from agent.decision_ledger import DecisionLedger
+    from agent.proposals import StagingStore
     from documents.provider import DocumentProvider
 
 
@@ -83,3 +93,73 @@ def read_prior_period_treatment(store: dict, key: str) -> dict:
         "treatment": record.get("treatment"),
         "record": record,
     }
+
+
+def read_proposals(staging_store: "StagingStore") -> list[dict]:
+    """List the PENDING proposals awaiting human approval (read-only).
+
+    T5.9a1. The product surface's SHOW_PROPOSALS intent routes here — NOT to
+    read_ledger. The justification ledger is a different artifact; the pending-
+    proposals queue is the StagingStore (agent/proposals.py). Wraps
+    ``StagingStore.list_pending`` and projects each ProposalArtifact to a plain
+    dict view. Pure read: never stages, approves, rejects, or mutates the store.
+
+    Returns:
+        One view dict per PENDING proposal, in store order:
+        {"proposal_id", "action", "tier", "justification", "evidence_refs",
+         "inputs_hash", "status", "created_at"}.
+    """
+    return [
+        {
+            "proposal_id": p.proposal_id,
+            "action": p.action,
+            "tier": p.tier,
+            "justification": p.justification,
+            "evidence_refs": list(p.evidence_refs),
+            "inputs_hash": p.inputs_hash,
+            "status": p.status,
+            "created_at": p.created_at,
+        }
+        for p in staging_store.list_pending()
+    ]
+
+
+def read_decision_ledger(
+    decision_ledger: "DecisionLedger", *, fingerprint: Optional[str] = None
+) -> list[dict]:
+    """List prior human adjudications from the T5.5 decision ledger (read-only).
+
+    T5.9a1. The product surface's SHOW_PRIOR_ADJUDICATIONS intent routes here —
+    NOT to read_prior_period_treatment (a per-key prior-period treatment store,
+    a different artifact). Wraps ``DecisionLedger.lookup`` (agent/decision_ledger.py)
+    and projects each AdjudicationEntry to a plain dict view. Pure read: never
+    appends to or mutates the ledger.
+
+    The decision ledger's only query axis is the deterministic finding fingerprint
+    (it carries NO client field — see agent/decision_ledger.py). So:
+      * fingerprint given  -> prior adjudications for that fingerprint (lookup), and
+      * fingerprint omitted -> ALL entries, oldest first (list-all).
+
+    Returns:
+        One view dict per adjudication, oldest first:
+        {"entry_id", "fingerprint", "disposition", "reviewer", "reason",
+         "period", "timestamp"}. (The hash-chain fields are an integrity detail,
+        not part of the read view.)
+    """
+    entries = (
+        list(decision_ledger.entries)
+        if fingerprint is None
+        else decision_ledger.lookup(fingerprint)
+    )
+    return [
+        {
+            "entry_id": e.entry_id,
+            "fingerprint": e.fingerprint,
+            "disposition": e.disposition,
+            "reviewer": e.reviewer,
+            "reason": e.reason,
+            "period": e.period,
+            "timestamp": e.timestamp,
+        }
+        for e in entries
+    ]

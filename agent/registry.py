@@ -64,6 +64,27 @@ _TOOLS: list[ToolSpec] = [
         tier=Tier.ZERO,
         description="Look up how a finding key was treated in a prior period (read-only).",
     ),
+    # Tier 0 — product-surface reads (T5.9a1; impl in agent/read_tools.py).
+    # These are the semantically-correct targets the intent menu was conflating:
+    # read_proposals is the PENDING-proposals queue (NOT read_ledger);
+    # read_decision_ledger is the T5.5 decision ledger of human adjudications
+    # (NOT read_prior_period_treatment).
+    ToolSpec(
+        name="read_proposals",
+        tier=Tier.ZERO,
+        description=(
+            "List the pending Tier-2 proposals awaiting human approval from the "
+            "staging store (read-only). Not the justification ledger."
+        ),
+    ),
+    ToolSpec(
+        name="read_decision_ledger",
+        tier=Tier.ZERO,
+        description=(
+            "List prior human adjudications from the decision ledger, by finding "
+            "fingerprint (read-only). Not the prior-period treatment store."
+        ),
+    ),
     # Tier 1 — work in staging; mandatory justification
     ToolSpec(
         name="run_review_chain",
