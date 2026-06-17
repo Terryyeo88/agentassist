@@ -89,18 +89,22 @@ class TestDispatchRoutesDeclaredSequence:
         assert isinstance(res, DispatchResult)
         assert res.sequence == ("read_ledger",)
 
-    def test_show_proposals_dispatches_to_read_ledger(self):
+    def test_show_proposals_dispatches_to_read_proposals(self):
+        # T5.9a1: SHOW_PROPOSALS now routes to the dedicated pending-proposals read,
+        # NOT read_ledger (the justification ledger). See test_t59a1_menu_correction.
         res = dispatch("SHOW_PROPOSALS", {"client_id": "sbodemosg"})
         assert isinstance(res, DispatchResult)
-        assert res.sequence == ("read_ledger",)
+        assert res.sequence == ("read_proposals",)
 
-    def test_show_prior_adjudications_dispatches_to_read_prior_period_treatment(self):
+    def test_show_prior_adjudications_dispatches_to_read_decision_ledger(self):
+        # T5.9a1: SHOW_PRIOR_ADJUDICATIONS now routes to the T5.5 decision ledger,
+        # NOT read_prior_period_treatment. See test_t59a1_menu_correction.
         res = dispatch(
             "SHOW_PRIOR_ADJUDICATIONS",
             {"client_id": "sbodemosg", "period": "2024-Q1"},
         )
         assert isinstance(res, DispatchResult)
-        assert res.sequence == ("read_prior_period_treatment",)
+        assert res.sequence == ("read_decision_ledger",)
 
     def test_dispatch_result_sequence_equals_declared_spec_sequence(self):
         # Dispatch routes to EXACTLY the declared sequence — no more, no fewer.

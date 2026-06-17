@@ -302,9 +302,22 @@ class TestBoxIsolation:
 
 class TestAgentCannotWrite:
     def test_no_decision_ledger_write_tool_in_registry(self):
-        from agent.registry import REGISTRY
+        from agent.registry import REGISTRY, get_tier
+        from agent.schemas import Tier
         names = set(REGISTRY)
-        assert not any("adjudicat" in n or "decision_ledger" in n for n in names)
+        # A decision-ledger WRITE is Tier-2 — the agent never writes it, so no
+        # adjudication-write tool may exist in the agent registry.
+        assert not any("adjudicat" in n for n in names)
+        # A decision-ledger READ helper IS permitted, but only at Tier-0 (the
+        # section invariant: "read helper, if any, is Tier-0"). T5.9a1 added the
+        # Tier-0 read_decision_ledger; assert any decision_ledger-named tool is a
+        # read at Tier-0, never a write.
+        for n in names:
+            if "decision_ledger" in n:
+                assert n.startswith("read_"), (
+                    f"{n!r}: only a Tier-0 READ of the decision ledger is allowed"
+                )
+                assert get_tier(n) is Tier.ZERO
 
     def test_write_tool_is_tier_three_for_agent(self):
         from agent.registry import get_tier
