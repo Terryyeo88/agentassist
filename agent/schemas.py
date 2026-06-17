@@ -7,7 +7,7 @@ Data model:
 
     Tier            — action-tier classification enum (0/1/2; 3 = absent)
     ToolSpec        — registry entry for a single agent tool
-    CheckSpec       — v0/PROVISIONAL registry entry for a compliance check
+    CheckSpec       — v1 ratified registry entry for a compliance check
     LedgerEntry     — one hash-chained justification ledger entry
     ProposalArtifact — Tier-2 proposal waiting for human approval
     RunBudget       — per-run turn/cost cap with over-budget signal
@@ -58,12 +58,12 @@ class ToolSpec:
 
 @dataclass(frozen=True)
 class CheckSpec:
-    """v0/PROVISIONAL registry entry for a compliance check.
+    """v1 registry entry for a compliance check (T5.2c — ratified coordination contract).
 
-    NOT wired into any consumer. Collin ratifies this schema before building
-    deterministic checks against it. check_id and iras_basis will be reconciled
-    against Collin's canonical IRAS VatGroup remap and T2.18 config_keys when
-    those land (additive, non-breaking — config_keys re-adds for D+ checks).
+    Reconciled against the real check implementations and frozen as the contract
+    T5.4 consumes. check_id, iras_basis, inputs_needed, and finding_schema match
+    the live checks; config_keys is the additive applicability field. Collin
+    co-owns CheckSpec and ratifies the contract at merge.
 
     Attributes:
         check_id:       Canonical check identifier ("E1", "SEQ_GAP", …).
@@ -72,6 +72,17 @@ class CheckSpec:
         inputs_needed:  Data sources required to run this check.
         finding_type:   "deterministic" or "probabilistic" (PDF-derived checks).
         finding_schema: Informational field-name map. Not validated at runtime.
+        config_keys:    APPLICABILITY gate — the T2.18 ClientConfig scheme flags
+                        (actively_makes_exempt_supplies, participates_in_mes,
+                        participates_in_igds, reverse_charge_applicable) that must
+                        be True for this check to RUN for a given client. Empty
+                        list (the default) == the check always applies. This is an
+                        applicability gate, NOT routing: report-layer routing (e.g.
+                        the exempt Template-4/5 split) stays in report/routing.py
+                        and must never move here, or the planner would drop a check
+                        for clients that lack the flag. All 14 current checks are
+                        unconditional ([]); the field is reserved for future
+                        scheme-specific (MES/IGDS/reverse-charge) checks.
     """
     check_id: str
     display_name: str
@@ -79,6 +90,7 @@ class CheckSpec:
     inputs_needed: list
     finding_type: str
     finding_schema: dict = field(default_factory=dict)
+    config_keys: list = field(default_factory=list)
 
 
 @dataclass

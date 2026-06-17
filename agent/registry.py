@@ -3,8 +3,8 @@ agent/registry.py — Tool registry and tier classification.
 
 Public API:
     REGISTRY         — dict[str, ToolSpec]: all registered tools (Tier 0 and 1 only)
-    CHECK_REGISTRY   — dict[str, CheckSpec]: v0/PROVISIONAL check registry
-    CHECKSPEC_STATUS — str: "v0/PROVISIONAL" (signals non-frozen contract)
+    CHECK_REGISTRY   — dict[str, CheckSpec]: v1 ratified check registry
+    CHECKSPEC_STATUS — str: "v1" (frozen coordination contract; Collin co-owns)
     get_tier(name)   — Tier: Tier.THREE for any absent/unknown name
     allowed_tools()  — list[ToolSpec]: tools the agent may call (Tier 0 + 1)
 
@@ -143,44 +143,73 @@ def allowed_tools() -> list[ToolSpec]:
 
 
 # ---------------------------------------------------------------------------
-# Check registry — v0/PROVISIONAL
+# Check registry — v1 (T5.2c — ratified coordination contract; Collin co-owns)
 #
-# NOT wired into any consumer. Collin ratifies schema before building
-# deterministic checks against it. check_id/iras_basis will be reconciled
-# against the canonical IRAS VatGroup remap and T2.18 config_keys when those
-# land (additive, non-breaking — config_keys re-adds for D+ checks).
+# Reconciled against the real check implementations and frozen as the contract
+# T5.4 consumes:
+#   - iras_basis / finding_schema match each live check (see the T5.2c
+#     reconciliation table in AGENTASSIST_TECHNICAL_STATE.md §T5.2).
+#   - config_keys is an APPLICABILITY gate (which T2.18 ClientConfig scheme flags
+#     must be True for a check to RUN), default [] == always applies. It is NOT
+#     routing — the exempt Template-4/5 split stays in report/routing.py. All 14
+#     current checks are unconditional; the field is reserved for future
+#     MES/IGDS/reverse-charge checks.
+#   - inputs_needed edits are additive/corrective only and PRESERVE the round-2-
+#     validated slot contract (NO_GST_REG -> supplier_catalog; the document checks
+#     -> document_pdfs). See agent/completeness.py.
+# Contract is finalised + reconciled, NOT real-client validated (T2.11 gates
+# customer-facing claims). The frozen T2.18 flags are untouched.
 # ---------------------------------------------------------------------------
 
-CHECKSPEC_STATUS: str = "v0/PROVISIONAL"
+CHECKSPEC_STATUS: str = "v1"
 
 _CHECKS: list[CheckSpec] = [
-    # --- E1–E4: classify step (sap_b1_server.py / orchestrator) ---
+    # --- E1–E4: classify step (sap_b1_server._classify_line); the loop boundary
+    #     (agent/dossier.extract_findings) reads E1–E4 from
+    #     compile_output["detect"]["issues"] — the ENRICHED detect shape, the same
+    #     fields as NO_GST_REG. finding_schema encodes that enriched shape. ---
     CheckSpec(
         check_id="E1",
         display_name="Standard-rated sales on likely export/overseas supply",
-        iras_basis="IRAS GST Guide on Exports / Zero-Rating",
+        # Verified against repo guide "how-do-i-prepare-my-gst-return-eleventh-edition.pdf"
+        # §5.8 (Box 2 zero-rated) which cites "section 21(3) of the GST Act".
+        iras_basis=("IRAS GST Act s21(3) — zero-rating of exports / international "
+                    "services (e-Tax Guide 'How do I prepare my GST return?' §5.8, Box 2)"),
         inputs_needed=["sales_invoices", "vat_group_mapping"],
         finding_type="deterministic",
-        finding_schema={"doc_num": "int", "vat_group": "str", "error_code": "str",
-                        "description": "str"},
+        finding_schema={"severity": "str", "error_code": "str", "doc_num": "int",
+                        "doc_date": "str", "card_name": "str", "description": "str",
+                        "recommendation": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="E2",
         display_name="GST charged on non-taxable or zero-rated supply",
-        iras_basis="IRAS GST Act / applicable zero-rate and exempt supply provisions",
+        # Verified against repo guide §5.8–5.9 (zero-rated/exempt) and the Box 5/7
+        # exclusion lists, which cite "disallowed under Regulations 26 and 27 of
+        # the GST (General) Regulations" (the BL branch).
+        iras_basis=("IRAS e-Tax Guide 'How do I prepare my GST return?' §5.8–5.9 "
+                    "(zero-rated / exempt supplies) + GST (General) Regulations 26 & 27 "
+                    "(disallowed input tax, BL) — GST wrongly charged on a non-taxable supply"),
         inputs_needed=["sales_invoices", "purchase_invoices", "vat_group_mapping"],
         finding_type="deterministic",
-        finding_schema={"doc_num": "int", "vat_group": "str", "tax_total": "float",
-                        "error_code": "str"},
+        finding_schema={"severity": "str", "error_code": "str", "doc_num": "int",
+                        "doc_date": "str", "card_name": "str", "description": "str",
+                        "recommendation": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="E3",
         display_name="Standard-rated supply with zero or missing GST amount",
-        iras_basis="IRAS GST Act s10 / applicable output tax provisions",
-        inputs_needed=["sales_invoices", "vat_group_mapping"],
+        iras_basis="IRAS GST Act s10 / applicable output and input tax provisions",
+        # CORRECTED: E3 also fires on purchase TX lines with zero tax
+        # (sap_b1_server._classify_line), so purchase_invoices is required.
+        inputs_needed=["sales_invoices", "purchase_invoices", "vat_group_mapping"],
         finding_type="deterministic",
-        finding_schema={"doc_num": "int", "vat_group": "str", "tax_total": "float",
-                        "error_code": "str"},
+        finding_schema={"severity": "str", "error_code": "str", "doc_num": "int",
+                        "doc_date": "str", "card_name": "str", "description": "str",
+                        "recommendation": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="E4",
@@ -188,19 +217,24 @@ _CHECKS: list[CheckSpec] = [
         iras_basis="IRAS GST Act / applicable rate schedule",
         inputs_needed=["sales_invoices", "purchase_invoices", "applicable_gst_rate"],
         finding_type="deterministic",
-        finding_schema={"doc_num": "int", "vat_group": "str", "tax_total": "float",
-                        "error_code": "str"},
+        finding_schema={"severity": "str", "error_code": "str", "doc_num": "int",
+                        "doc_date": "str", "card_name": "str", "description": "str",
+                        "recommendation": "str"},
+        config_keys=[],
     ),
-    # --- detect step checks ---
+    # --- detect step checks (sap_b1_server.detect_gst_errors) ---
     CheckSpec(
         check_id="NO_GST_REG",
         display_name="Input tax claimed from supplier with no GST registration number",
         iras_basis="IRAS GST Act s19(1) / Regulation 11 — Conditions for claiming input tax",
+        # LOAD-BEARING: supplier_catalog is the round-2-validated agent-gathered
+        # slot (read_vendor_gst_status -> supplier_catalog). Do not remove.
         inputs_needed=["purchase_invoices", "supplier_catalog"],
         finding_type="deterministic",
-        finding_schema={"severity": "str", "doc_num": "int|None", "card_name": "str",
-                        "error_code": "str", "description": "str",
+        finding_schema={"severity": "str", "error_code": "str", "doc_num": "int",
+                        "doc_date": "str", "card_name": "str", "description": "str",
                         "recommendation": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="COMPLETENESS",
@@ -208,8 +242,11 @@ _CHECKS: list[CheckSpec] = [
         iras_basis="IRAS ASK Annual Review Guide §10.1(d) — Input tax completeness",
         inputs_needed=["invoice_counts", "completeness_threshold"],
         finding_type="deterministic",
-        finding_schema={"severity": "str", "error_code": "str", "description": "str",
+        # Period-level finding: doc_num/doc_date/card_name are emitted as None.
+        finding_schema={"severity": "str", "error_code": "str", "doc_num": "None",
+                        "doc_date": "None", "card_name": "None", "description": "str",
                         "recommendation": "str"},
+        config_keys=[],
     ),
     # --- listing checks (check_listing.py) ---
     CheckSpec(
@@ -219,7 +256,9 @@ _CHECKS: list[CheckSpec] = [
         inputs_needed=["sales_invoices", "all_period_invoices"],
         finding_type="deterministic",
         finding_schema={"check": "str", "series": "int", "gap_doc_num": "int",
-                        "description": "str", "basis": "str"},
+                        "series_min": "int", "series_max": "int", "description": "str",
+                        "basis": "str", "note": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="DUP_CLAIM",
@@ -228,7 +267,9 @@ _CHECKS: list[CheckSpec] = [
         inputs_needed=["purchase_invoices"],
         finding_type="deterministic",
         finding_schema={"check": "str", "doc_num": "int", "duplicate_of": "int",
-                        "num_at_card": "str", "description": "str", "basis": "str"},
+                        "card_code": "str", "num_at_card": "str", "doc_total": "float",
+                        "description": "str", "basis": "str", "note": "str"},
+        config_keys=[],
     ),
     # --- declared-F5 checks (check_declared_f5.py) ---
     CheckSpec(
@@ -237,8 +278,12 @@ _CHECKS: list[CheckSpec] = [
         iras_basis="IRAS GST F5 Return form — arithmetic consistency",
         inputs_needed=["declared_f5"],
         finding_type="deterministic",
+        # Rule-1 findings carry declared_box4/expected_box4; rule-2 carry box8 variants.
         finding_schema={"check": "str", "finding_type": "str", "rule": "str",
-                        "box": "str", "delta": "float", "description": "str"},
+                        "box": "str", "declared_box4|declared_box8": "float",
+                        "expected_box4|expected_box8": "float", "delta": "float",
+                        "description": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="declared_B",
@@ -246,29 +291,43 @@ _CHECKS: list[CheckSpec] = [
         iras_basis="IRAS ASK Annual Review Guide s10.1(d)(iii) fn33",
         inputs_needed=["declared_f5", "computed_boxes"],
         finding_type="deterministic",
-        finding_schema={"check": "str", "box": "str", "declared": "float",
-                        "computed": "float", "delta": "float", "basis": "str"},
+        # Primary divergence shape; derived box_4/box_8 consequence notes substitute
+        # note/root_cause_attribution for tolerance_applied/hypothesis.
+        finding_schema={"check": "str", "finding_type": "str", "box": "str",
+                        "box_label": "str", "declared": "float", "computed": "float",
+                        "delta": "float", "direction": "str", "tolerance_applied": "float",
+                        "basis": "str", "hypothesis": "str"},
+        config_keys=[],
     ),
-    # --- document reconciliation checks (documents/reconcile.py) ---
+    # --- document reconciliation checks (documents/reconcile.py — DocumentCandidate) ---
     CheckSpec(
         check_id="gst_amount_mismatch",
         display_name="GST amount on invoice PDF differs from SAP line item",
         iras_basis="IRAS GST Act s19 / Regulation 11 — Tax invoice requirements",
         inputs_needed=["document_pdfs", "sap_listing"],
         finding_type="probabilistic",
-        finding_schema={"check_id": "str", "severity": "str", "message": "str",
-                        "extracted_value": "any", "listing_value": "any",
-                        "determinability": "str"},
+        finding_schema={"doc_num": "int", "check_id": "str", "severity": "str",
+                        "message": "str", "extracted_value": "any", "listing_value": "any",
+                        "extraction_source": "str", "determinability": "str",
+                        "validation_status": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="correct_period",
         display_name="Invoice date falls outside the audit period",
+        # TODO(Collin/specialist): the precise GST Act time-of-supply section is
+        # NOT verifiable from the repo e-Tax guides — they describe time of supply
+        # at General Guide §5.1 (earlier of invoice/payment) and defer the statute
+        # to a separate "GST: Time of Supply Rules" guide not held in the repo.
+        # Original "s20" retained rather than freeze an unverified statutory cite.
         iras_basis="IRAS GST Act s20 — Time of supply / correct accounting period",
         inputs_needed=["document_pdfs", "sap_listing"],
         finding_type="probabilistic",
-        finding_schema={"check_id": "str", "severity": "str", "message": "str",
-                        "extracted_value": "any", "listing_value": "any",
-                        "determinability": "str"},
+        finding_schema={"doc_num": "int", "check_id": "str", "severity": "str",
+                        "message": "str", "extracted_value": "any", "listing_value": "any",
+                        "extraction_source": "str", "determinability": "str",
+                        "validation_status": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="total_inconsistency",
@@ -276,9 +335,11 @@ _CHECKS: list[CheckSpec] = [
         iras_basis="IRAS GST Act s19 / Regulation 11 — Tax invoice face accuracy",
         inputs_needed=["document_pdfs"],
         finding_type="probabilistic",
-        finding_schema={"check_id": "str", "severity": "str", "message": "str",
-                        "extracted_value": "any", "listing_value": "any",
-                        "determinability": "str"},
+        finding_schema={"doc_num": "int", "check_id": "str", "severity": "str",
+                        "message": "str", "extracted_value": "any", "listing_value": "any",
+                        "extraction_source": "str", "determinability": "str",
+                        "validation_status": "str"},
+        config_keys=[],
     ),
     CheckSpec(
         check_id="reg11_supplier_gst_absent",
@@ -286,9 +347,11 @@ _CHECKS: list[CheckSpec] = [
         iras_basis="IRAS GST (General) Regulations Regulation 11 — Tax invoice requirements",
         inputs_needed=["document_pdfs"],
         finding_type="probabilistic",
-        finding_schema={"check_id": "str", "severity": "str", "message": "str",
-                        "extracted_value": "any", "listing_value": "any",
-                        "determinability": "str"},
+        finding_schema={"doc_num": "int", "check_id": "str", "severity": "str",
+                        "message": "str", "extracted_value": "any", "listing_value": "any",
+                        "extraction_source": "str", "determinability": "str",
+                        "validation_status": "str"},
+        config_keys=[],
     ),
 ]
 

@@ -1620,7 +1620,7 @@ Package: `agent/` — stdlib only, zero `anthropic` import in the package itself
 | File | Role |
 |---|---|
 | `agent/schemas.py` | Data model: `Tier` enum (0/1/2/3); `ToolSpec`, `CheckSpec`, `LedgerEntry`, `ProposalArtifact`, `RunBudget` dataclasses. No logic, no side-effects on import. |
-| `agent/registry.py` | `REGISTRY` (dict[str, ToolSpec]) — 8 tools (4 Tier-0, 4 Tier-1; zero Tier-2-executing). `CHECK_REGISTRY` (dict[str, CheckSpec]) — 14 entries, v0/PROVISIONAL. `get_tier(name)` returns `Tier.THREE` for any absent name. `allowed_tools()` returns Tier-0 + Tier-1 tools only. |
+| `agent/registry.py` | `REGISTRY` (dict[str, ToolSpec]) — 8 tools (4 Tier-0, 4 Tier-1; zero Tier-2-executing). `CHECK_REGISTRY` (dict[str, CheckSpec]) — 14 entries, **v1** (T5.2c ratified; `CHECKSPEC_STATUS = "v1"`; reconciled iras_basis/finding_schema + additive `config_keys` applicability gate). `get_tier(name)` returns `Tier.THREE` for any absent name. `allowed_tools()` returns Tier-0 + Tier-1 tools only. |
 | `agent/justification.py` | `validate_justification(text)` — heuristic gate: rejects absent, trivially short, or obviously generic justifications. Backstop to the system prompt rule; not a semantic checker. |
 | `agent/ledger.py` | `Ledger` — append-only hash-chained justification ledger. Reuses `audit_bundle/canonical.py` primitives. Each `LedgerEntry` carries `prev_hash` + `entry_hash`; genesis sentinel `sha256:000…`. `append(entry)` and `verify()`. Extended in T5.2b with `Ledger.from_entries(list[dict])` for sealed-JSON reload. |
 | `agent/proposals.py` | `StagingStore` — in-memory dict[str, ProposalArtifact] keyed by `proposal_id`. `add_proposal`, `get_proposal`, `pending_proposals`, `approve`, `reject`. Approval dispatches to the executor; rejection marks the artifact. |
@@ -1643,15 +1643,60 @@ Package: `agent/` — stdlib only, zero `anthropic` import in the package itself
 
 No Tier-2-executing tool exists in the registry. `propose_action` is the only path to Tier 2; the deterministic executor fires only after human approval.
 
-**Check registry — v0/PROVISIONAL:**
+**Check registry — v1 (T5.2c, ratified coordination contract):**
 
 14 CheckSpec entries: E1, E2, E3, E4, NO_GST_REG, COMPLETENESS, SEQ_GAP, DUP_CLAIM,
 declared_A, declared_B, gst_amount_mismatch, correct_period, total_inconsistency,
-reg11_supplier_gst_absent. **Not wired to any consumer.** Collin must ratify the schema
-after T2.18 (config scheme block) lands — check_id/iras_basis will be reconciled against
-the canonical IRAS VatGroup remap and T2.18 config_keys then (additive, non-breaking).
-The status constant `CHECKSPEC_STATUS = "v0/PROVISIONAL"` in `agent/registry.py` signals
-the non-frozen contract until T5.2c.
+reg11_supplier_gst_absent. T5.2c (2026-06-17) graduated the registry from
+v0/PROVISIONAL to **v1**: each entry's `iras_basis` and `finding_schema` were
+reconciled against the real check implementation, the additive **`config_keys`**
+applicability field was added, and `CHECKSPEC_STATUS` in `agent/registry.py` was
+flipped `"v0/PROVISIONAL" → "v1"`. The contract is finalised + reconciled but
+**NOT real-client validated** (T2.11 gates customer-facing claims); the frozen
+T2.18 scheme flags are untouched. Collin co-owns CheckSpec and ratifies the
+contract at merge. The reconciliation table below is the ratification artifact.
+
+`config_keys` is an **applicability gate** — which T2.18 ClientConfig scheme flags
+(`actively_makes_exempt_supplies`, `participates_in_mes`, `participates_in_igds`,
+`reverse_charge_applicable`) must be True for a check to *run* for a client; `[]`
+(the default) means the check always applies. It is **NOT routing**: the exempt
+Template-4/5 split stays a report-layer concern (`report/routing.py`) and must
+never move into `config_keys`, or the planner would drop E2 for non-exempt
+clients. All 14 current checks are unconditional (`config_keys=[]`); the field is
+reserved for future scheme-specific (MES/IGDS/reverse-charge) checks.
+
+**T5.2c reconciliation table** (entry ↔ corrected iras_basis ↔ inputs_needed ↔
+finding_schema ↔ config_keys — Collin's ratification artifact):
+
+| check_id | iras_basis | inputs_needed | finding_schema | config_keys |
+|---|---|---|---|---|
+| E1 | **corrected** → GST Act s21(3) zero-rating of exports/intl services (guide §5.8, Box 2; *verified against repo guide PDF*) | sales_invoices, vat_group_mapping | enriched detect shape `{severity,error_code,doc_num,doc_date,card_name,description,recommendation}` | `[]` |
+| E2 | **corrected** → guide §5.8–5.9 (zero-rated/exempt) + GST (General) Regs 26 & 27 (BL) (*verified against repo guide PDF*) | sales_invoices, purchase_invoices, vat_group_mapping | enriched detect shape | `[]` |
+| E3 | unchanged (s10 output+input tax) | **+purchase_invoices** (fires on purchase TX zero-tax) | enriched detect shape | `[]` |
+| E4 | unchanged | sales_invoices, purchase_invoices, applicable_gst_rate | enriched detect shape | `[]` |
+| NO_GST_REG | unchanged (s19(1)/Reg 11) | purchase_invoices, **supplier_catalog** (load-bearing slot) | enriched detect shape (+doc_date) | `[]` |
+| COMPLETENESS | unchanged (ASK §10.1(d)) | invoice_counts, completeness_threshold | detect shape, doc_num/doc_date/card_name = None | `[]` |
+| SEQ_GAP | unchanged (ASK §10.1(c)(i)) | sales_invoices, all_period_invoices | +series_min, series_max, note | `[]` |
+| DUP_CLAIM | unchanged (ASK §10.1(d)(i)) | purchase_invoices | +card_code, doc_total, note | `[]` |
+| declared_A | unchanged | declared_f5 | +declared_box4\|8, expected_box4\|8 | `[]` |
+| declared_B | unchanged (ASK §10.1(d)(iii) fn33) | declared_f5, computed_boxes | +finding_type, box_label, direction, tolerance_applied, hypothesis | `[]` |
+| gst_amount_mismatch | unchanged (s19/Reg 11) | document_pdfs, sap_listing | DocumentCandidate `{doc_num,check_id,severity,message,extracted_value,listing_value,extraction_source,determinability,validation_status}` | `[]` |
+| correct_period | **kept original + TODO** (s20 time of supply; statutory section unverifiable from repo guides — flagged for Collin/specialist) | document_pdfs, sap_listing | DocumentCandidate shape | `[]` |
+| total_inconsistency | unchanged (s19/Reg 11) | document_pdfs | DocumentCandidate shape | `[]` |
+| reg11_supplier_gst_absent | unchanged (Reg 11) | document_pdfs | DocumentCandidate shape | `[]` |
+
+Notes: (1) E1–E4 `finding_schema` encodes the **enriched detect shape** because
+`agent/dossier.extract_findings` reads E1–E4 from `compile_output["detect"]["issues"]`
+at the loop boundary (same fields as NO_GST_REG), not the classify-line shape
+(which only `report/enrich()` consumes). (2) The only `inputs_needed` change is
+E3 (+purchase_invoices, engine-seeded) — it does NOT touch any agent-gathered
+slot, so the round-2-validated slot contract (NO_GST_REG → supplier_catalog; the
+four document checks → document_pdfs) is intact. (3) Stale-code scan: no
+pre-Annex-E `SO`/`SI` literals in `CHECK_REGISTRY` (codes are SR/TX-normalised at
+runtime). (4) E1/E2 citations were verified against the in-repo IRAS guide PDF;
+correct_period's statutory section could not be confirmed from the repo guides, so
+the original `s20` was retained with a flagged TODO rather than freeze an
+unverified citation.
 
 **Test state (T5.2a):** 89 new tests (T-1 through T-10) in 7 test files
 (`test_agent_registry.py`, `test_agent_justification.py`, `test_agent_ledger.py`,
