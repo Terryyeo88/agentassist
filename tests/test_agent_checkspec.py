@@ -108,16 +108,17 @@ class TestCheckSpecProofOfFit:
                 f"{check_id!r} should be deterministic"
             )
 
-    def test_checkspec_is_provisional_v0(self):
-        """Smoke-test that provisional marker exists in the registry module.
+    def test_checkspec_is_ratified_v1(self):
+        """Smoke-test that the registry exports the ratified v1 contract marker.
 
-        CheckSpec v0/PROVISIONAL: not wired into any consumer. Collin ratifies
-        the schema before building deterministic checks against it. check_id and
-        iras_basis reconcile against IRAS VatGroup remap and T2.18 config_keys
-        when those land (additive, non-breaking — config_keys re-adds for D+ checks).
+        T5.2c graduated CheckSpec from v0/PROVISIONAL to v1: reconciled against the
+        real check implementations and frozen as the coordination contract T5.4
+        consumes (config_keys added as an applicability gate; iras_basis /
+        finding_schema matched to reality). Collin co-owns CheckSpec and ratifies
+        the contract at merge. See tests/test_t52c_checkspec_finalisation.py.
         """
         import agent.registry as reg_mod
         assert hasattr(reg_mod, "CHECKSPEC_STATUS"), (
-            "agent/registry.py must export CHECKSPEC_STATUS to signal v0/PROVISIONAL"
+            "agent/registry.py must export CHECKSPEC_STATUS to signal the contract version"
         )
-        assert reg_mod.CHECKSPEC_STATUS == "v0/PROVISIONAL"
+        assert reg_mod.CHECKSPEC_STATUS == "v1"
