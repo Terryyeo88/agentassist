@@ -619,11 +619,27 @@ menu's intents map onto the planner's check sequences) and is sequenced after it
 distinction is deliberate — the two are easy to conflate and must not be.
 
 **Three slices:**
-- **T5.9a — bounded intent menu + dispatch** (hermetic, demo-critical; depends on T5.4): a FIXED
-  menu of intents, each mapping to a tier-classified action sequence; selecting an intent dispatches
-  the corresponding bounded sequence. This is Invariant 6's "fixed menu of intents mapping to
-  tier-classified action sequences" made into a surface — **"the menu is the cage at the product
-  layer."**
+- **T5.9a — bounded intent menu + dispatch — DONE (2026-06-17, branch `t5.9a-intent-surface`;
+  built + hermetically tested; NOT live/accuracy validated).** `agent/intent.py` is the FIXED
+  `INTENT_MENU` (v0/PROVISIONAL: `RUN_REVIEW`→`run_review_chain` [Tier 1]; `SHOW_LEDGER`,
+  `SHOW_PROPOSALS`→`read_ledger` [Tier 0]; `SHOW_PRIOR_ADJUDICATIONS`→`read_prior_period_treatment`
+  [Tier 0]) plus a deterministic `dispatch(intent, params)` router. This is Invariant 6's "fixed
+  menu of intents mapping to tier-classified action sequences" made into a surface — **"the menu is
+  the cage at the product layer."** Two structural guarantees, the T5.9 twins of the planner's
+  ⊆-registry: (1) **⊆-MENU** — `dispatch` asserts `intent ∈ INTENT_MENU` (else `IntentError`; a raw
+  tool name is not an intent), and a build-time check asserts every menu action is a real registry
+  tool (`get_tier(action) is not Tier.THREE`); (2) **no tier escalation** — `DispatchResult.tiers`
+  is READ from `registry.get_tier` per action, never assigned, so the surface dispatches only to the
+  registry's existing Tier-0/1 actions (never a Tier-2 effect — that stays behind `propose_action` +
+  human approval — never a Tier-3 absent action). Identity-bearing slots are never guessed: a missing
+  or blank `client_id`/`period` yields a structured `NeedsClarification`, not a fabricated default.
+  Failing-test-first; `agent/` purity (orchestrator/ imports nothing from agent/; zero
+  anthropic/SDK/SAP/network). NO NL classifier (T5.9b) and NO chat UI (T5.9b/c) here; `INTENT_MENU`
+  is v0/PROVISIONAL. `SHOW_PROPOSALS` shares the Tier-0 `read_ledger` with `SHOW_LEDGER` because no
+  dedicated proposals-read tool exists yet (proposals are staged/ledgered) — distinct intents, same
+  in-tier read, no added authority. +29 tests (`tests/test_t59a_intent_surface.py`), full suite
+  **1744 passed, 1 skipped**. T2.11 still gates customer-facing; T4.1 platform stays gated. See
+  `AGENTASSIST_TECHNICAL_STATE.md` §T5.9a.
 - **T5.9b — NL classifier + clarify-on-miss**: a free-text front door whose intent ROUTER maps
   natural language onto the bounded intent space (free-text → bounded intent). Slot-filling that
   **NEVER guesses identity-bearing slots (client / period)** — on a miss it asks for clarification
@@ -739,6 +755,12 @@ Supervised, attended live MECHANISM-validation run (not a feature build): the ar
 `AGENTASSIST_TECHNICAL_STATE.md`: §T5.3 "Live validation (T5.3-V) — round-2 real-ctx live run (2026-06-16)" subsection added. Roadmap: §T5.3 T5.3-V round-2 paragraph added; D18 added.
 `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md`: **checked — no change required.** This is an agent-layer live run; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content.
 Pedagogical reference docs: out of repo — not chased. Docs + exploration-notes only.
+
+### D19 — T5.9a intent surface (bounded menu + dispatch) build + docs-sync — DONE (2026-06-17, branch t5.9a-intent-surface)
+Build (not docs-only): `agent/intent.py` — the FIXED `INTENT_MENU` (v0/PROVISIONAL) + deterministic `dispatch(intent, params)` router; `IntentSpec`/`DispatchResult`/`NeedsClarification`/`IntentError`. The product front door as Invariant 6 made into a surface ("the menu is the cage at the product layer"): dispatch routes a validated intent + explicitly-bound params to its declared tier-classified sequence of EXISTING registry actions, granting no out-of-tier authority and emitting no non-menu intent. **⊆-MENU** (`dispatch` asserts `intent ∈ INTENT_MENU` else `IntentError`; build-time `_assert_menu_well_formed` asserts every action is a real registry tool via `get_tier ≠ Tier.THREE`) and **no tier escalation** (`DispatchResult.tiers` READ from `get_tier`, never assigned). Identity-bearing slots never guessed — missing/blank `client_id`/`period` → structured `NeedsClarification`. v0 menu: `RUN_REVIEW`→`run_review_chain` [T1], `SHOW_LEDGER`/`SHOW_PROPOSALS`→`read_ledger` [T0], `SHOW_PRIOR_ADJUDICATIONS`→`read_prior_period_treatment` [T0]; `SHOW_PROPOSALS` shares `read_ledger` (no proposals-read tool yet — Terry approved option (a)). Failing-test-first; **+29 tests** (`tests/test_t59a_intent_surface.py`), full suite **1744 passed, 1 skipped** (origin/master `dffed8f`/T5.5 base 1715 + 29). NO NL classifier (T5.9b), NO chat UI (T5.9b/c); hermetic; NOT live/accuracy validated; T2.11 gates customer-facing; T4.1 platform stays gated. Provisioning: branched off `origin/master` `dffed8f` (local master stale ahead-1/behind-6); cherry-picked the local-only docs-only `3f5fe3b` (T5.9 roadmap entry + Invariant 6 amendment, absent from origin) forward as `18fe954`.
+`AGENTASSIST_TECHNICAL_STATE.md`: **§T5.9a** subsection added under §T5.9; §T5.9 heading/status flipped to "T5.9a DONE; T5.9b/c PLANNED"; footer D19 added. Roadmap: **T5.9a slice PLANNED→DONE** (T5.9b/c stay PLANNED); D19 added.
+`exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md`: **checked — no change required.** T5.9a is a product-surface routing layer; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content.
+Pedagogical reference docs: out of repo — not chased.
 
 ---
 
