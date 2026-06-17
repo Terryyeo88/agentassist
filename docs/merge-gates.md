@@ -47,6 +47,7 @@ The correct allowed/forbidden map:
 | `agent/` | YES (lazy, SDK) | — | YES | NO |
 | `run_agent.py` | NO (orchestrator glue) | YES | YES | YES |
 | `ui/` (T5.8 demo) | **NO** (direct) | YES | YES | via `engine/` |
+| `feeders/` (T2.12 extract) | **NO** | **NO** | **NO** | **NO** |
 
 **`ui/` import posture (T5.8 demo showcase — documentation only, NOT a Gate-a grep):**
 The `ui/` package is a new top-level consumer. It **may** import `agent/`, `engine/`, and `report/`
@@ -59,6 +60,18 @@ import-scan grep, and **no CI gate is added for `ui/` in this docs-sync** (addin
 out of scope here). *Consider promoting this to a grep gate later* (an import-scan over `ui/` for
 `anthropic`/`claude_agent_sdk`) if `ui/` grows beyond the demo or the guard test proves insufficient.
 
+**`feeders/` import posture (T2.12 extract feeder — documentation only, NOT a Gate-a grep):**
+The `feeders/` package is a new top-level **leaf**: it holds alternate `ChainReader`
+implementations (the T2.12 Excel/CSV extract feeder) that satisfy the seam **structurally**
+(duck-typed — it neither imports nor widens the `ChainReader` Protocol in `sap_b1_server.py`).
+It is **injected-only** (`run_chain(reader=ExtractChainReader(...))`); nothing in
+`orchestrator/`/`engine/`/`agent/` imports it. It **must not** import `anthropic`, the
+Claude Agent SDK, live-SAP machinery (`sap_b1_server`/`SAPB1Client`), or `orchestrator`/
+`engine`/`agent` — it is pure stdlib (+ `openpyxl`, lazily, on the `.xlsx` path only). This
+posture is currently verified by the T2.12a round-trip + a feeder-purity check in the
+pre-merge run, **not** by a CI grep (adding one is a code change, out of scope for this
+docs-sync). *Consider promoting to an import-scan grep over `feeders/` later* if the package
+grows beyond the extract adapter.
 **Re-checked at T5.8d (review-surface rebuild, 2026-06-17):** posture unchanged. The new
 `ui/views/review.py` imports only `streamlit` + `agent.lint`/`agent.artifacts` view-models + `ui.sign`
 (no `anthropic`/SDK); the two new `ui/artifacts.py` accessors add only `agent.registry` (anthropic-free),
@@ -224,3 +237,6 @@ git merge --no-ff <branch> -m "Merge <branch>: <one-line summary>
   forbidden-imports list for `orchestrator/`. The `engine/` package wraps the full GST review
   pipeline (calling into `orchestrator/`); the dependency direction is engine→orchestrator,
   never reverse. The CI import-scan step updated accordingly.
+- **2026-06-17:** T2.12 extract feeder (slice A) — `feeders/` added to the allowed/forbidden
+  import map as a top-level leaf (imports nothing upward; injected-only `ChainReader` impls).
+  Posture documented (mirrors the `ui/` note); **no CI grep added** (a code change, deferred).
