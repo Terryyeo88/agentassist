@@ -1959,6 +1959,71 @@ detect issues for the same reason. See Appendix C for the open T2.11 decision (c
 
 ---
 
+## T5.4 — Check planner (on branch `t5.4-check-planner`; routing over the fixed v1 registry; built + hermetically tested; NOT live/real-client validated)
+
+### Status
+
+Built on branch `t5.4-check-planner` (off `origin/master` `cff57fb` — the T5.2c merge that
+graduated `CHECKSPEC_STATUS` to **v1**). +21 hermetic tests; full suite **1683 passed, 1 skipped**
+on the branch. Failing-test-first. **NOT live-validated, NOT real-client validated** — T2.11 remains
+the binding customer-facing gate; the frozen T2.18 flags and v1 CheckSpec are untouched.
+
+### What it is
+
+`agent/planner.py::plan_checks(client_config)` is a deterministic ROUTER: it selects the applicable
+subset of CheckSpec entries from the FIXED v1 `CHECK_REGISTRY` for a client. It is routing, not
+invention — the output is ALWAYS a subset of the registry's `check_ids` (a hard `_assert_subset`
+invariant raises `PlannerError` on any non-registry emit) and the planner never composes new check
+logic. The only applicability input is `client_config`; run-state coupling (VatGroups/findings) is
+deliberately omitted until a check actually needs it (then with a test that exercises it).
+
+### Applicability gate (mechanism vs. today's behaviour — two distinct proofs)
+
+A CheckSpec is in-plan iff `set(spec.config_keys) ⊆ {the client's satisfied T2.18 scheme flags}`;
+empty `config_keys` (the default) == an empty set ⊆ anything == the check ALWAYS applies. The four
+flags are the frozen T2.18 `ClientConfig` booleans (`SCHEME_FLAGS`: `actively_makes_exempt_supplies`,
+`participates_in_mes`, `participates_in_igds`, `reverse_charge_applicable`), read with a `getattr`
+False default so a malformed config never crashes and never escapes the registry. **All 14 current
+checks carry `config_keys=[]`, so today every check is in every plan** — the gate is built correct for
+when scheme-gated (MES/IGDS/RC) checks land but bites nothing now. The test suite proves BOTH (and
+keeps them separate because they prove different things): (a) with every real `config_keys=[]`, the
+plan == every registry check in registry order (nothing dropped); (b) a SYNTHETIC injected CheckSpec
+`config_keys=["participates_in_mes"]` is included iff the flag is True and excluded otherwise (the gate
+can actually EXCLUDE — and a *different* flag being True does not satisfy an MES gate).
+
+### Fingerprint + tier model
+
+`plan_fingerprint` = `compute_inputs_hash({"check_ids": sorted(applicable), "config": {the four
+flags}})` — the shared PUBLIC anchoring primitive from `agent/proposals.py` (sha256 over canonical
+JSON, `"sha256:"`-prefixed). Sorting the check_ids makes the identity order-independent; including the
+four flag values makes any profile change drift the fingerprint even when the resulting check set is
+identical (so flipping `participates_in_mes` on the all-unconditional real registry re-escalates even
+though the 14 checks are unchanged — a profile change is a re-approval trigger). `CheckPlan.check_ids`
+stays in REGISTRY order for execution; `period` is metadata, NOT in the fingerprint (re-running the
+same checks in a new period does not force re-approval).
+
+Tier disposition compares the fingerprint to the prior HUMAN-APPROVED plan in `ApprovedPlanStore` (an
+in-memory dict keyed by `client_id`, co-located in `planner.py` — extract to `agent/plan_store.py`
+only if it gains persistence or a second consumer):
+
+  * **no prior approved plan, OR fingerprint differs → Tier 2:** a PENDING `ProposalArtifact` is built
+    via the relay-only `build_proposal` and staged (if a `StagingStore` is supplied). The model never
+    calls `propose_action` (an unbacked tool) — `plan_checks` is plain Python, the same staging
+    pattern as `agent/loop.py` / `agent/executor.py`.
+  * **fingerprint matches → Tier 1:** no proposal.
+
+The approved plan is recorded ONLY on human approval of the proposal (`confirm_approved_plan` refuses
+unless `proposal.status == "approved"`), NEVER on generation. The tested lifecycle: first plan → Tier
+2 → approve → record → identical re-plan → Tier 1 → mutate one flag → fingerprint differs → Tier 2.
+
+### Layering / hermeticity
+
+`agent/planner.py` is pure stdlib + intra-`agent`/`config` imports — no `anthropic`, no SAP, no
+network (AST-scanned in the tests). It lives in `agent/`; `orchestrator/` does not import it
+(import-scan asserts `orchestrator/` imports no `agent`). No live model / SAP / tokens.
+
+---
+
 ## T5.7a — Agent-behaviour eval harness (on master; measurement infra; cage-invariant metrics)
 
 ### Status
@@ -3479,3 +3544,5 @@ Updated 2026-06-15 (D12: T2.21b docs-sync, SOP step 7 — Appendix C #32 added f
 Updated 2026-06-16 (D16: post-offline-replay status + methodology docs-sync — verification-first; read the merged code/fixtures on master before writing. Added a §T2.12a section (six read surfaces S0–S5 frozen verbatim under `tests/fixtures/sbodemosg-extract/` + same-session `_replay-oracle.compiled.json` + `capture-manifest.json` per-fixture SHA-256/`source_function` provenance, EOL pinned `.gitattributes eol=lf`, hermetic integrity test, demo-data/no-PDPA; offline-replay gate PASSED — `run_chain` off the frozen fixtures with SAP unreachable == oracle byte-for-byte via `canonical_json`, commit `b61f219`; honest caveats: freeze-sufficiency + offline reproducibility ONLY, NOT accuracy (T2.11), NOT the Excel adapter (T2.12), **S4 reasoning-pass surface OUT OF SCOPE** — frozen but not replay-validated; test harness not product adapter, `orchestrator/` untouched; T2.19 oracle-passthrough provenance; validation-substrate shift — SOP step 2 live-recon→fixture-recon, step 5 seed-live/chain-acceptance→offline-replay acceptance with PDF-render retained, B1 expendable for the deterministic path, honest-status ladder). **Corrected the Gate-1 `@odata.count` attribution** everywhere it appeared (Gate-1 dormancy bullet ~689, smoke-run table ~1326, live-FP note ~1365): the v2 SL DOES return `@odata.count`; `orchestrator/steps.py:156` reads the unprefixed key, so Gate 1 warn-passes unconditionally and incomplete pagination is uncaught — a v1→v2 key-prefix bug, not a missing SAP feature; cross-ref backlog #5; fix out of scope. Reflected **T2.19** merged to master (PR #8/`3cc379c`) with the oracle-passthrough note (exec summary + Appendix C #30); updated the re-derivability boundary + Appendix C #16 (offline-replay capability now demonstrated; product adapter T2.12 still future). Reflected **T5.7c (ledger-name parity)** merged (PR #32/`67c8f09`; `t5.7b-` branch label collides with the earlier loop-quality T5.7b/#18, tracked as T5.7c to keep labels distinct) — fakes normalized to namespaced `mcp__reads__` names, T5.3g slot binding byte-unchanged, +5 tests. **Roadmap NOT flipped to Excel-primary** — the extract pivot is recorded as decided + in progress with T2.12 as the next build. Test count not recomputed (docs-only; 1513 remains the authoritative T5.3c figure, T5.7c +5 / T2.12a +1 additive). `docs/merge-gates.md` + `exploration-notes/iras-ask-coverage-analysis.md` checked — no change required. Pedagogical reference docs out of repo — not chased. Docs-only; no source/test change. D16 added to roadmap docs tasks).*
 
 Updated 2026-06-16 (D17: T5.8 demo UI + T5.3h real LoopContext docs-sync — verification-first; confirmed BOTH merged to master (T5.3h PR #35/`8785f92`, T5.8 PR #36/`79e451f`, T5.8b shim PR #37/`0f3b20a`; master ff'd to `426185b`) and read the merged code before writing. Added a **§T5.3h** subsection under §T5.3 (`agent/loop_context.py` `build_loop_context` — decision A1 inject the OFFLINE-replayed `ReviewResult`, pure assembler, no SAP/monkeypatch/SDK; `build_vendor_catalog` from the S3 business-partners surface re-keyed by CardName surfacing only `gst_registered`/`gst_reg_no` from `FederalTaxID`; `AbsentDocumentProvider` + empty prior-period store = honest SBODEMOSG degraded case; `BuiltLoopContext`; decision B1 chain-only — `reasoning_artefact=None`/`document_candidates=None`; reusable `tests/replay_shim.py` extracted byte-preserving from the inline T2.12a fixture, `install_replay_patches`/`frozen_extract_sap`/`replay_chain`/`replay_review`; honest — hermetic/scripted, NOT live-validated (T5.3-V round-2 + T5.3g PENDING), NOT accuracy-validated, T2.12a byte-identity gate intact). Added a **§T5.8** section (`ui/` package — `app.py` fixed-nav 4 views + T5.8b `sys.path` shim so `streamlit run ui/app.py` works from a fresh checkout; `engine_seam.py` MockEngine default / RealEngine lazy drop-in over `engine.review.review`; `artifacts.py` pure view-models with frozen `VALIDATION_STATUS="unvalidated"`; four views; `sign.py` adjudication→Sign over the EXISTING `report.build_report`→`render_pdf` path with `show_ai_candidates` RESPECTED (read from YAML, default False) + no secrets + box-isolation; build-time `freeze()` vs render-time boundary + schema-stability tripwire; honest — mock-first, showcase-not-product, GATED, built ≠ demo-validated; Mock+Sign path imports no anthropic/SDK/`agent.loop`, guard-tested). Exec-summary running-count paragraph + master-total line updated 1513 → **1608 passed, 1 skipped** (authoritative full-suite recount run once in the worktree, 801.93s). Added **Appendix C #33** — the `finding_id` collision on `(source, check_id, doc_num)` (23→20 unique on the frozen extract, 23→21 staged in the demo; open T2.11 decision collapse-vs-keep). `docs/merge-gates.md` — **doc-note added** (a `ui/` row in the allowed/forbidden map + a note that the posture is enforced by the T5.8 guard test, NOT Gate a's grep, no CI gate; plus a "consider promoting to a grep gate later" pointer). `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md` checked — **no change required** (T5.8/T5.3h are UI/agent-layer infra; they change no deterministic IRAS-ASK coverage cell and touch no VatGroup→F5-box routing or tax-domain content). `exploration-notes/operational-backlog.md` — added item 6 (`finding_id` collision) + item 7 (Streamlit launch-smoke process note). Pedagogical reference docs out of repo — not chased. Docs-only; staged diff `.md`-only. D17 added to roadmap docs tasks).*
+
+Updated 2026-06-17 (D18: T5.4 check planner — build + docs-sync on branch `t5.4-check-planner` (off `origin/master` `cff57fb`, the T5.2c v1 merge). Phase-1 recon first confirmed the precondition: `CHECKSPEC_STATUS="v1"` + `config_keys` is a real `CheckSpec` field on `origin/master` (local master was 2 commits stale — `cff57fb`/PR #45 was on the remote, not local; the worktree branched fresh from origin and carries v1). Added `agent/planner.py` (`plan_checks(client_config)` deterministic router over the FIXED v1 `CHECK_REGISTRY`; `CheckPlan`/`PlanResult`/`ApprovedPlanStore`/`compute_plan_fingerprint`/`confirm_approved_plan`; applicability = `config_keys ⊆ satisfied T2.18 flags`, empty == always; hard `_assert_subset` ⊆-registry invariant; fingerprint via the shared public `compute_inputs_hash` over sorted check_ids + the four flags, period excluded; Tier model first/drift→Tier-2 relay-only `build_proposal`+stage, match→Tier-1, approved plan recorded ON APPROVAL only). Added a **§T5.4** section under §T5.3/before §T5.7a. Roadmap **T5.4 PLANNED→DONE**. **+21 hermetic tests** in `tests/test_t54_planner.py` (failing-test-first; cases a/b/c/d + the SYNTHETIC `config_keys=["participates_in_mes"]` mechanism test + fingerprint determinism + orchestrator-purity/no-anthropic AST import-scan). Full-suite recount on the branch: **1683 passed, 1 skipped** (= the current origin/master `cff57fb`/post-T5.2c base of 1662 + 21 from T5.4; the prior **1641** figure was the T5.8c master recount, since superseded on origin/master by intervening merges incl. T5.2c). Honest: built + hermetically tested, NOT live/real-client validated; T2.11 gates customer-facing; frozen T2.18 flags + v1 CheckSpec untouched; `orchestrator/` purity intact (planner in `agent/`). `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md` checked — **no change required** (T5.4 is agent-layer routing infra; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content). Branch not yet merged; the 1641/1662 master figures elsewhere in this doc are left for their owning entries to reconcile at merge. D18 added to roadmap docs tasks).*
