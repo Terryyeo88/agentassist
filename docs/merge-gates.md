@@ -59,6 +59,14 @@ import-scan grep, and **no CI gate is added for `ui/` in this docs-sync** (addin
 out of scope here). *Consider promoting this to a grep gate later* (an import-scan over `ui/` for
 `anthropic`/`claude_agent_sdk`) if `ui/` grows beyond the demo or the guard test proves insufficient.
 
+**Re-checked at T5.8d (review-surface rebuild, 2026-06-17):** posture unchanged. The new
+`ui/views/review.py` imports only `streamlit` + `agent.lint`/`agent.artifacts` view-models + `ui.sign`
+(no `anthropic`/SDK); the two new `ui/artifacts.py` accessors add only `agent.registry` (anthropic-free),
+keeping `artifacts.py` Streamlit-free and model-free; the new `.streamlit/config.toml` is theme config
+only (no imports). The T5.8 guard test still passes, and an additional headless-import test
+(`tests/test_t58d_review_surface.py::test_artifacts_import_is_headless`) asserts importing `ui.artifacts`
+pulls no `streamlit`/`anthropic`/`engine.review`/`agent.loop`. `ui/` row above stays accurate.
+
 **Why this exact form — not `grep -r "anthropic" orchestrator/`:**
 
 The plain-string form produces false positives on comments and docstrings. On 2026-06-09

@@ -1,0 +1,11 @@
+# T5.8d — Claude-like calm theme for the reviewer demo surface.
+# Warm paper background, neutral ink, clay accent reserved for primary actions
+# (the Sign button is the only type="primary" control). Additive presentation only —
+# no behavior change, no engine coupling.
+[theme]
+base = "light"
+primaryColor = "#C96442"               # clay — reserved for the Sign action
+backgroundColor = "#F5F1EB"            # warm paper
+secondaryBackgroundColor = "#EDE7DD"   # sidebar / cards
+textColor = "#2B2926"                  # neutral ink
+font = "sans serif"
