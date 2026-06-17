@@ -42,6 +42,13 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
    - **Scope:** the fix itself is **out of scope here** — separate failing-test-first task (write
      a test asserting Gate 1 reads `@odata.count` and FAILs on a real mismatch, then correct the
      key). Found read-only during T2.12a read-surface recon; nothing changed in this commit.
+   - **T2.12 extract-feeder note (2026-06-17, slice A):** the new `feeders.ExtractChainReader.count()`
+     returns the export's **TRUE** row count (an export carries every row, so it counts honestly) —
+     it does NOT reproduce this dormant `None`. The SAP path (`SapChainReader.count`) and the frozen
+     oracle / `tests/replay_shim.py::FrozenExtractReader.count` are **untouched** — both still mirror
+     the bug, both still coupled to the pending re-freeze. The feeder's `count()` is therefore
+     unit-tested against the known count ONLY and is **never** asserted against the frozen S0 /
+     oracle; the full `run_chain`-over-feeder vs-oracle byte-identity stays gated on this re-freeze.
 
 6. **`finding_id` collision on `(source, check_id, doc_num)` (found T5.3h/T5.8, 2026-06-16).**
    - **Root cause:** `agent.dossier.extract_findings` derives `finding_id = f"detect:{code}:{doc_num}"`
