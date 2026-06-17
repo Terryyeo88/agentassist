@@ -2215,6 +2215,40 @@ later step. See the roadmap "on the horizon" note.
 
 ---
 
+## T5.9 — Intent surface (end-user) (PLANNED; gated on the DEMO, not a paying customer)
+
+**Status: PLANNED — not built.** The end-user-facing intent surface: the front door through which a
+user expresses what they want, mapped onto the bounded, tier-classified action sequences the cage
+already enforces (Tier-5 Invariant 6). **Pulled forward to pre-demo, decoupled from the
+paying-customer gate** — it is product-intrinsic UX, not a delivery-model feature. The prior
+paying-pilot gate conflated a product feature (how an end user drives bounded autonomy) with the
+delivery model (who pays). Sequenced **AFTER T5.4**. See the roadmap §T5.9 for the canonical task
+definition.
+
+**Explicitly NOT T5.4.** T5.9 (end-user intent surface — how a human expresses intent into the
+bounded menu) is distinct from T5.4 (check planner — internal selection/sequencing of which
+deterministic checks run). T5.4 routes *checks*; T5.9 routes a *human's expressed intent* onto a
+bounded action sequence. T5.9 depends on T5.4 and is sequenced after it.
+
+**Three slices:** **T5.9a** bounded intent menu + dispatch (hermetic, demo-critical; depends on
+T5.4) — a FIXED menu of intents, each mapping to a tier-classified action sequence; "the menu is the
+cage at the product layer." **T5.9b** NL classifier + clarify-on-miss — a free-text front door whose
+intent ROUTER maps natural language onto the bounded intent space; slot-filling that NEVER guesses
+identity-bearing slots (client / period), asking for clarification on a miss; untrusted-input
+discipline (the router classifies, never obeys). **T5.9c** demo hardening — curated utterances +
+MockEngine canned answers + buttons fallback.
+
+**Invariant 6 — surface-forward amendment (2026-06-17):** the intent SURFACE is pulled forward to
+pre-demo (T5.9); the multi-vertical PLATFORM (T4.1 dashboard) it eventually fronts stays gated.
+Pulling the surface forward is NOT pulling the platform forward — a product feature is distinct from
+the delivery model. Agreed demo narrative: **"the menu is the cage at the product layer."**
+
+**Honest caveat:** the intent surface routes to UNVALIDATED machinery. `show_ai_candidates` stays
+`False`; the demo shows bounded autonomy + human-in-the-loop, **NOT validated accuracy**; T2.11 still
+gates everything customer-facing.
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools

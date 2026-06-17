@@ -23,6 +23,12 @@ doc is **authoritative** for which facts. When two docs touch the same subject, 
 | Merge Gates | `docs/merge-gates.md` | Process | Terry, Collin, CI | **The enforced gates** (import-scan, flake8, cage invariants) a PR must pass. |
 | Operational Backlog | `exploration-notes/operational-backlog.md` | Process / backlog | Terry | Open operational items not yet scheduled as roadmap tasks. |
 
+> **Surface vs platform (2026-06-17).** The end-user **intent surface** is roadmapped as **T5.9**
+> and pulled forward to **pre-demo** — decoupled from the paying-customer gate, because it is
+> product-intrinsic UX. It is **not** gated behind the **T4.1** multi-vertical platform/dashboard,
+> which stays gated. Pulling the surface forward != pulling the platform forward. The Roadmap (§T5.9,
+> §T4.1, Tier-5 Invariant 6) is authoritative for this distinction; this map only points to it.
+
 ## Out-of-repo — Google Docs; pedagogical; **markdown-sourced, .docx generated for reading**
 
 | Doc | Type | Audience | Authoritative for | Defers to |
