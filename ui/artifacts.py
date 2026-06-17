@@ -22,6 +22,7 @@ from agent.decision_ledger import (
     annotate_and_demote,
     compute_finding_fingerprint,
 )
+from agent.registry import CHECK_REGISTRY
 from ui.engine_seam import DEMO_ARTIFACTS_DIR
 
 # Frozen customer-facing gate state — surfaced as a badge, never flipped by the UI.
@@ -248,3 +249,75 @@ def annotated_adjudication_items(
     # Demote-to-bottom: stable sort keeps original order within each group. Cardinality
     # is unchanged — demotion lowers prominence, it never drops a finding.
     return sorted(items, key=lambda it: it["demoted"])
+
+
+# ── T5.8d task-oriented accessors (PURE; no Streamlit / engine / model) ──────────────
+
+def _primary_evidence_payload(evidence: dict) -> dict:
+    """Pick the canonical detect-issue payload out of a dossier's evidence map.
+
+    Evidence is a map of input-slot -> payload whose shape varies by finding type:
+      * deterministic (E1/E2/NO_GST_REG): one or more slots carry the enriched
+        detect-issue (``description`` + ``error_code`` + ``card_name``); NO_GST_REG also
+        carries a ``supplier_catalog`` decoy slot ({card_name, found, gst_reg_no,
+        gst_registered}) that bears NEITHER ``description`` nor ``error_code``;
+      * probabilistic (gst_amount_mismatch): a ``sap_listing`` payload carrying
+        ``message``/``severity`` (no ``description``/``error_code``/``card_name``), and a
+        ``document_pdfs`` string path (not a dict).
+
+    Selection prefers the payload bearing ``description``/``error_code`` (the deterministic
+    canonical, so the supplier_catalog decoy is never chosen), then falls back to the
+    first dict carrying ``message``/``severity`` (the probabilistic sap_listing), then to
+    the first dict payload, then to ``{}``. Pure: reads only the passed-in map.
+    """
+    dict_payloads = [v for v in (evidence or {}).values() if isinstance(v, dict)]
+    for p in dict_payloads:
+        if "description" in p or "error_code" in p:
+            return p
+    for p in dict_payloads:
+        if "message" in p or "severity" in p:
+            return p
+    return dict_payloads[0] if dict_payloads else {}
+
+
+def flatten_finding_card(item: dict) -> dict:
+    """Surface the buried evidence fields a flat reviewer card needs as top-level keys.
+
+    Off a dossier-view / adjudication-item, picks the canonical evidence payload (see
+    ``_primary_evidence_payload``) and lifts ``vendor`` (← ``card_name``), ``severity``,
+    ``description`` (← ``description`` or ``message`` fallback), ``recommendation``,
+    ``doc_num``, ``doc_date``, ``error_code`` to the top level. Absent fields are ``None``.
+
+    PURE: dict in, dict out. No Streamlit, no engine, no model. Never asserts a verdict —
+    it only re-shapes the candidate evidence the dossier already carries.
+    """
+    p = _primary_evidence_payload(item.get("evidence") or {})
+    return {
+        "vendor": p.get("card_name"),
+        "severity": p.get("severity"),
+        "description": p.get("description") or p.get("message"),
+        "recommendation": p.get("recommendation"),
+        "doc_num": p.get("doc_num"),
+        "doc_date": p.get("doc_date"),
+        "error_code": p.get("error_code"),
+    }
+
+
+def check_reference(check_id: str) -> dict:
+    """Join a ``check_id`` to its human-readable name + IRAS rule citation.
+
+    Reads the frozen v1 ``CHECK_REGISTRY`` (``display_name`` / ``iras_basis``). For an
+    unknown id, falls back safely to ``display_name = check_id`` and ``iras_basis = "—"``
+    so the view never crashes on an unmapped check.
+
+    NOTE: the surfaced ``iras_basis`` citations are THEMSELVES UNVALIDATED (T2.11 gates
+    customer-facing claims); verify against the e-Tax Guides before any customer use.
+    """
+    spec = CHECK_REGISTRY.get(check_id)
+    if spec is None:
+        return {"check_id": check_id, "display_name": check_id, "iras_basis": "—"}
+    return {
+        "check_id": spec.check_id,
+        "display_name": spec.display_name,
+        "iras_basis": spec.iras_basis,
+    }
