@@ -2024,6 +2024,78 @@ network (AST-scanned in the tests). It lives in `agent/`; `orchestrator/` does n
 
 ---
 
+## T5.5 — Decision ledger (on branch `t5.5-decision-ledger`; PURE HERMETIC CORE; built + hermetically tested; NOT wired, NOT live-validated)
+
+### Status
+
+Built on branch `t5.5-decision-ledger` (off `origin/master` `167d2a7` — carries the T5.4 merge PR #46 and
+CheckSpec **v1**). +32 hermetic tests; full suite **1715 passed, 1 skipped** on the branch. Failing-test-first.
+**PURE CORE only — NOT wired** to the loop/demo/executor (a follow-on slice, the way the T5.2 cage core preceded
+T5.3 wiring). **NOT live / real-client validated** — T2.11 remains the binding customer-facing gate; the frozen
+T2.18 flags and v1 CheckSpec are untouched.
+
+### What it is
+
+`agent/decision_ledger.py` is the institutional memory of human reviewer adjudications, keyed by a DETERMINISTIC
+finding fingerprint. Three pieces, all hermetic stdlib:
+
+- **`compute_finding_fingerprint(finding) -> "sha256:..."`** — a PURE function of the finding (NO `compile_output`,
+  NO reconciliation), anchored via the shared `agent.proposals.compute_inputs_hash` primitive (sha256 over canonical
+  JSON). Deterministic, not AI.
+- **`DecisionLedger`** (`append` / `verify` / `lookup(fingerprint)` / `from_entries`) + `AdjudicationEntry` —
+  append-only hash-chained, MIRRORING `agent/ledger.py` (genesis `sha256:`+`0`*64; `entry_hash = sha256(canonical_json(fields)+b"|"+prev_hash)`).
+  Intentionally **no edit/delete API**; `verify()` re-derives every hash and raises `DecisionLedgerVerificationError`
+  on any field mutation or middle-entry deletion. `append` rejects any disposition outside the controlled set.
+- **`annotate_and_demote(findings, ledger) -> list[AnnotatedFinding]`** — CARDINALITY-PRESERVING: exactly one
+  output per input, in order. This is how **never-suppress** is made STRUCTURAL — no code path drops a finding. A prior
+  `KNOWN_ACCEPTED` recurrence yields `demoted=True` + annotation text but the finding STILL renders. A PURE READ
+  (never-train): mutates no findings, no ledger, no model/weight path.
+
+### Fingerprint key (v0/PROVISIONAL — load-bearing correction)
+
+The roadmap's nominal key `(error_code, VatGroup, CardCode, amount band)` PREDATES the real finding shape. A
+`compile_output.detect.issues` entry (the finding surface via `agent.dossier.extract_findings`) carries only
+`severity, error_code, doc_num, doc_date, card_name, description, recommendation` — confirmed at source
+(`sap_b1_server.detect_gst_errors`, ~line 1402). It does NOT carry `vat_group`, a structured `card_code`, or any
+amount; those are dropped at the detect layer and live upstream in `classify.issues`, recoverable only via the
+deferred classify↔detect reconciliation (orchestrator/steps.py:438-440). Detect findings are also `(error_code,
+doc_num)`-granular (doc 974/E1 = 3 line-issues collapsing to one `finding_id`), so amount is not even single-valued.
+
+The v0 key is therefore one explicit documented constant:
+
+```python
+FINGERPRINT_KEYS = ("error_code", "counterparty")   # counterparty = card_name, strip+casefold
+```
+
+`doc_num` is excluded (too specific — defeats cross-period recurrence). Rationale for erring COARSE: with
+never-suppress + mandatory human adjudication, an over-broad demote (still visible, human still adjudicates) is safer
+than a narrow key (amount-in-key → cross-band brittleness → MISSED recurrences). **Enrichment priority for the
+specialist (Collin):** (1) VatGroup (clean categorical; needs the reconciliation built first); (2) CardCode replacing
+card_name; (3) amount_band (last, most contested; needs reconciliation + banding policy + multi-line aggregation).
+**Honest limitation (v0):** without amount in the key, a known-accepted pattern carries forward regardless of
+magnitude — a sudden large instance renders DEMOTED (still visible, never suppressed), not re-promoted.
+
+### Disposition vocabulary (v0/PROVISIONAL)
+
+`KNOWN_ACCEPTED` (standing accepted treatment) → **DEMOTE + annotate** on recurrence — the only demote trigger
+(`DEMOTE_DISPOSITIONS`). `ACCEPTED` (genuine error this period) → annotate-only. `REJECTED` (false positive) →
+annotate-only (demote-behaviour flagged provisional). Flagged for Collin/specialist.
+
+### Cage placement (Invariant 5)
+
+A decision-ledger WRITE is Tier-2 (a human adjudication drives a DETERMINISTIC write — a future
+`make_tier2_handlers` handler, NOT wired here); a READ is Tier-0. No adjudication tool exists in `agent.registry`,
+so for the agent it is Tier-3/absent (`get_tier("record_adjudication") == Tier.THREE`) — asserted in tests. Annotate-
+demote is PRESENTATION metadata only: `AnnotatedFinding` references the original finding unchanged, so the findings
+and `compile_output` (F5 boxes) are byte-unchanged through annotate-demote (box-isolation, asserted).
+
+### Purity
+
+`agent/decision_ledger.py` is pure stdlib + one intra-`agent` import (`agent.proposals.compute_inputs_hash`) — no
+`anthropic`, no SDK, no SAP, no network, no `orchestrator` import. It lives in `agent/`. No live model / SAP / tokens.
+
+---
+
 ## T5.7a — Agent-behaviour eval harness (on master; measurement infra; cage-invariant metrics)
 
 ### Status
@@ -3542,6 +3614,8 @@ Updated 2026-06-15 (D14: T5.3c LiveAgentTransport docs-sync — verification-fir
 Updated 2026-06-15 (D15: preserve the T5.3-V live-run finding — first live, non-hermetic run of the arch-A `run_casefile_loop` against a real model (model `claude-opus-4-8`, master `af79296`, cost ~$1.08, crafted-finding + fixture ctx — NOT demo-DB, NOT real-client, NOT accuracy-validated; SBODEMOSG SAP creds unprovisioned + no live `LoopContext` builder). Preserved `exploration-notes/live-loop-run-20260615/` (`SESSION-REPORT.md` + `summary.json` + `raw/ledger.json`; the full 247 KB `raw/stream.json` token stream intentionally omitted as heavy). Added a §T5.3 "Live validation (T5.3-V)" subsection. **Validated live:** the model calls the `mcp__reads__*` tools in-turn (SDK runs the T5.3e handlers, sink fills — NOT prose-only); the cage held against a real model (Tier-0 reads allowed, a leaked CLI built-in `ToolSearch` denied Tier-3 13×, zero Tier-2, nothing sealed/emitted); driver-decided staging (A1) correctly withheld. **Open gaps:** (a) 0 PENDING — the model wrote evidence under invented slot names (`source_document`≠`document_pdfs`) so completeness was unmet → slot-contract fix pending (T5.3g); (b) live read ledger entries are namespaced (`mcp__reads__…`) vs the bare form the hermetic fakes write → T5.7b parity normalisation pending; (c) leaked CLI built-ins need suppression via the live options. Frozen flags untouched (`validation_status="unvalidated"`, `show_ai_candidates=False`); the full complete→stage path is NOT yet shown on a live model (T5.3-V round-2, after the slot fix); T2.11 still gates customer-facing. Docs-only (`.md` + preserved `.json`); no source/test change. Pedagogical reference docs out of scope, not chased).*
 Updated 2026-06-15 (D12: T2.21b docs-sync, SOP step 7 — Appendix C #32 added for T2.21b (buckets 1+2 of T2.20 Section 2d, 16 codes, `SO`→`SR`/`SI`→`TX` renames + 14 direct carryovers, ZP E2-set fix, ME/TX-RE `_vg_category` label fixes, `effective_tax_code_mappings` live wiring, audit-bundle allow-list addition; commit `21c70e9`, branch `t2.21a-annex-e-baseline-vocab`, NOT merged; chain-accepted, 1490/1 on branch, +9 net new vs master's unchanged 1387/1); roadmap T2.21 entry added (buckets 1+2 DONE 2026-06-15, buckets 3+4+8 remaining scope flagged as blocked on T2.18 with no scheduled follow-on — open naming question for Collin/Terry on whether that remainder becomes "T2.21c" or stays an annotation), T2.2 sequencing note and T2.20's T2.18-dependency finding updated to point at it; `exploration-notes/iras-ask-coverage-analysis.md` updated — 10 `SO`/`SI` literal VatGroup-code references renamed to `SR`/`TX` (E1/E3/E4 definitions, findings-to-template mapping, deterministic/judgment matrix), generic "SR/ZR/exempt" box-category shorthand and `TX-RE` references left unchanged (different code, not part of this rename); `system-prompts/base.md` + `knowledge-base/sg-tax-code-mappings.md` already synced to `SR`/`TX` as part of commit `21c70e9` itself (T2.20 Section 1 items 1.11-1.13/1.20) — no separate "accounting-domain"/"technical-understanding" pedagogical docs exist, confirmed via repo-wide search; `exploration-notes/t2.21/t2.21b-chain-acceptance-findings.md` (SOP step 5 deliverable) added; scratch recon scripts/output from the chain-acceptance session removed).*
 Updated 2026-06-16 (D16: post-offline-replay status + methodology docs-sync — verification-first; read the merged code/fixtures on master before writing. Added a §T2.12a section (six read surfaces S0–S5 frozen verbatim under `tests/fixtures/sbodemosg-extract/` + same-session `_replay-oracle.compiled.json` + `capture-manifest.json` per-fixture SHA-256/`source_function` provenance, EOL pinned `.gitattributes eol=lf`, hermetic integrity test, demo-data/no-PDPA; offline-replay gate PASSED — `run_chain` off the frozen fixtures with SAP unreachable == oracle byte-for-byte via `canonical_json`, commit `b61f219`; honest caveats: freeze-sufficiency + offline reproducibility ONLY, NOT accuracy (T2.11), NOT the Excel adapter (T2.12), **S4 reasoning-pass surface OUT OF SCOPE** — frozen but not replay-validated; test harness not product adapter, `orchestrator/` untouched; T2.19 oracle-passthrough provenance; validation-substrate shift — SOP step 2 live-recon→fixture-recon, step 5 seed-live/chain-acceptance→offline-replay acceptance with PDF-render retained, B1 expendable for the deterministic path, honest-status ladder). **Corrected the Gate-1 `@odata.count` attribution** everywhere it appeared (Gate-1 dormancy bullet ~689, smoke-run table ~1326, live-FP note ~1365): the v2 SL DOES return `@odata.count`; `orchestrator/steps.py:156` reads the unprefixed key, so Gate 1 warn-passes unconditionally and incomplete pagination is uncaught — a v1→v2 key-prefix bug, not a missing SAP feature; cross-ref backlog #5; fix out of scope. Reflected **T2.19** merged to master (PR #8/`3cc379c`) with the oracle-passthrough note (exec summary + Appendix C #30); updated the re-derivability boundary + Appendix C #16 (offline-replay capability now demonstrated; product adapter T2.12 still future). Reflected **T5.7c (ledger-name parity)** merged (PR #32/`67c8f09`; `t5.7b-` branch label collides with the earlier loop-quality T5.7b/#18, tracked as T5.7c to keep labels distinct) — fakes normalized to namespaced `mcp__reads__` names, T5.3g slot binding byte-unchanged, +5 tests. **Roadmap NOT flipped to Excel-primary** — the extract pivot is recorded as decided + in progress with T2.12 as the next build. Test count not recomputed (docs-only; 1513 remains the authoritative T5.3c figure, T5.7c +5 / T2.12a +1 additive). `docs/merge-gates.md` + `exploration-notes/iras-ask-coverage-analysis.md` checked — no change required. Pedagogical reference docs out of repo — not chased. Docs-only; no source/test change. D16 added to roadmap docs tasks).*
+
+Updated 2026-06-17 (T5.5 decision-ledger PURE CORE — build + docs-sync on branch `t5.5-decision-ledger` off `origin/master` `167d2a7` (local master was stale: ahead-1/behind-4, no `agent/planner.py`, `CHECKSPEC_STATUS=v0/PROVISIONAL` — branched off origin per STEP 0). **Phase-1 STOP-and-report finding (load-bearing):** the nominal fingerprint key `(error_code, VatGroup, CardCode, amount band)` PREDATES the real finding shape — `compile_output.detect.issues` carries only `error_code` + `card_name` (no `vat_group`, no structured `card_code`, no amount; dropped at the detect layer, confirmed at source `sap_b1_server.detect_gst_errors` ~1402; recoverable only via the deferred classify↔detect reconciliation steps.py:438-440). Per Terry's decision the v0 fingerprint is kept PURE on present fields — `FINGERPRINT_KEYS = (error_code, counterparty)` (counterparty = card_name strip+casefold; `doc_num`/VatGroup/amount excluded), one documented constant so widening is localized; rationale = err COARSE not NARROW given never-suppress + mandatory adjudication; v0/PROVISIONAL for Collin, enrichment priority VatGroup→CardCode→amount_band; honest limitation recorded (magnitude not scoped → large recurrence renders DEMOTED, still visible, not re-promoted). Built `agent/decision_ledger.py`: `compute_finding_fingerprint` (reuses `compute_inputs_hash`), append-only hash-chained `DecisionLedger`+`AdjudicationEntry` (mirrors `agent/ledger.py`, no edit/delete API), cardinality-preserving `annotate_and_demote`/`AnnotatedFinding` (presentation metadata only). Disposition vocab v0: KNOWN_ACCEPTED→demote+annotate, ACCEPTED/REJECTED→annotate-only. Tests prove the four invariants STRUCTURALLY (append-only/tamper-evident; never-suppress = output len == input len incl. all-KNOWN_ACCEPTED; never-train = pure read, ledger untouched; deterministic+coarse fingerprint) PLUS agent-cannot-write (Tier-3/absent) + box-isolation (findings + compile_output byte-unchanged). Failing-test-first; +32 tests → full suite **1715 passed, 1 skipped** on the branch (origin/master baseline 1683). PURE CORE only — NOT wired to loop/demo/executor (follow-on slice); NOT live/real-client validated; T2.11 still gates customer-facing; frozen T2.18 flags + v1 CheckSpec untouched. Added roadmap T5.5 PLANNED→DONE (CORE only) + a §T5.5 STATE section. `knowledge-base/sg-tax-code-mappings.md` checked — no change required: T5.5 is agent-layer institutional-memory infra and touches no VatGroup→F5-box routing, zero-rating, or accounting-domain content. `exploration-notes/iras-ask-coverage-analysis.md` checked — no change required: changes no deterministic IRAS-ASK coverage cell. Purity: `orchestrator/` untouched; `agent/decision_ledger.py` is stdlib + one intra-`agent` import, no anthropic/SDK/SAP/network).*
 
 Updated 2026-06-16 (D17: T5.8 demo UI + T5.3h real LoopContext docs-sync — verification-first; confirmed BOTH merged to master (T5.3h PR #35/`8785f92`, T5.8 PR #36/`79e451f`, T5.8b shim PR #37/`0f3b20a`; master ff'd to `426185b`) and read the merged code before writing. Added a **§T5.3h** subsection under §T5.3 (`agent/loop_context.py` `build_loop_context` — decision A1 inject the OFFLINE-replayed `ReviewResult`, pure assembler, no SAP/monkeypatch/SDK; `build_vendor_catalog` from the S3 business-partners surface re-keyed by CardName surfacing only `gst_registered`/`gst_reg_no` from `FederalTaxID`; `AbsentDocumentProvider` + empty prior-period store = honest SBODEMOSG degraded case; `BuiltLoopContext`; decision B1 chain-only — `reasoning_artefact=None`/`document_candidates=None`; reusable `tests/replay_shim.py` extracted byte-preserving from the inline T2.12a fixture, `install_replay_patches`/`frozen_extract_sap`/`replay_chain`/`replay_review`; honest — hermetic/scripted, NOT live-validated (T5.3-V round-2 + T5.3g PENDING), NOT accuracy-validated, T2.12a byte-identity gate intact). Added a **§T5.8** section (`ui/` package — `app.py` fixed-nav 4 views + T5.8b `sys.path` shim so `streamlit run ui/app.py` works from a fresh checkout; `engine_seam.py` MockEngine default / RealEngine lazy drop-in over `engine.review.review`; `artifacts.py` pure view-models with frozen `VALIDATION_STATUS="unvalidated"`; four views; `sign.py` adjudication→Sign over the EXISTING `report.build_report`→`render_pdf` path with `show_ai_candidates` RESPECTED (read from YAML, default False) + no secrets + box-isolation; build-time `freeze()` vs render-time boundary + schema-stability tripwire; honest — mock-first, showcase-not-product, GATED, built ≠ demo-validated; Mock+Sign path imports no anthropic/SDK/`agent.loop`, guard-tested). Exec-summary running-count paragraph + master-total line updated 1513 → **1608 passed, 1 skipped** (authoritative full-suite recount run once in the worktree, 801.93s). Added **Appendix C #33** — the `finding_id` collision on `(source, check_id, doc_num)` (23→20 unique on the frozen extract, 23→21 staged in the demo; open T2.11 decision collapse-vs-keep). `docs/merge-gates.md` — **doc-note added** (a `ui/` row in the allowed/forbidden map + a note that the posture is enforced by the T5.8 guard test, NOT Gate a's grep, no CI gate; plus a "consider promoting to a grep gate later" pointer). `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md` checked — **no change required** (T5.8/T5.3h are UI/agent-layer infra; they change no deterministic IRAS-ASK coverage cell and touch no VatGroup→F5-box routing or tax-domain content). `exploration-notes/operational-backlog.md` — added item 6 (`finding_id` collision) + item 7 (Streamlit launch-smoke process note). Pedagogical reference docs out of repo — not chased. Docs-only; staged diff `.md`-only. D17 added to roadmap docs tasks).*
 
