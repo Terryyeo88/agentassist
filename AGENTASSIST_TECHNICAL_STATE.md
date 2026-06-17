@@ -3292,8 +3292,10 @@ AT THE FEEDER; the checking core is untouched and tax-code normalisation still f
 - **`feeders/extract_schema.py`** — single source of truth for the export column ⇄ canonical
   field mapping + typed coercers + canonical projections. The canonical field set is exactly what
   the checking core consumes (verified in recon): per line `VatGroup`/`LineTotal`/`TaxTotal`; per
-  doc `DocNum`/`DocDate`/`CardName`/`CardCode`/`DocCurrency` (+ `DocumentLines`); BP `FederalTaxID`;
-  listing `DocNum`/`Series`/`Cancelled` (+ `CardCode`/`NumAtCard`/`DocTotal` for period purchases).
+  doc `DocNum`/`DocDate`/`CardName`/`CardCode`/`DocCurrency`/`DocTotal` (+ `DocumentLines`); BP
+  `FederalTaxID`; listing `DocNum`/`Series`/`Cancelled` (+ `CardCode`/`NumAtCard`/`DocTotal` for
+  period purchases). (The per-doc `DocTotal` was a Gap-A omission, closed by the follow-up slice
+  below.)
 - **`feeders/extract_reader.py`** — `ExtractChainReader(source)` reads a CSV directory OR an
   `.xlsx` workbook (lazy `openpyxl`); groups line rows into documents, tags credit notes
   `is_credit_note=True`, deepcopy-per-call (the per-call-freshness / tag-leak hazard designed out),
@@ -3339,6 +3341,35 @@ The new adapter is **injected-only, not on the default chain** — default-path 
 Deferred to **slice 2B**: the coverage→check-status mapping, the three field-absence/degradation
 cases, the working-paper coverage flow. Adapter-vs-oracle byte-identity (full `run_chain` over the
 feeder) remains gated on the `@odata.count` re-freeze.
+
+### Follow-up — Gap A closed: doc-level `DocTotal` (branch `t2.12a-doctotal-gap`, 2026-06-17)
+
+A projection-completeness recon on merged master found **Gap A**: `calculate_f5_return` reads the
+doc-level `doc.get("DocTotal")` (`sap_b1_server.py:1123/1143/1152/1161`) to build the
+`fx_invoices_requiring_conversion` advisory list, but `project_document` / `DOCUMENT_COLUMNS` never
+carried it — so a feeder-fed run silently reported `0.00` for those FX totals where the live-SAP
+path reports the true figure. The original synthetic round-trip could not catch it because both
+sides use the **same projector** (symmetric blindness), and the frozen extract has 10 FX docs
+(4 EUR + 6 USD), so the gap was **live, not latent**. **Bound:** `DocTotal` feeds **no** F5 box and
+**no** finding (E1–E4 / NO_GST_REG / SEQ_GAP / DUP_CLAIM) — it is the FX-conversion advisory figure
+only; box math, all findings, and oracle byte-identity are unaffected.
+
+**Fix (this follow-up slice):** added `DocTotal` to `DOCUMENT_COLUMNS` + `project_document`
+(float-coerced, matching the listing `DocTotal`), mirrored it in `extract_reader._build_documents`
+(the reader hand-builds the doc header independently of `project_document`, so it must match), and
+emitted it from the synthetic exporter's documents sheet (sourced from the frozen ground truth, not
+fabricated); regenerated the LF-pinned `documents.csv` fixture. **Failing-test-first**, breaking the
+projector symmetry: a new test asserts `project_document` AND the end-to-end feeder both surface the
+true `DocTotal` for frozen FX doc `DocNum=958` (USD, `1131.53`) against an **independently-stated**
+value (not the projector's own output); the `set(keys())` shape lock now requires `DocTotal`. Full
+suite green, zero regression; offline-replay still byte-identical to the oracle (SAP path + oracle
+untouched). **Honest-status unchanged** — still built, synthetic-format-validated; this closes a
+synthetic-projection gap, it does NOT raise the rung (NOT real-client-export-validated, NOT
+accuracy-validated — T2.11 still gates). The **durable** closure — a feeder-vs-oracle FX-list
+byte-identity check — remains gated on the `@odata.count` re-freeze (adapter-vs-oracle ungates only
+then). The coverage-seam declaration for the per-doc `DocTotal` (distinct from the listing
+`DocTotal`) is a **2B** concern: `COVERAGE_FIELDS` is keyed by field name and cannot yet represent
+the same field on two surfaces — left untouched here.
 
 ## T2.23 — Chain source seam (per-surface injectable read provider) (DONE; merged to master via PR #39, merge commit 5c48ccb, 2026-06-16; behaviour-preserving; offline-replay-validated)
 
