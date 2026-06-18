@@ -279,7 +279,8 @@ def test_coverage_flags_missing_column(tmp_path):
             writer.writerow({"CardCode": row["CardCode"], "CardName": row["CardName"]})
     cov = ExtractChainReader(tmp_path).coverage()
     assert not cov.is_full()
-    assert "FederalTaxID" in cov.missing()
+    # T2.12 slice 2B: coverage is keyed by (surface, field), not a bare field name.
+    assert (schema.BUSINESS_PARTNERS_SHEET, "FederalTaxID") in cov.missing()
 
 
 # ---------------------------------------------------------------------------

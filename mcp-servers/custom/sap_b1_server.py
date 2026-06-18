@@ -1342,6 +1342,24 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
     })
 
 
+def _reader_field_covered(reader, surface: str, field: str) -> bool:
+    """Duck-typed probe: does the reader declare ``(surface, field)`` value-covered?
+
+    Returns True when the reader exposes no ``coverage()`` seam (the live SAP reader and
+    the frozen-replay reader) so existing behaviour is unchanged and byte-identical there.
+    The extract feeder returns an ``ExtractCoverage`` whose ``is_covered`` is value-aware
+    (present AND populated). A failing probe defaults to covered — coverage must never
+    break detection. No import of ``feeders`` (read entirely through duck typing).
+    """
+    cov_fn = getattr(reader, "coverage", None)
+    if not callable(cov_fn):
+        return True
+    try:
+        return bool(cov_fn().is_covered(surface, field))
+    except Exception:
+        return True
+
+
 @mcp.tool()
 def detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07, reader=None) -> str:
     """Audit GST compliance: E1–E4 line errors on invoices and credit notes, purchase completeness check, and supplier GST registration validation.
@@ -1433,7 +1451,19 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
     bp_cache: dict = {}
     # Emit only one NO_GST_REG issue per supplier, not one per document
     flagged_suppliers: set = set()
-    for doc in list(purchases) + list(purchase_credits):
+    # T2.12 slice 2B: NO_GST_REG is load-bearing on FederalTaxID (the supplier GST
+    # registration number). When the reader declares that surface unavailable (column
+    # absent / 0%-populated), the check CANNOT run — emit NO issues here (no degraded
+    # variant); the chain surfaces the data-coverage caveat instead. Readers without a
+    # coverage() seam (live SAP, frozen replay) report covered → unchanged behaviour.
+    # Surface/field are plain strings (mirroring schema.BUSINESS_PARTNERS_SHEET) so the
+    # live server takes no dependency on feeders.
+    _no_gst_reg_docs = (
+        list(purchases) + list(purchase_credits)
+        if _reader_field_covered(reader, "business_partners", "FederalTaxID")
+        else []
+    )
+    for doc in _no_gst_reg_docs:
         card_code = doc.get("CardCode", "")
         if not card_code or card_code in flagged_suppliers:
             continue
