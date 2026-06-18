@@ -113,6 +113,17 @@ triggers **no** `anthropic` import and `tests/test_t62_command.py::test_api_impo
 default path is scripted + token-free. The boundary stays at `orchestrator/` (untouched), never at
 `api/`. No new CI grep is added.
 
+**`agent/facets.py` note (T6.3 Slice 1, 2026-06-18):** the deterministic faceted-filter engine lives in
+`agent/`, so it sits inside the `agent/` row above — but it is deliberately **stricter than the row
+requires**: it is **pure stdlib**, importing no `anthropic`/SDK, no network, and **no `orchestrator/`,
+`engine/`, `ui/`, or `api/`** (a view/projection layer with zero computation or surface coupling). It is
+the source-agnostic engine under the "prompt me for details" filter feature (it facets the **canonical**
+findings, narrowing the VIEW, never the computation). **No posture change and no new grep rule** — the
+boundary stays at `orchestrator/`. This is proven by the T6.3 AST import-scan + clean-subprocess runtime
+check (`tests/test_t63_facet_engine.py::TestHermeticPure`): `agent/facets.py` imports stdlib only,
+importing it loads none of anthropic/SDK/streamlit/fastapi/orchestrator/engine, and `orchestrator/` does
+not import `agent.facets`. NOT wired into any surface in this slice (engine only).
+
 **CI / Node toolchain separation (T6.1):** repo CI is **pytest-only** (`.github/workflows/ci.yml`:
 flake8 + the `orchestrator/` import-scan + `pytest -n auto`). T6.1 adds `fastapi`+`uvicorn` to
 `requirements.txt` so `api/` imports cleanly in the existing Python job; **the Python suite is the merge
