@@ -68,11 +68,14 @@ describe("App review surface (render smoke)", () => {
     }
   });
 
-  it("command bar is an inert shell (disabled, deferred to C2)", async () => {
+  it("command bar is live (enabled input + Ask + intent buttons)", async () => {
     render(<App />);
     await waitFor(() => expect(screen.getAllByText("E1").length).toBeGreaterThan(0));
-    const input = screen.getByPlaceholderText(/inert in this build/i);
-    expect(input).toBeDisabled();
-    expect(screen.getByText(/deferred to Lane\s*C2/i)).toBeInTheDocument();
+    const input = screen.getByPlaceholderText(/Ask the assistant/i);
+    expect(input).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Ask$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Prior decisions/i })).toBeInTheDocument();
+    // It mentions surface-context identity (one way in), not the old inert-shell copy.
+    expect(screen.getByText(/identity comes from the surface context/i)).toBeInTheDocument();
   });
 });
