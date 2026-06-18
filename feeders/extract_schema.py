@@ -222,21 +222,32 @@ LISTING_BUCKETS = {
 # Coverage universe — the canonical fields a complete export must populate, mapped
 # to the export sheet + column that feeds each. The coverage seam (emission only;
 # 2B maps coverage → check status) reports which of these the loaded export carried.
+#
+# T2.12 slice 2B: keyed by (surface, field), NOT a bare field name. A bare-field key
+# silently COLLAPSED the two DocTotal surfaces — Gap A put DocTotal on both the doc-level
+# surface (the FX-conversion advisory in calculate_f5_return) and the listing-purchase
+# surface (the DUP_CLAIM key) — into a single entry that could only point at one sheet.
+# The (surface, field) key keeps them distinct. ``surface`` is the export sheet a field
+# is read from; the value (sheet, column) is where the loader finds it.
 # ---------------------------------------------------------------------------
 
 COVERAGE_FIELDS = {
-    # canonical field → (sheet, column)
-    "DocNum": (DOCUMENTS_SHEET, "DocNum"),
-    "DocDate": (DOCUMENTS_SHEET, "DocDate"),
-    "CardCode": (DOCUMENTS_SHEET, "CardCode"),
-    "CardName": (DOCUMENTS_SHEET, "CardName"),
-    "DocCurrency": (DOCUMENTS_SHEET, "DocCurrency"),
-    "VatGroup": (DOCUMENTS_SHEET, "VatGroup"),
-    "LineTotal": (DOCUMENTS_SHEET, "LineTotal"),
-    "TaxTotal": (DOCUMENTS_SHEET, "TaxTotal"),
-    "FederalTaxID": (BUSINESS_PARTNERS_SHEET, "FederalTaxID"),
-    "Series": (LISTING_SHEET, "Series"),
-    "Cancelled": (LISTING_SHEET, "Cancelled"),
-    "NumAtCard": (LISTING_SHEET, "NumAtCard"),
-    "DocTotal": (LISTING_SHEET, "DocTotal"),
+    # (surface, field) → (sheet, column)
+    (DOCUMENTS_SHEET, "DocNum"): (DOCUMENTS_SHEET, "DocNum"),
+    (DOCUMENTS_SHEET, "DocDate"): (DOCUMENTS_SHEET, "DocDate"),
+    (DOCUMENTS_SHEET, "CardCode"): (DOCUMENTS_SHEET, "CardCode"),
+    (DOCUMENTS_SHEET, "CardName"): (DOCUMENTS_SHEET, "CardName"),
+    (DOCUMENTS_SHEET, "DocCurrency"): (DOCUMENTS_SHEET, "DocCurrency"),
+    (DOCUMENTS_SHEET, "VatGroup"): (DOCUMENTS_SHEET, "VatGroup"),
+    (DOCUMENTS_SHEET, "LineTotal"): (DOCUMENTS_SHEET, "LineTotal"),
+    (DOCUMENTS_SHEET, "TaxTotal"): (DOCUMENTS_SHEET, "TaxTotal"),
+    # Doc-level DocTotal — feeds the FX-conversion advisory list (was dropped by the
+    # bare-field key; restored here as a distinct surface).
+    (DOCUMENTS_SHEET, "DocTotal"): (DOCUMENTS_SHEET, "DocTotal"),
+    (BUSINESS_PARTNERS_SHEET, "FederalTaxID"): (BUSINESS_PARTNERS_SHEET, "FederalTaxID"),
+    (LISTING_SHEET, "Series"): (LISTING_SHEET, "Series"),
+    (LISTING_SHEET, "Cancelled"): (LISTING_SHEET, "Cancelled"),
+    (LISTING_SHEET, "NumAtCard"): (LISTING_SHEET, "NumAtCard"),
+    # Listing-purchase DocTotal — the DUP_CLAIM key.
+    (LISTING_SHEET, "DocTotal"): (LISTING_SHEET, "DocTotal"),
 }

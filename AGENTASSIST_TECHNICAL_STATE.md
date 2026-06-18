@@ -3530,6 +3530,70 @@ then). The coverage-seam declaration for the per-doc `DocTotal` (distinct from t
 `DocTotal`) is a **2B** concern: `COVERAGE_FIELDS` is keyed by field name and cannot yet represent
 the same field on two surfaces — left untouched here.
 
+### Slice 2B — honest-degradation coverage (branch `t2.12b-honest-degradation-coverage`, 2026-06-18; PR open, NOT merged)
+
+Closes the deferred 2B work: a per-check **data-coverage status** that flows into the working paper
+so a reviewer never signs a **silently-partial** review. Built failing-test-first; the type, coverage
+logic, and tests do NOT depend on the render attach-point (a design-proposal, see below).
+
+- **`feeders/coverage_status.py`** (new) — `CoverageStatus(check, level, reason)`, a frozen dataclass.
+  Three distinguishable levels (string-enum precedent, like `reasoning_status`/`documents_status`):
+  `full` / `degraded(reason)` / `unavailable`. Invariants enforced in `__post_init__`: a non-`full`
+  status MUST carry a non-empty reason (a caveat is **surfaced, never silent**); `full` carries none;
+  unknown levels rejected. `full ≠ degraded ≠ unavailable ≠` bare ran-clean (None) all stay distinct.
+  Mirrors `AbsentDocumentProvider`'s **honesty discipline** (surface absence, assert no verdict), NOT
+  its shape. `derive_coverage_statuses(coverage, *, company_wide_population_present)` is the pure
+  mapping. Reasons state the **data-coverage fact only — NO IRAS rationale** (the tax basis is the
+  reviewer's to source); a test asserts no `§`/`IRAS`/`Reg ` leaks into a reason.
+- **`feeders/extract_schema.py`** — `COVERAGE_FIELDS` **re-keyed `(surface, field)` → `(sheet, column)`**
+  (was bare-field-keyed). This fixes the Gap-A collapse: the two `DocTotal` surfaces — doc-level
+  (FX advisory) and listing-purchase (DUP_CLAIM key) — are now **distinct entries**
+  `(documents, DocTotal)` and `(listing, DocTotal)` (a name-keyed map could hold only one).
+- **`feeders/extract_reader.py`** — coverage is now **value-population-aware**: `ExtractCoverage`
+  carries both `fields` (header present) and `populated` (≥1 non-empty cell), computed at load by
+  `_compute_populated_columns`. `is_covered(surface, field)` = present AND populated; `is_full()`
+  stays header-fullness (back-compat). `coverage_status()` maps coverage onto the three in-scope
+  checks (SEQ_GAP's company-wide signal = presence of any `all`-scope sales rows). The
+  present-but-0%-populated `NumAtCard` (SBODEMOSG) now correctly reads NOT covered.
+- **The three in-scope cases** (data-coverage fact only):
+  - `NumAtCard` absent/empty → **DUP_CLAIM degraded** ("under-detects"); the check still runs.
+  - company-wide population absent → **SEQ_GAP degraded** ("within-period only"); still runs.
+  - `FederalTaxID` absent/empty → **NO_GST_REG unavailable** ("require supplier-master sheet at
+    onboarding"); the check is **suppressed — NO degraded variant**. `sap_b1_server.detect_gst_errors`
+    gates its NO_GST_REG loop on a **duck-typed** `_reader_field_covered(reader, "business_partners",
+    "FederalTaxID")` (no `feeders` import); readers without a `coverage()` seam (live SAP, frozen
+    replay) report covered → behaviour byte-identical. This replaces the silent FederalTaxID
+    empty/failed-read → bogus-HIGH-finding collapse.
+- **`orchestrator/chain.py`** — `_emit_check_coverage(result, reader)` attaches
+  `result["check_coverage"]` (list of `{check, level, reason}`) **duck-typed** from
+  `reader.coverage_status()` (so `orchestrator/` imports nothing from `feeders/`). Placed AFTER the
+  box-isolation assertion; the out-of-scope listing-checks `try/except` swallow (chain.py ~269–282)
+  is **untouched** (Terry-ruled a separate slice). Readers without the seam add nothing →
+  **byte-identical** on the live-SAP and frozen-replay paths (the offline-replay oracle still matches
+  byte-for-byte).
+
+**Tests:** `tests/test_t212b_honest_degradation_coverage.py` (+30) — type invariants;
+`(surface, field)` keying with both `DocTotal` surfaces asserted distinct; value-level coverage
+(present-but-empty ≠ full); each of the three cases' status+caveat; NO_GST_REG suppression when
+unavailable vs. running when covered; chain emission present only with the seam (byte-identity guard)
+and a full `run_chain`-over-export end-to-end. `test_t212a_extract_feeder.py` updated for the
+`(surface, field)` `missing()` key. Branch full suite **1920 passed, 1 skipped**; the lone collection
+error is the pre-existing local `fastapi` gap (`test_t61_frontend_api.py` — installed in CI, untouched
+by this branch). flake8 (`E9,F63,F7,F82`) clean; Gate-a import scan + `feeders/` purity clean;
+isolation gate green; offline-replay byte-identical to oracle.
+
+**Honest-status ladder:** unchanged rung — built + **adapter-round-trip-validated-on-synthetic**; NOT
+real-client-export-validated (format-assumption gap; GTM-gated), NOT accuracy-validated (T2.11 gates).
+The coverage mechanism is **emission only** and lives on the injected extract-feeder path; the default
+live chain is byte-identical.
+
+**Render attach-point — DESIGN-PROPOSAL, NOT built (open question for Terry):** the type/logic/tests do
+not depend on it. The probabilistic `UnifiedCandidatesSection` status axis is `show_ai_candidates`-gated
+(frozen until T2.11) and scoped to the AI-candidate surface — wrong place for deterministic-check
+coverage. Section 6 "Items Not Examined" is binary suppression (keyed on finding non-emptiness) — it
+cannot represent `degraded`. The proposal is a **dedicated deterministic-check coverage line** in the
+working paper (not either anti-pattern); to be wired only on Terry's say-so.
+
 ## T2.23 — Chain source seam (per-surface injectable read provider) (DONE; merged to master via PR #39, merge commit 5c48ccb, 2026-06-16; behaviour-preserving; offline-replay-validated)
 
 ### Status
