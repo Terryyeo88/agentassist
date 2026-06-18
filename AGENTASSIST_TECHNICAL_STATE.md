@@ -864,7 +864,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b–T5.1–T5.3-Slice1–T5.7a–T5.3-Slice2–T5.7b–T5.3c–T5.7c–T2.12a–T5.3h–T5.8–T5.8c merges): **1641 passed, 1 skipped** (full-suite recount, 2026-06-16) — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.1, T5.2, T5.3, T5.3h, T5.7a, T5.7b, T5.8 sections and footer for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b–T5.1–T5.3-Slice1–T5.7a–T5.3-Slice2–T5.7b–T5.3c–T5.7c–T2.12a–T5.3h–T5.8–T5.8c…–T5.9a/b/c–T5.9d merges): **1871 passed, 1 skipped** (full-suite recount on branch `t5.9d-dispatch-execution` off `95c6ff7`, 2026-06-18; +21 from T5.9d) — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.1, T5.2, T5.3, T5.3h, T5.7a, T5.7b, T5.8, T5.9 sections and footer for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -2276,9 +2276,9 @@ later step. See the roadmap "on the horizon" note.
 
 ---
 
-## T5.9 — Intent surface (end-user) (T5.9a/b/c DONE; gated on the DEMO, not a paying customer)
+## T5.9 — Intent surface (end-user) (T5.9a/b/c/d DONE; gated on the DEMO, not a paying customer)
 
-**Status: T5.9a DONE (bounded menu + dispatch); T5.9b DONE (NL classifier + clarify-on-miss); T5.9c DONE (demo command bar mock-wired + routing-accuracy eval opt-in).** The end-user-facing intent surface: the front door through which a
+**Status: T5.9a DONE (bounded menu + dispatch); T5.9b DONE (NL classifier + clarify-on-miss); T5.9c DONE (demo command bar mock-wired + routing-accuracy eval opt-in); T5.9d DONE (dispatch-execution pure module, surfaced at C2).** The end-user-facing intent surface: the front door through which a
 user expresses what they want, mapped onto the bounded, tier-classified action sequences the cage
 already enforces (Tier-5 Invariant 6). **Pulled forward to pre-demo, decoupled from the
 paying-customer gate** — it is product-intrinsic UX, not a delivery-model feature. The prior
@@ -2507,6 +2507,60 @@ a sanity check, NOT the accuracy claim; the curated set is AUTHOR-CONSTRUCTED, S
 training (smoke/repertoire, not a generalization claim); classify-never-obey enforced in the demo path;
 the chatbot is "one way in", review happens on the dashboard; T2.11 gates customer-facing; T4.1
 PLATFORM gated.
+
+### §T5.9d — dispatch-execution (pure module, surfaced at C2) — DONE (2026-06-18, branch `t5.9d-dispatch-execution`)
+
+**Lane A: the execution layer behind the router.** T5.9a's `dispatch` classifies an intent + bound
+params and returns its tier-classified action SEQUENCE, but does NOT execute anything; T5.9c's command
+bar only routes a `Classified` intent to which review-surface SECTION to open. This slice closes that
+gap with `agent/dispatch_exec.py::execute_intent(intent, params, *, artifacts, engine=None) ->
+ExecutionResult`, a **PURE, framework-free** module that actually RUNS the Tier-0 read(s) / RUN_REVIEW
+over the **frozen** demo artifacts and returns a serialisable record. **No surface wiring in this
+slice** — the production surface is React (Lane C1); this module is surfaced later by the React API's
+`POST /command` (Lane C2), **NOT** by Streamlit. (Building it as a pure module is what lets Lanes A,
+B, C1 proceed with zero file overlap.)
+
+**Execution routes.** `SHOW_LEDGER`→`read_ledger` over the frozen justification ledger;
+`SHOW_PROPOSALS`→`read_proposals` over the frozen staging store (rehydrated to `ProposalArtifact`s so
+the REAL read tool runs, not a hand-rolled re-projection); `SHOW_PRIOR_ADJUDICATIONS`→`read_decision_
+ledger` **LIST-ALL**; `RUN_REVIEW`→the **FROZEN engine** (`FrozenEngine`, a Lane-A-owned twin of
+`ui.engine_seam.MockEngine`) returning frozen dossiers + an F5 summary (boxes + gate_results +
+status), **no live chain, no SAP**. A blank `client_id`/`period` passes the router's
+`NeedsClarification` straight through (outcome `needs_clarification`) — the executor NEVER guesses.
+
+**`read_ledger` gap closed (option B).** The registry has long declared a Tier-0 `read_ledger`
+ToolSpec (`agent/registry.py`) with **no implementation**; this slice adds `read_ledger(ledger:
+list[dict]) -> list[dict]` to `agent/read_tools.py` — a pure projection over the DI'd justification-
+ledger list, so all four intents execute via a real `read_tools` function symmetrically.
+
+**The v0 menu gap, honoured not fabricated.** `SHOW_PRIOR_ADJUDICATIONS` declares
+`required_params=(client_id, period)`, but the T5.5 decision ledger has **no client field** — its only
+query axis is the per-finding fingerprint (documented at `agent/intent.py`). The executor runs
+**list-all** (`fingerprint=None`, all adjudications oldest-first) and FLAGS this in
+`ExecutionResult.notes`; the bound params gate dispatch but do NOT filter the ledger, and **no
+client/period→fingerprint mapping is fabricated** (a test asserts a different period returns the same
+rows). For the seeded fixture this honestly returns the doc-592 `KNOWN_ACCEPTED` entry.
+
+**Decoupling by design.** `ui/` is the Streamlit lane and may be replaced by React, so `dispatch_exec`
+owns its OWN frozen-artifact loader (`load_frozen_artifacts` / `FrozenArtifacts`) and frozen engine
+(`FrozenEngine`) rather than importing `ui.artifacts` / `ui.engine_seam` — deliberate ~10-line twins
+of the same frozen JSON. `ExecutionResult` is a frozen dataclass with `to_dict()`; **no rendering
+logic** (C2 returns it as JSON unchanged). RUN_REVIEW deep-copies the engine output so a caller
+mutating the returned payload can never bleed back into the frozen F5 boxes / gate results.
+
+**Failing-test-first; +21 tests** (`tests/test_t59d_dispatch_exec.py`, all hermetic): each intent
+executes and returns the REAL frozen rows; RUN_REVIEW returns the frozen engine output (no SAP, no
+live chain); `NeedsClarification` passthrough on blank `client_id`/`period`; unknown intent / raw tool
+name → `IntentError` (⊆-MENU holds through the executor); **box-isolation** (F5 boxes + gate_results
+byte-identical before/after across all intents, plus a mutation-isolation test); **purity import-scan**
+(AST: `dispatch_exec.py` imports no `anthropic`/`streamlit`/`fastapi`/`requests`/`urllib`/`socket`/
+SAP/`orchestrator`/`ui`); ExecutionResult JSON-serialisable unchanged. Full suite **1871 passed, 1
+skipped** (origin/master `95c6ff7` baseline 1850 + 21). `orchestrator/` untouched.
+
+**Honest scope.** Dispatch-execution is built + hermetically tested over FROZEN artifacts; it is
+surfaced at **C2** (React API), not in this slice; **NOT live / accuracy validated**; SAP stays off,
+mock engine, no tokens; the v0 `SHOW_PRIOR_ADJUDICATIONS` client/period→fingerprint gap is honoured
+(list-all + flagged), not closed; **T2.11 gates customer-facing**; T4.1 PLATFORM gated.
 
 ---
 
