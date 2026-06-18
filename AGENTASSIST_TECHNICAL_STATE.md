@@ -864,7 +864,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 ### Test state
 
 **169 tests passing** at T1.5 completion on `master` (1 skipped: T8 read-only advisory check,
-Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b–T5.1–T5.3-Slice1–T5.7a–T5.3-Slice2–T5.7b–T5.3c–T5.7c–T2.12a–T5.3h–T5.8–T5.8c merges): **1641 passed, 1 skipped** (full-suite recount, 2026-06-16) — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.1, T5.2, T5.3, T5.3h, T5.7a, T5.7b, T5.8 sections and footer for test-count progression.
+Windows). Current master total (post T2.7–T2.8–T2.9–T2.9-V–T2.13–T2.10–T2.10-V–Check-A-FP–style-palette–T2.16–T2.17–T2.19–T5.2a–T5.2b–T5.1–T5.3-Slice1–T5.7a–T5.3-Slice2–T5.7b–T5.3c–T5.7c–T2.12a–T5.3h–T5.8–T5.8c…–T5.9a/b/c–T5.9d merges): **1871 passed, 1 skipped** (full-suite recount on branch `t5.9d-dispatch-execution` off `95c6ff7`, 2026-06-18; +21 from T5.9d) — see T2.7, T2.8, T2.9, T2.9-V, T2.13, T2.10, T2.10-V, T2.16, T2.17, T5.1, T5.2, T5.3, T5.3h, T5.7a, T5.7b, T5.8, T5.9 sections and footer for test-count progression.
 
 | File | Coverage |
 |------|----------|
@@ -2279,6 +2279,9 @@ later step. See the roadmap "on the horizon" note.
 ## T5.9 — Intent surface (end-user) (T5.9a/b/c DONE + T5.9e factory; gated on the DEMO, not a paying customer)
 
 **Status: T5.9a DONE (bounded menu + dispatch); T5.9b DONE (NL classifier + clarify-on-miss); T5.9c DONE (demo command bar mock-wired + routing-accuracy eval opt-in); T5.9e DONE (env-gated classifier-backend factory — pure, consumed at C2, NO surface wiring).** The end-user-facing intent surface: the front door through which a
+## T5.9 — Intent surface (end-user) (T5.9a/b/c/d DONE; gated on the DEMO, not a paying customer)
+
+**Status: T5.9a DONE (bounded menu + dispatch); T5.9b DONE (NL classifier + clarify-on-miss); T5.9c DONE (demo command bar mock-wired + routing-accuracy eval opt-in); T5.9d DONE (dispatch-execution pure module, surfaced at C2).** The end-user-facing intent surface: the front door through which a
 user expresses what they want, mapped onto the bounded, tier-classified action sequences the cage
 already enforces (Tier-5 Invariant 6). **Pulled forward to pre-demo, decoupled from the
 paying-customer gate** — it is product-intrinsic UX, not a delivery-model feature. The prior
@@ -2545,6 +2548,124 @@ accredited specialist needed), AUTHOR-CONSTRUCTED + SMALL (smoke/repertoire, not
 +24 hermetic tests (`tests/test_t59e_classifier_factory.py`); full suite **1874 passed, 1 skipped** (+24
 over the 1850-pass `origin/master` `95c6ff7` baseline). NL-routing layer only — `knowledge-base/...` and
 `iras-ask-coverage-analysis.md` unchanged (checked; no IRAS-coverage surface touched).
+### §T5.9d — dispatch-execution (pure module, surfaced at C2) — DONE (2026-06-18, branch `t5.9d-dispatch-execution`)
+
+**Lane A: the execution layer behind the router.** T5.9a's `dispatch` classifies an intent + bound
+params and returns its tier-classified action SEQUENCE, but does NOT execute anything; T5.9c's command
+bar only routes a `Classified` intent to which review-surface SECTION to open. This slice closes that
+gap with `agent/dispatch_exec.py::execute_intent(intent, params, *, artifacts, engine=None) ->
+ExecutionResult`, a **PURE, framework-free** module that actually RUNS the Tier-0 read(s) / RUN_REVIEW
+over the **frozen** demo artifacts and returns a serialisable record. **No surface wiring in this
+slice** — the production surface is React (Lane C1); this module is surfaced later by the React API's
+`POST /command` (Lane C2), **NOT** by Streamlit. (Building it as a pure module is what lets Lanes A,
+B, C1 proceed with zero file overlap.)
+
+**Execution routes.** `SHOW_LEDGER`→`read_ledger` over the frozen justification ledger;
+`SHOW_PROPOSALS`→`read_proposals` over the frozen staging store (rehydrated to `ProposalArtifact`s so
+the REAL read tool runs, not a hand-rolled re-projection); `SHOW_PRIOR_ADJUDICATIONS`→`read_decision_
+ledger` **LIST-ALL**; `RUN_REVIEW`→the **FROZEN engine** (`FrozenEngine`, a Lane-A-owned twin of
+`ui.engine_seam.MockEngine`) returning frozen dossiers + an F5 summary (boxes + gate_results +
+status), **no live chain, no SAP**. A blank `client_id`/`period` passes the router's
+`NeedsClarification` straight through (outcome `needs_clarification`) — the executor NEVER guesses.
+
+**`read_ledger` gap closed (option B).** The registry has long declared a Tier-0 `read_ledger`
+ToolSpec (`agent/registry.py`) with **no implementation**; this slice adds `read_ledger(ledger:
+list[dict]) -> list[dict]` to `agent/read_tools.py` — a pure projection over the DI'd justification-
+ledger list, so all four intents execute via a real `read_tools` function symmetrically.
+
+**The v0 menu gap, honoured not fabricated.** `SHOW_PRIOR_ADJUDICATIONS` declares
+`required_params=(client_id, period)`, but the T5.5 decision ledger has **no client field** — its only
+query axis is the per-finding fingerprint (documented at `agent/intent.py`). The executor runs
+**list-all** (`fingerprint=None`, all adjudications oldest-first) and FLAGS this in
+`ExecutionResult.notes`; the bound params gate dispatch but do NOT filter the ledger, and **no
+client/period→fingerprint mapping is fabricated** (a test asserts a different period returns the same
+rows). For the seeded fixture this honestly returns the doc-592 `KNOWN_ACCEPTED` entry.
+
+**Decoupling by design.** `ui/` is the Streamlit lane and may be replaced by React, so `dispatch_exec`
+owns its OWN frozen-artifact loader (`load_frozen_artifacts` / `FrozenArtifacts`) and frozen engine
+(`FrozenEngine`) rather than importing `ui.artifacts` / `ui.engine_seam` — deliberate ~10-line twins
+of the same frozen JSON. `ExecutionResult` is a frozen dataclass with `to_dict()`; **no rendering
+logic** (C2 returns it as JSON unchanged). RUN_REVIEW deep-copies the engine output so a caller
+mutating the returned payload can never bleed back into the frozen F5 boxes / gate results.
+
+**Failing-test-first; +21 tests** (`tests/test_t59d_dispatch_exec.py`, all hermetic): each intent
+executes and returns the REAL frozen rows; RUN_REVIEW returns the frozen engine output (no SAP, no
+live chain); `NeedsClarification` passthrough on blank `client_id`/`period`; unknown intent / raw tool
+name → `IntentError` (⊆-MENU holds through the executor); **box-isolation** (F5 boxes + gate_results
+byte-identical before/after across all intents, plus a mutation-isolation test); **purity import-scan**
+(AST: `dispatch_exec.py` imports no `anthropic`/`streamlit`/`fastapi`/`requests`/`urllib`/`socket`/
+SAP/`orchestrator`/`ui`); ExecutionResult JSON-serialisable unchanged. Full suite **1871 passed, 1
+skipped** (origin/master `95c6ff7` baseline 1850 + 21). `orchestrator/` untouched.
+
+**Honest scope.** Dispatch-execution is built + hermetically tested over FROZEN artifacts; it is
+surfaced at **C2** (React API), not in this slice; **NOT live / accuracy validated**; SAP stays off,
+mock engine, no tokens; the v0 `SHOW_PRIOR_ADJUDICATIONS` client/period→fingerprint gap is honoured
+(list-all + flagged), not closed; **T2.11 gates customer-facing**; T4.1 PLATFORM gated.
+
+---
+
+## §T6.1 — React review surface + FastAPI seam (Lane C1) (branch `t6.1-frontend-review-surface`; built over FROZEN artifacts; NOT demo/accuracy-validated)
+
+**A production-shaped frontend over the SAME frozen artifacts the Streamlit demo renders.** Lane C1
+adds a **React + TypeScript (Vite)** review surface under `frontend/`, talking JSON to a thin
+**FastAPI** seam under `api/`. It is a SERVE/PRESENTATION layer — no engine call, no model, no SAP, no
+tokens; **MockEngine frozen artifacts only**. The aesthetic (clay/paper palette; Newsreader / Inter /
+IBM Plex Mono type) is lifted from a target mock; the **data is the real frozen SBODEMOSG output**, not
+the mock's fictional findings.
+
+**Backend (`api/`, imports `ui`/`agent`/`engine`/`report` only — NO `anthropic`; `orchestrator/`
+untouched):**
+- `api/viewmodel.py` — PURE serialisers reshaping `DemoArtifacts` → JSON-safe dicts. The exported
+  `REVIEW_KEYS` / `QUEUE_ITEM_KEYS` / `AUDIT_ROW_KEYS` / `SIGN_KEYS` tuples are the **single source of
+  truth** for the key set the frontend consumes (asserted by the contract test; mirrored by the TS types
+  in `frontend/src/api.ts`). Queue rows = `annotated_adjudication_items` + `flatten_finding_card` +
+  `check_reference`, carrying `demoted`/`annotation`/`prior_dispositions`/`fingerprint` and the verbatim
+  unvalidated-IRAS-citation caveat. F5 summary = the box-isolated `compile_output.calculate.boxes`.
+- `api/app.py` — FastAPI: `GET /review/{client}/{period}` (404 for anything but the frozen
+  `sbodemosg`/`2024Q3` — never dress empty data as a real client's numbers), `POST /sign` (reproduces
+  `ui.sign.sign_working_paper`, carries the reviewer name, **box-isolation preserved**), `GET /audit`
+  (the hash-chained ledger rows), `GET /health`. **No `/command` endpoint — classify+execute is Lane
+  C2, deferred.**
+
+**Frontend (`frontend/`, Vite + React + TS):** `TopBar` (brand, demo client/period context, the loud
+**UNVALIDATED** badge, reviewer of record), `CommandBar` (**INERT styled shell** — input + buttons
+disabled, labelled deferred-to-C2; no classify/execute), `Queue` (tabs: Needs review / Marked known /
+Decided), `FindingDetail` (vendor · what we found · why it matters · the rule · suggested action →
+decide → sign), `AuditTrail`, `SignModal`. Typed client `frontend/src/api.ts` mirrors the API contract.
+Vite dev-proxies `/api/*` → uvicorn `:8000`. Renders **only the real frozen rows + real check types**
+(E1×8 / NO_GST_REG×7 / E2×5 / gst_amount_mismatch×1 = 21); the genuinely-seeded **doc-592 `NO_GST_REG`
+"Far East Imports"** entry renders **demoted-but-present** under *Marked known* (T5.5b); the mock's
+aspirational **DUP_CLAIM / SEQ_GAP / FLUX never appear**.
+
+**Trust signals preserved verbatim:** the `unvalidated` badge + `validation_status` constant, "AgentAssist
+flags — you decide", reviewer-name-on-sign, the per-finding "illustrative citation" caveat on the
+(themselves-unvalidated) IRAS basis, and the demo/illustrative footer.
+
+**CI posture (flagged, gate NOT broken).** Repo CI is **pytest-only** (`.github/workflows/ci.yml`). The
+Python suite gains `fastapi`+`uvicorn` (added to `requirements.txt`) so `api/` imports cleanly; the
+**Python gate stays the merge gate**. The frontend `vitest`/build is a **separate, optional/local** job
+— the Python suite does NOT depend on Node, and no Node job was added to `ci.yml` in this slice.
+
+**Acceptance (failing-test-first).** `tests/test_t61_frontend_api.py` (+11, all hermetic via
+`fastapi.testclient`): `GET /review` returns the real frozen shape (doc-592 present **and** demoted; no
+`DUP_CLAIM`/`SEQ_GAP`/`FLUX` in the payload; only real check types); `POST /sign` box-isolation (F5
+boxes byte-identical pre/post) + reviewer name carried + empty-reviewer rejected; the **contract test**
+pins each queue item's keys to `QUEUE_ITEM_KEYS` (single source of truth); AST import-scan asserts `api/`
+imports no `anthropic`/SDK. `frontend` vitest (+4, separate job): render smoke — queue + detail render,
+UNVALIDATED badge present, demoted doc-592 under Marked known, no fictional types, command bar inert.
+Full **pytest** suite **1861 passed, 1 skipped** (the skip is the import-isolation guard that no-ops
+when `anthropic` is already in `sys.modules` from earlier tests — by design). `tsc --noEmit` + `vite
+build` green.
+
+**Run.** Backend: `uvicorn api.app:app --reload` (`:8000`). Frontend: `cd frontend && npm install &&
+npm run dev` (`:5173`, proxied). → real frozen findings render in the mock's aesthetic; UNVALIDATED
+badge + demo framing loud; decide → sign emits a working paper carrying the reviewer name. **SAP off,
+mock engine, no tokens.**
+
+**Honest status.** Frontend + API built over **FROZEN** artifacts — **built ≠ demo-validated ≠
+accuracy-validated**; the per-finding IRAS citations are themselves UNVALIDATED; the command bar is an
+inert shell (Lane C2 deferred: `POST /command` → env-selected classifier → `execute_intent` → React
+wiring, gated on Lanes A + B); **T2.11 gates customer-facing**.
 
 ---
 
