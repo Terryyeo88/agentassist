@@ -43,6 +43,7 @@ from report.enrich import EnrichedFinding, enrich
 from report.sections import (
     AICandidatesSection,
     AnalyticalReviewSection,
+    CheckCoverageSection,
     CoverSection,
     CrossFindingSection,
     DeclaredF5Section,
@@ -56,6 +57,7 @@ from report.sections import (
     UnifiedCandidatesSection,
     build_ai_candidates_section,
     build_analytical_review_section,
+    build_check_coverage_section,
     build_cover_section,
     build_cross_finding_section,
     build_declared_f5_section,
@@ -127,6 +129,10 @@ class ReportModel:
     # T2.16: annual analytical review (TP/TS ratio + quarter boxes for T2.17).
     # None only in legacy callers; renderer skips section when None or show=False.
     analytical_review: AnalyticalReviewSection | None = None
+    # T2.12-2C: dedicated deterministic-check data-coverage section (renders 2B's
+    # check_coverage). None in legacy callers; empty (show=False) when the chain
+    # reader exposed no coverage seam — renderer is a no-op in both cases.
+    check_coverage: CheckCoverageSection | None = None
 
 
 def build_report(
@@ -230,4 +236,7 @@ def build_report(
         listing_findings=listing_sec,
         # T2.16: analytical review section; show=False when pass did not run.
         analytical_review=analytical_sec,
+        # T2.12-2C: dedicated deterministic-check data-coverage section (2B's
+        # check_coverage); empty/no-op when the reader exposed no coverage seam.
+        check_coverage=build_check_coverage_section(compile_output),
     )
