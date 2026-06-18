@@ -360,6 +360,36 @@ class ListingFindingsSection:
 
 
 @dataclass
+class CheckCoverageSection:
+    """Data for the T2.12-2C dedicated "Deterministic Check Coverage" section.
+
+    Renders 2B's per-check data-coverage status (``compile_output["check_coverage"]``)
+    so a reviewer can SEE that a review was silently-partial and never unknowingly
+    sign it. This is a DEDICATED sibling surface — NOT the listing-completeness
+    section (``check_coverage`` spans NO_GST_REG, which is a GST-registration check,
+    not a listing check), NOT the show_ai_candidates-gated probabilistic surface,
+    NOT Section 6 (binary suppression). It reuses tfix #63's three-state vocabulary
+    (full / degraded / unavailable) + the non-empty-reason-only-for-non-full
+    discipline 2B established.
+
+    Attributes:
+        rows: One ``{check, level, reason}`` dict per deterministic check, copied
+              from ``compile_output["check_coverage"]`` (the projection of
+              feeders.CoverageStatus.as_dict()). ``level`` is one of full/degraded/
+              unavailable; ``reason`` is the data-coverage FACT only (no IRAS
+              rationale) and is non-empty for degraded/unavailable, empty for full.
+              Empty list when the chain reader exposed no coverage seam (live SAP /
+              frozen replay) — the renderer is then a no-op.
+    """
+    rows: list[dict]
+
+    @property
+    def show(self) -> bool:
+        """True when there is at least one per-check coverage row to render."""
+        return bool(self.rows)
+
+
+@dataclass
 class AnalyticalReviewSection:
     """Data for the optional Annual Analytical Review section (T2.16).
 
@@ -773,6 +803,44 @@ def render_listing_findings_section(
         status=status,
         reason=reason,
     )
+
+
+def build_check_coverage_section(
+    compile_output: dict[str, Any],
+) -> "CheckCoverageSection":
+    """Build the dedicated deterministic-check coverage section (T2.12-2C).
+
+    Reads ``compile_output["check_coverage"]`` — the per-check data-coverage status
+    list emitted by ``orchestrator.chain._emit_check_coverage`` (2B), shaped
+    ``[{"check", "level", "reason"}, ...]``. Each row is COPIED (read-only over
+    compile_output, so the offline-replay oracle is byte-unaffected) and normalised
+    to the ``{check, level, reason}`` keys the renderer reads. Rows whose source data
+    was present AND populated carry ``level == "full"`` and an empty reason; degraded/
+    unavailable rows carry the data-coverage fact as a non-empty reason (never silent).
+
+    Readers WITHOUT the coverage seam (live SapChainReader, frozen-replay reader) emit
+    no ``check_coverage`` key, so this returns an empty section and the renderer is a
+    no-op — the report is byte-identical on those paths.
+
+    Args:
+        compile_output: CompileOutput dict; reads the optional 'check_coverage' key.
+                        Imports nothing from feeders/ — consumes the plain-dict
+                        projection only (the report layer stays feeders-pure).
+
+    Returns:
+        CheckCoverageSection: one row per deterministic check; empty (show=False)
+            when the key is absent or empty. Never None.
+    """
+    raw: list[dict] = compile_output.get("check_coverage") or []
+    rows = [
+        {
+            "check": str(r.get("check", "")),
+            "level": str(r.get("level", "")),
+            "reason": str(r.get("reason", "") or ""),
+        }
+        for r in raw
+    ]
+    return CheckCoverageSection(rows=rows)
 
 
 def build_analytical_review_section(
