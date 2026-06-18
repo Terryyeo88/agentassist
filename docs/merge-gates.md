@@ -81,6 +81,15 @@ only (no imports). The T5.8 guard test still passes, and an additional headless-
 (`tests/test_t58d_review_surface.py::test_artifacts_import_is_headless`) asserts importing `ui.artifacts`
 pulls no `streamlit`/`anthropic`/`engine.review`/`agent.loop`. `ui/` row above stays accurate.
 
+**`agent/classifier_factory.py` note (T5.9e, 2026-06-18):** the env-gated classifier-backend factory lives
+in `agent/`, so it is squarely inside the `agent/` row above — it **may** name/construct
+`AnthropicClassifierBackend` and select the live backend lazily, but it does **not itself** import
+`anthropic` (the SDK import stays confined to `agent/intent_classifier.py`'s call site; the factory only
+NAMES the class, so *selecting* live does not load the SDK). The boundary stays at `orchestrator/`; **no new
+grep rule is added** and none is needed. This is proven by the T5.9e AST import-scans
+(`tests/test_t59e_classifier_factory.py`): the factory imports `anthropic` nowhere (not even deferred),
+across `agent/` `intent_classifier.py` remains the only `anthropic` importer, and `orchestrator/` imports
+neither the factory nor the classifier.
 **`api/` import posture (T6.1 React-frontend seam — documentation only, NOT a Gate-a grep):**
 The `api/` package is a new top-level **serve/presentation** consumer: a thin FastAPI layer that
 serialises the FROZEN demo artifacts (via `ui.artifacts.load_demo_artifacts` / `ui.sign`) to JSON for
