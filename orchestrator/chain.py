@@ -278,8 +278,21 @@ def run_chain(
             f"listing checks: SEQ_GAP={len(seq_gap)} DUP_CLAIM={len(dup_claim)} findings"
         )
     except Exception as exc:
-        log.warning(f"listing checks failed (non-fatal, findings suppressed): {exc}")
-        result["listing_findings"] = []
+        # A thrown listing check (read failure, structural KeyError, malformed row) is a
+        # DIFFERENT failure class from 2B's missing-field degradation: the checks could
+        # not run AT ALL. Surface it as a chain-level "unavailable" signal rather than a
+        # silent [] that reads identically to a genuine clean run (the swallow bug).
+        # Option B (Terry): a SEPARATE result key — borrow 2B's "unavailable" level name
+        # and non-empty-reason honesty, but import NOTHING from feeders (the signal is a
+        # plain dict built here). The reason states the EXECUTION fact only, no IRAS
+        # rationale. listing_findings is None (not []) so a failed run never reads as
+        # zero findings. Findings never gate — the chain still completes.
+        log.warning(f"listing checks could not run (non-fatal, → unavailable): {exc}")
+        result["listing_findings"] = None
+        result["listing_checks_status"] = {
+            "level": "unavailable",
+            "reason": f"listing checks failed to run: {exc}",
+        }
 
     # BOX-ISOLATION assertion: boxes must not have been touched.
     if result["calculate"]["boxes"] != _boxes_before:
