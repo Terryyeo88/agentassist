@@ -134,6 +134,16 @@ the extended AST import-scan in `tests/test_t59d_dispatch_exec.py` + `tests/test
 (`dispatch_exec` imports `agent.facets` and no banned root; `orchestrator/` does not reach `dispatch_exec`).
 Still NOT wired to UI (Slice 3) or NL (Slice 4); findings-only.
 
+**`POST /command` threads a view-only `filters` param (T6.3 Slice 3a, 2026-06-18):** the React API
+(`api/app.py`) now reads an optional `filters` field from the `POST /command` body and threads it to
+`execute_intent(filters=...)`; the enriched response already serialised (Slice 2). **`api/` posture is
+unchanged:** it adds **no domain logic** — Pydantic does shape validation only, and DOMAIN validation stays
+the engine's job (the single source of truth), so an off-domain value flows through to a structured
+`filter_rejection` in the 200 body, never a 4xx. `api/` already imports `agent`/`ui`/`report` view-models and
+remains `anthropic`-free; **no new boundary, no posture change, no new grep rule** — the boundary stays at
+`orchestrator/`. Proven by `tests/test_t63s3a_command_filters.py` (+ the existing `api/` AST import-scan in
+`tests/test_t62_command.py`). NO frontend (Slice 3b), NO NL extraction (Slice 4); findings-only.
+
 **CI / Node toolchain separation (T6.1):** repo CI is **pytest-only** (`.github/workflows/ci.yml`:
 flake8 + the `orchestrator/` import-scan + `pytest -n auto`). T6.1 adds `fastapi`+`uvicorn` to
 `requirements.txt` so `api/` imports cleanly in the existing Python job; **the Python suite is the merge
