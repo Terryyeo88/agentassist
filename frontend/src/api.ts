@@ -112,3 +112,59 @@ export async function postSign(reviewer_name: string, firm_name: string): Promis
   }
   return (await resp.json()) as SignResponse;
 }
+
+/*
+ * POST /command (T6.2). Mirrors api/app.py's response-shape contracts
+ * (COMMAND_*_KEYS / EXECUTION_KEYS) — keep these in lockstep with that single source.
+ * ExecutionResult.data varies by intent; it is left open (Record) and rendered defensively.
+ */
+export interface ExecutionResult {
+  intent: string;
+  outcome: string;
+  sequence: string[];
+  tiers: number[];
+  params: Record<string, string>;
+  data: Record<string, unknown>;
+  notes: string[];
+}
+
+export type CommandResponse =
+  | {
+      kind: "result";
+      classifier_mode: string;
+      disclaimer: string;
+      intent: string;
+      execution: ExecutionResult;
+    }
+  | {
+      kind: "out_of_scope";
+      classifier_mode: string;
+      disclaimer: string;
+      message: string;
+      buttons: string[];
+    }
+  | {
+      kind: "needs_clarification";
+      classifier_mode: string;
+      disclaimer: string;
+      intent: string;
+      missing: string[];
+      message: string;
+    };
+
+export async function postCommand(
+  utterance: string,
+  client_id: string,
+  period: string
+): Promise<CommandResponse> {
+  const resp = await fetch(`${BASE}/command`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ utterance, client_id, period }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail || `Command failed: ${resp.status}`);
+  }
+  return (await resp.json()) as CommandResponse;
+}

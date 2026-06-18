@@ -59,7 +59,7 @@ export function App() {
     <>
       <TopBar review={review} reviewerName={reviewerName} />
       <div className="app-shell">
-        <CommandBar />
+        <CommandBar clientId={CLIENT} period={PERIOD} />
 
         <div className="f5">
           {Object.entries(review.f5_summary.boxes).map(([k, v]) => (
@@ -101,8 +101,9 @@ export function App() {
           {review.disclaimer}
           <br />
           Demo / illustrative only — frozen {review.client.company_db} engine output, not a
-          real client's real numbers. Command bar is inert (Lane C2 deferred). Built ≠
-          demo-validated ≠ accuracy-validated.
+          real client's real numbers. The command bar classifies + runs reads over the frozen
+          artifacts (scripted by default — no tokens; live opt-in). Built ≠ demo-validated ≠
+          accuracy-validated.
         </footer>
       </div>
 
