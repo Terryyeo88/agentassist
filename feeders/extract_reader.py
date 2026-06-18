@@ -21,7 +21,8 @@ reproduce today's dormant ``@odata.count`` → None. ``count()`` here is therefo
 against the export's known row count and is NEVER asserted against the frozen S0 / oracle.
 
 Beside the Protocol methods, ``coverage()`` declares which canonical fields the loaded
-export populated (emission only — the coverage → check-status mapping is T2.12 slice 2B).
+export carried (header AND value population), and ``coverage_status()`` maps that onto the
+per-check data-coverage status the working paper surfaces (T2.12 slice 2B).
 
 Pure stdlib; openpyxl is imported lazily only on the .xlsx path. No SAP, no anthropic.
 """
@@ -34,25 +35,51 @@ from pathlib import Path
 from typing import Optional
 
 from feeders import extract_schema as schema
+from feeders.coverage_status import derive_coverage_statuses
 
 
 @dataclass(frozen=True)
 class ExtractCoverage:
-    """Per-canonical-field coverage declaration for one loaded export.
+    """Per-(surface, field) coverage declaration for one loaded export.
 
-    ``fields`` maps each canonical field (see ``schema.COVERAGE_FIELDS``) to whether the
-    export carried its source column. ``is_full()`` is the all-populated case a complete
-    export reports. This is the EMISSION seam only — slice 2B maps coverage onto
-    check-status / working-paper degradation; it does not live on the ChainReader Protocol.
+    ``fields`` maps each ``(surface, field)`` key (see ``schema.COVERAGE_FIELDS``) to whether
+    the export carried its source COLUMN (header presence). ``populated`` maps the same keys
+    to whether that column carried at least one NON-EMPTY value. The two differ when a column
+    is present but 0%-populated (e.g. ``NumAtCard`` in SBODEMOSG) — header-present yet value-
+    empty. ``is_covered()`` is the value-aware test slice 2B's status mapping uses; ``is_full()``
+    stays HEADER-fullness (all columns present) for backward compatibility.
+
+    EMISSION seam only — ``feeders.coverage_status`` maps this onto per-check status; it does
+    not live on the ChainReader Protocol.
     """
 
-    fields: dict
+    fields: dict       # (surface, field) -> bool   column header present
+    populated: dict    # (surface, field) -> bool   column carried >=1 non-empty value
 
     def is_full(self) -> bool:
+        """All source columns present (header-fullness — NOT value-population-aware)."""
         return all(self.fields.values())
 
     def missing(self) -> list:
+        """The (surface, field) keys whose source column is absent from the export."""
         return sorted(k for k, present in self.fields.items() if not present)
+
+    def is_present(self, surface, field) -> bool:
+        """Whether the column for ``(surface, field)`` appeared in the export header."""
+        return bool(self.fields.get((surface, field), False))
+
+    def is_populated(self, surface, field) -> bool:
+        """Whether the column for ``(surface, field)`` carried >=1 non-empty value."""
+        return bool(self.populated.get((surface, field), False))
+
+    def is_covered(self, surface, field) -> bool:
+        """Value-aware coverage: the column is BOTH present AND populated.
+
+        A present-but-0%-populated column is NOT covered — this is the distinction
+        that keeps a silently-partial check (DUP_CLAIM under-detection, NO_GST_REG
+        under a blank supplier master) from reading as ``full``.
+        """
+        return self.is_present(surface, field) and self.is_populated(surface, field)
 
 
 class ExtractChainReader:
@@ -72,6 +99,10 @@ class ExtractChainReader:
         self._source = Path(source)
         sheets, present_columns = _load_sheets(self._source)
         self._present_columns = present_columns
+        # Value-population per (sheet → set of columns that carried >=1 non-empty cell).
+        # Computed from the loaded rows before they are projected away, so coverage can
+        # distinguish a present-but-0%-populated column from a populated one.
+        self._populated_columns = _compute_populated_columns(sheets)
 
         # --- documents → grouped canonical documents, bucketed by (doc_type, doc_kind) ---
         self._docs_by_bucket: dict[tuple, list[dict]] = {
@@ -188,12 +219,29 @@ class ExtractChainReader:
     # -- coverage seam (beside the Protocol; NOT part of ChainReader) ---------
 
     def coverage(self) -> ExtractCoverage:
-        """Declare which canonical fields the loaded export populated (emission only)."""
+        """Declare which canonical fields the export carried, header AND value (emission)."""
         fields = {
-            field: (column in self._present_columns.get(sheet, set()))
-            for field, (sheet, column) in schema.COVERAGE_FIELDS.items()
+            key: (column in self._present_columns.get(sheet, set()))
+            for key, (sheet, column) in schema.COVERAGE_FIELDS.items()
         }
-        return ExtractCoverage(fields=fields)
+        populated = {
+            key: (column in self._populated_columns.get(sheet, set()))
+            for key, (sheet, column) in schema.COVERAGE_FIELDS.items()
+        }
+        return ExtractCoverage(fields=fields, populated=populated)
+
+    def coverage_status(self) -> list:
+        """Map this export's coverage onto per-check status (T2.12 slice 2B).
+
+        Returns ``list[CoverageStatus]`` for the three in-scope checks. SEQ_GAP's
+        company-wide signal is the presence of any company-wide ('all' scope) sales
+        rows — the surface ``detect_seq_gaps`` consumes to tell "issued in another
+        period" from "never issued anywhere". Emission only; asserts no verdict.
+        """
+        company_wide_present = bool(self._listing.get("all_sales_headers"))
+        return derive_coverage_statuses(
+            self.coverage(), company_wide_population_present=company_wide_present
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +255,26 @@ _REQUIRED_SHEETS = (
     schema.BUSINESS_PARTNERS_SHEET,
     schema.LISTING_SHEET,
 )
+
+
+def _compute_populated_columns(sheets: dict) -> dict:
+    """Per sheet, the set of columns that carried at least one NON-EMPTY value.
+
+    A cell counts as populated when it stringifies to a non-blank value; whitespace-only
+    cells (and ``None``) do not. This is what makes coverage value-population-aware: a column
+    present in the header but empty in every row is present but NOT populated.
+    """
+    populated: dict[str, set] = {}
+    for name, rows in sheets.items():
+        cols: set = set()
+        for row in rows:
+            for col, val in row.items():
+                if col in cols:
+                    continue
+                if val is not None and str(val).strip() != "":
+                    cols.add(col)
+        populated[name] = cols
+    return populated
 
 
 def _load_sheets(source: Path):
