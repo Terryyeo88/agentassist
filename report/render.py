@@ -340,6 +340,72 @@ def _make_numbered_canvas(client_name: str):
 
     return _NumberedCanvas
 
+# ── Deterministic-check coverage helpers + text renderer (T2.12-2C) ──────────
+
+# Friendly labels for the deterministic checks 2B's coverage seam reports on.
+# Self-contained here so report/ takes NO new coupling to agent.registry (and
+# stays feeders-pure); the raw check id is the fallback for any unmapped check.
+_COVERAGE_CHECK_LABELS: dict[str, str] = {
+    "DUP_CLAIM": "Duplicate input-tax claims (DUP_CLAIM)",
+    "SEQ_GAP": "Invoice sequence gaps (SEQ_GAP)",
+    "NO_GST_REG": "Supplier GST-registration check (NO_GST_REG)",
+}
+
+
+def _coverage_label(check: str) -> str:
+    """Friendly label for a coverage check; raw id fallback keeps it honest."""
+    return _COVERAGE_CHECK_LABELS.get(check, check or "(unknown check)")
+
+
+def _coverage_line(row: dict) -> str:
+    """One reviewer-facing coverage line, reusing tfix #63's three-state vocabulary.
+
+    full        → positively marked "examined" (visible, not invisible) — no reason.
+    degraded    → "examined" with the under-detection caveat surfaced.
+    unavailable → "NOT examined" with the could-not-run caveat surfaced.
+
+    The reason carries the data-coverage FACT only (no IRAS rationale); it is empty
+    for full and non-empty for degraded/unavailable (2B's discipline).
+    """
+    label = _coverage_label(row.get("check", ""))
+    level = row.get("level", "")
+    reason = row.get("reason", "")
+    if level == "full":
+        return f"{label}: examined — full data coverage."
+    if level == "degraded":
+        return f"{label}: examined with reduced coverage (degraded) — {reason}"
+    if level == "unavailable":
+        return f"{label}: NOT examined — coverage unavailable — {reason}"
+    # Defensive fallback for an unrecognised level — surface it rather than hide it.
+    tail = f" — {reason}" if reason else ""
+    return f"{label}: {level or '(unknown level)'}{tail}"
+
+
+def render_check_coverage_section(section) -> str:
+    """Render the deterministic-check coverage status to plain text (T2.12-2C).
+
+    Mirrors ``render_declared_f5_section``: duck-typed (any object with a ``.rows``
+    list of ``{check, level, reason}`` dicts), returns an EMPTY string when there are
+    no rows so callers can test truthiness. This is the testable surface; the PDF
+    flowable appender ``_check_coverage`` renders the same lines into the report.
+
+    Args:
+        section: CheckCoverageSection (or duck-typed equivalent) exposing ``.rows``.
+
+    Returns:
+        str: a heading + one line per check; empty string when there are no rows.
+    """
+    rows = getattr(section, "rows", None) or []
+    if not rows:
+        return ""
+    lines: list[str] = [
+        "Deterministic Check Coverage",
+        "=" * 50,
+    ]
+    lines.extend(f"  {_coverage_line(row)}" for row in rows)
+    return "\n".join(lines)
+
+
 # ── Declared-vs-computed F5 text renderer (public) ───────────────────────────
 
 def render_declared_f5_section(section) -> str:
@@ -1133,6 +1199,36 @@ def _listing_findings(m: ReportModel, story: list) -> None:
         story.append(_table(dc_cols, dc_hdr, dc_rows))
 
 
+def _check_coverage(m: ReportModel, story: list) -> None:
+    """Render the dedicated Deterministic Check Coverage section (T2.12-2C).
+
+    Renders 2B's per-check data-coverage status so the reviewer can SEE what was and
+    was not fully examined — a silently-partial review becomes impossible to sign
+    unknowingly. A DEDICATED sibling surface (its own heading), distinct from the
+    listing-completeness section, the show_ai_candidates probabilistic surface, and
+    Section 6. No-op when the chain reader exposed no coverage seam (live SAP / frozen
+    replay → no rows), so the report stays byte-identical on those paths.
+
+    Args:
+        m:     The ReportModel containing the optional check_coverage section.
+        story: Mutable story list; flowables are appended in place.
+    """
+    cc = getattr(m, "check_coverage", None)
+    if cc is None or not getattr(cc, "rows", None):
+        return
+    story.append(Paragraph("Deterministic Check Coverage", _H2))
+    story.append(Paragraph(
+        "Per-check data-coverage status for the deterministic checks. This makes the "
+        "coverage of the review explicit — what was fully examined, what ran with "
+        "reduced coverage, and what could not run — so a silently-partial review is "
+        "never signed unknowingly. Caveats state the available DATA only and assert no "
+        "compliance verdict; the tax basis remains the reviewer's to source.",
+        _SMLX,
+    ))
+    for row in cc.rows:
+        story.append(Paragraph(f"•  {_coverage_line(row)}", _SMALL))
+
+
 def _not_examined(m: ReportModel, story: list) -> None:
     """Append Section 6 — Items not examined (coverage boundary).
 
@@ -1245,6 +1341,7 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _declared_f5(model, story)
     _findings(model, story)
     _listing_findings(model, story)
+    _check_coverage(model, story)
     _cross_findings(model, story)
     _judgment(model, story)
     _not_examined(model, story)
