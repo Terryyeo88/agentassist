@@ -1,0 +1,40 @@
+/*
+ * Design tokens — lifted from the target mock's aesthetic ONLY (palette + type), not
+ * its data. Clay/paper palette; Newsreader (serif display), Inter (sans body), IBM Plex
+ * Mono (ids / hashes / numbers). Nothing here implies the mock's fictional findings.
+ */
+:root {
+  /* Paper / clay palette */
+  --paper: #f4efe4;
+  --paper-raised: #fbf7ee;
+  --paper-sunk: #ece5d6;
+  --ink: #2a2722;
+  --ink-soft: #6c6357;
+  --ink-faint: #968b7b;
+  --line: #ddd3c0;
+  --line-strong: #cabfa8;
+
+  --clay: #b9512a;
+  --clay-deep: #98401f;
+  --clay-soft: #e9d3c4;
+  --clay-wash: #f6e8de;
+
+  --sage: #5c7a59;
+  --sage-wash: #e6ede2;
+
+  /* Trust signals */
+  --warn: #9a6b13;
+  --warn-wash: #f7ecd2;
+  --warn-line: #e3c887;
+
+  /* Type */
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* Spacing / radius */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(42, 39, 34, 0.06), 0 8px 24px rgba(42, 39, 34, 0.05);
+}

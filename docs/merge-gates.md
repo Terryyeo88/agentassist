@@ -47,6 +47,7 @@ The correct allowed/forbidden map:
 | `agent/` | YES (lazy, SDK) | — | YES | NO |
 | `run_agent.py` | NO (orchestrator glue) | YES | YES | YES |
 | `ui/` (T5.8 demo) | **NO** (direct) | YES | YES | via `engine/` |
+| `api/` (T6.1 seam) | **NO** | YES | YES | via `engine/` |
 | `feeders/` (T2.12 extract) | **NO** | **NO** | **NO** | **NO** |
 
 **`ui/` import posture (T5.8 demo showcase — documentation only, NOT a Gate-a grep):**
@@ -79,6 +80,25 @@ keeping `artifacts.py` Streamlit-free and model-free; the new `.streamlit/config
 only (no imports). The T5.8 guard test still passes, and an additional headless-import test
 (`tests/test_t58d_review_surface.py::test_artifacts_import_is_headless`) asserts importing `ui.artifacts`
 pulls no `streamlit`/`anthropic`/`engine.review`/`agent.loop`. `ui/` row above stays accurate.
+
+**`api/` import posture (T6.1 React-frontend seam — documentation only, NOT a Gate-a grep):**
+The `api/` package is a new top-level **serve/presentation** consumer: a thin FastAPI layer that
+serialises the FROZEN demo artifacts (via `ui.artifacts.load_demo_artifacts` / `ui.sign`) to JSON for
+the React frontend under `frontend/`. Like `ui/`, it **may** import `agent/`, `engine/`, `report/`, and
+the `ui/` view-models, but it **must not** import `anthropic` or the Claude Agent SDK — the boundary
+stays at `orchestrator/`, never at `api/`. This posture is **enforced by an AST import-scan test**
+(`tests/test_t61_frontend_api.py::test_api_imports_no_anthropic` over every `api/**/*.py`, plus a
+`sys.modules` guard), **not** by a CI grep (adding one is a code change, out of scope here).
+`orchestrator/` + `engine/` are untouched by T6.1. There is deliberately **no `/command`
+classify+execute endpoint** in this slice (Lane C2, deferred). *Consider promoting to a grep gate over
+`api/` later* if it grows beyond the demo seam.
+
+**CI / Node toolchain separation (T6.1):** repo CI is **pytest-only** (`.github/workflows/ci.yml`:
+flake8 + the `orchestrator/` import-scan + `pytest -n auto`). T6.1 adds `fastapi`+`uvicorn` to
+`requirements.txt` so `api/` imports cleanly in the existing Python job; **the Python suite is the merge
+gate and does NOT depend on Node.** The frontend `vitest`/`vite build` is kept a **separate,
+optional/local** job — **no Node job was added to `ci.yml`** in this slice (adding one is a deliberate
+later step). Run the frontend tests locally with `cd frontend && npm install && npm test`.
 
 **Why this exact form — not `grep -r "anthropic" orchestrator/`:**
 
