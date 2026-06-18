@@ -2564,6 +2564,71 @@ mock engine, no tokens; the v0 `SHOW_PRIOR_ADJUDICATIONS` client/period→finger
 
 ---
 
+## §T6.1 — React review surface + FastAPI seam (Lane C1) (branch `t6.1-frontend-review-surface`; built over FROZEN artifacts; NOT demo/accuracy-validated)
+
+**A production-shaped frontend over the SAME frozen artifacts the Streamlit demo renders.** Lane C1
+adds a **React + TypeScript (Vite)** review surface under `frontend/`, talking JSON to a thin
+**FastAPI** seam under `api/`. It is a SERVE/PRESENTATION layer — no engine call, no model, no SAP, no
+tokens; **MockEngine frozen artifacts only**. The aesthetic (clay/paper palette; Newsreader / Inter /
+IBM Plex Mono type) is lifted from a target mock; the **data is the real frozen SBODEMOSG output**, not
+the mock's fictional findings.
+
+**Backend (`api/`, imports `ui`/`agent`/`engine`/`report` only — NO `anthropic`; `orchestrator/`
+untouched):**
+- `api/viewmodel.py` — PURE serialisers reshaping `DemoArtifacts` → JSON-safe dicts. The exported
+  `REVIEW_KEYS` / `QUEUE_ITEM_KEYS` / `AUDIT_ROW_KEYS` / `SIGN_KEYS` tuples are the **single source of
+  truth** for the key set the frontend consumes (asserted by the contract test; mirrored by the TS types
+  in `frontend/src/api.ts`). Queue rows = `annotated_adjudication_items` + `flatten_finding_card` +
+  `check_reference`, carrying `demoted`/`annotation`/`prior_dispositions`/`fingerprint` and the verbatim
+  unvalidated-IRAS-citation caveat. F5 summary = the box-isolated `compile_output.calculate.boxes`.
+- `api/app.py` — FastAPI: `GET /review/{client}/{period}` (404 for anything but the frozen
+  `sbodemosg`/`2024Q3` — never dress empty data as a real client's numbers), `POST /sign` (reproduces
+  `ui.sign.sign_working_paper`, carries the reviewer name, **box-isolation preserved**), `GET /audit`
+  (the hash-chained ledger rows), `GET /health`. **No `/command` endpoint — classify+execute is Lane
+  C2, deferred.**
+
+**Frontend (`frontend/`, Vite + React + TS):** `TopBar` (brand, demo client/period context, the loud
+**UNVALIDATED** badge, reviewer of record), `CommandBar` (**INERT styled shell** — input + buttons
+disabled, labelled deferred-to-C2; no classify/execute), `Queue` (tabs: Needs review / Marked known /
+Decided), `FindingDetail` (vendor · what we found · why it matters · the rule · suggested action →
+decide → sign), `AuditTrail`, `SignModal`. Typed client `frontend/src/api.ts` mirrors the API contract.
+Vite dev-proxies `/api/*` → uvicorn `:8000`. Renders **only the real frozen rows + real check types**
+(E1×8 / NO_GST_REG×7 / E2×5 / gst_amount_mismatch×1 = 21); the genuinely-seeded **doc-592 `NO_GST_REG`
+"Far East Imports"** entry renders **demoted-but-present** under *Marked known* (T5.5b); the mock's
+aspirational **DUP_CLAIM / SEQ_GAP / FLUX never appear**.
+
+**Trust signals preserved verbatim:** the `unvalidated` badge + `validation_status` constant, "AgentAssist
+flags — you decide", reviewer-name-on-sign, the per-finding "illustrative citation" caveat on the
+(themselves-unvalidated) IRAS basis, and the demo/illustrative footer.
+
+**CI posture (flagged, gate NOT broken).** Repo CI is **pytest-only** (`.github/workflows/ci.yml`). The
+Python suite gains `fastapi`+`uvicorn` (added to `requirements.txt`) so `api/` imports cleanly; the
+**Python gate stays the merge gate**. The frontend `vitest`/build is a **separate, optional/local** job
+— the Python suite does NOT depend on Node, and no Node job was added to `ci.yml` in this slice.
+
+**Acceptance (failing-test-first).** `tests/test_t61_frontend_api.py` (+11, all hermetic via
+`fastapi.testclient`): `GET /review` returns the real frozen shape (doc-592 present **and** demoted; no
+`DUP_CLAIM`/`SEQ_GAP`/`FLUX` in the payload; only real check types); `POST /sign` box-isolation (F5
+boxes byte-identical pre/post) + reviewer name carried + empty-reviewer rejected; the **contract test**
+pins each queue item's keys to `QUEUE_ITEM_KEYS` (single source of truth); AST import-scan asserts `api/`
+imports no `anthropic`/SDK. `frontend` vitest (+4, separate job): render smoke — queue + detail render,
+UNVALIDATED badge present, demoted doc-592 under Marked known, no fictional types, command bar inert.
+Full **pytest** suite **1861 passed, 1 skipped** (the skip is the import-isolation guard that no-ops
+when `anthropic` is already in `sys.modules` from earlier tests — by design). `tsc --noEmit` + `vite
+build` green.
+
+**Run.** Backend: `uvicorn api.app:app --reload` (`:8000`). Frontend: `cd frontend && npm install &&
+npm run dev` (`:5173`, proxied). → real frozen findings render in the mock's aesthetic; UNVALIDATED
+badge + demo framing loud; decide → sign emits a working paper carrying the reviewer name. **SAP off,
+mock engine, no tokens.**
+
+**Honest status.** Frontend + API built over **FROZEN** artifacts — **built ≠ demo-validated ≠
+accuracy-validated**; the per-finding IRAS citations are themselves UNVALIDATED; the command bar is an
+inert shell (Lane C2 deferred: `POST /command` → env-selected classifier → `execute_intent` → React
+wiring, gated on Lanes A + B); **T2.11 gates customer-facing**.
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools
