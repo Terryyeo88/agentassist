@@ -34,7 +34,10 @@ Execution routes (one per menu intent)
   adjudications and flagging it in ``notes``. NO client/period→fingerprint mapping is
   fabricated (see ``agent/intent.py`` lines documenting the same gap).
 * ``RUN_REVIEW``              → invoke the FROZEN engine; return frozen dossiers + an
-  F5 summary. No live chain, no SAP.
+  F5 summary. No live chain, no SAP. T6.3 Slice 2 also attaches a data-derived facet
+  menu (``available_facets``) over the canonical findings and applies optional,
+  surface-supplied, VIEW-ONLY filters (validated against the real domain, box-isolated,
+  never silently empty) — see ``agent/facets.py`` and ``execute_intent(filters=...)``.
 
 Identity slots are NEVER guessed: a blank ``client_id``/``period`` yields the
 router's ``NeedsClarification`` passed straight through (outcome
@@ -52,6 +55,12 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from agent.decision_ledger import DecisionLedger
+from agent.facets import (
+    NotInDomain,
+    apply_filters,
+    compute_facets,
+    finding_facet_specs,
+)
 from agent.intent import DispatchResult, NeedsClarification, dispatch
 from agent.proposals import StagingStore
 from agent.read_tools import read_decision_ledger, read_ledger, read_proposals
@@ -67,6 +76,14 @@ DEMO_ARTIFACTS_DIR: Path = (
 # ExecutionResult.outcome values.
 OUTCOME_EXECUTED: str = "executed"
 OUTCOME_NEEDS_CLARIFICATION: str = "needs_clarification"
+
+# T6.3 Slice 2 — filter_rejection.reason values. A filter rejection is NEVER an
+# exception and NEVER a silent empty set: the underlying review/read still stands
+# (its full, unfiltered rows + F5 boxes), and the rejection carries enough to
+# re-prompt against the REAL options (the ⊆-menu twin of NeedsClarification).
+FILTER_NOT_IN_DOMAIN: str = "not_in_domain"
+FILTER_UNKNOWN_FACET: str = "unknown_facet"
+FILTER_UNSUPPORTED_INTENT: str = "unsupported_intent"
 
 # The honest, code-visible flag for the SHOW_PRIOR_ADJUDICATIONS menu gap.
 _MENU_GAP_NOTE: str = (
@@ -150,9 +167,16 @@ class ExecutionResult:
                     * SHOW_PROPOSALS          -> {"proposals": [...]}
                     * SHOW_PRIOR_ADJUDICATIONS -> {"adjudications": [...]}
                     * RUN_REVIEW              -> {"review_result", "dossiers",
-                                                  "f5_summary"}
+                                                  "f5_summary", "available_facets",
+                                                  "findings", "remaining_facets",
+                                                  "applied_filters",
+                                                  "filter_rejection"}
                     * needs_clarification     -> {"missing_params": [...],
                                                   "message": str}
+                  A non-findings intent given a (non-empty) ``filters`` arg also
+                  carries a ``filter_rejection`` (unsupported-intent) in ``data``;
+                  its rows stay unfiltered. ``filter_rejection`` is ``None`` when no
+                  filter was rejected. See T6.3 Slice 2.
         notes:    Honest flags (e.g. the SHOW_PRIOR_ADJUDICATIONS menu-gap note).
     """
     intent: str
@@ -209,12 +233,91 @@ def _build_staging_store(proposals: list[dict]) -> StagingStore:
     return store
 
 
+def _unsupported_intent_rejection(intent: str, filters: Mapping[str, Any]) -> dict:
+    """Structured rejection for a `filters` arg on a non-findings intent.
+
+    Explicit, not silently ignored: the underlying read still returns its rows
+    unfiltered (findings facets are the only facetable collection this slice).
+    """
+    return {
+        "reason": FILTER_UNSUPPORTED_INTENT,
+        "requested_filters": dict(filters),
+        "message": (
+            f"filters are not supported for intent {intent!r} in this slice "
+            "(findings facets only); the underlying read returned its rows "
+            "unfiltered."
+        ),
+    }
+
+
+def _findings_view(
+    full_findings: list, filters: Mapping[str, Any]
+) -> tuple[list, dict, dict, dict, Optional[dict]]:
+    """The pure, view-only filter step over the canonical findings.
+
+    Computes the full filter menu over *full_findings*, then — only when *filters*
+    is non-empty — validates and narrows. Returns
+    ``(view_rows, available_facets, remaining_facets, applied_filters, rejection)``:
+
+    * ``available_facets`` — the full menu (domains + counts) over the FULL findings,
+      whether or not a filter was passed.
+    * No filter        → ``view_rows`` = the full findings; ``remaining`` = the full
+      menu; ``applied`` = ``{}``; ``rejection`` = ``None``.
+    * Valid filter     → ``view_rows`` = the narrowed subset; ``remaining`` recomputed
+      over the subset; ``applied`` = the echoed filters; ``rejection`` = ``None``.
+    * Invalid VALUE    → the full (unfiltered) findings still stand; ``applied`` =
+      ``{}``; ``rejection`` carries the facet, bad value + the REAL domain.
+    * Unknown facet NAME → the full findings still stand; ``rejection`` carries the
+      requested filters + the real available facet names (NEVER an exception to the
+      surface — the dispatch seam turns the engine's ValueError into a structured
+      rejection).
+
+    PURE / VIEW-ONLY: reads the findings, recomputes no finding and no F5 box.
+    """
+    specs = finding_facet_specs()
+    available = compute_facets(full_findings, specs)
+    if not filters:
+        return full_findings, available, available, {}, None
+
+    try:
+        result = apply_filters(full_findings, filters, specs)
+    except ValueError:  # an undeclared facet NAME — caller used a non-facetable field
+        rejection = {
+            "reason": FILTER_UNKNOWN_FACET,
+            "requested_filters": dict(filters),
+            "available_facets": sorted(available),
+            "message": (
+                "one or more filter facets are not facetable for findings; "
+                f"available facets: {sorted(available)}."
+            ),
+        }
+        return full_findings, available, available, {}, rejection
+
+    if isinstance(result, NotInDomain):
+        rejection = {
+            "reason": FILTER_NOT_IN_DOMAIN,
+            "facet": result.facet_name,
+            "value": result.value,
+            "domain": list(result.domain),
+            "requested_filters": dict(filters),
+            "message": (
+                f"value {result.value!r} is not in the {result.facet_name!r} "
+                f"domain; real values: {list(result.domain)}."
+            ),
+        }
+        return full_findings, available, available, {}, rejection
+
+    narrowed, remaining = result
+    return narrowed, available, remaining, dict(filters), None
+
+
 def execute_intent(
     intent: str,
     params: Mapping[str, str],
     *,
     artifacts: FrozenArtifacts,
     engine: Optional[Any] = None,
+    filters: Optional[Mapping[str, Any]] = None,
 ) -> ExecutionResult:
     """Route an intent + bound params, then EXECUTE its reads over frozen artifacts.
 
@@ -233,12 +336,21 @@ def execute_intent(
         artifacts: The frozen artifact surfaces to read over.
         engine:    Optional engine for RUN_REVIEW (anything with ``review(...)``);
                    defaults to a ``FrozenEngine`` over ``artifacts.review_result``.
+        filters:   Optional, surface-supplied findings facet filters
+                   (``{facet_name: value | [values]}``). A VIEW parameter — NOT
+                   identity, NOT classifier-extracted. RUN_REVIEW always runs the
+                   full (box-isolated) review FIRST, then narrows only the returned
+                   findings view; an invalid value or non-findings intent yields a
+                   structured filter rejection (never a silent empty, never an
+                   exception) while the full rows + F5 boxes still stand. Findings
+                   only this slice (proposals / ledger facets are deferred).
 
     Raises:
         IntentError: if ``intent`` is not in INTENT_MENU (propagated from dispatch).
         NotImplementedError: if a menu intent has no executor here (a guard for
             future menu growth — should be unreachable for the v0 menu).
     """
+    filters = dict(filters or {})  # a VIEW parameter; empty by default
     routed = dispatch(intent, params)  # raises IntentError for a non-menu intent
 
     if isinstance(routed, NeedsClarification):
@@ -271,17 +383,36 @@ def execute_intent(
         eng = engine if engine is not None else FrozenEngine(artifacts.review_result)
         # Deep-copy so the returned payload is ISOLATED from the frozen source — a
         # caller mutating it can never bleed back into the F5 boxes / gate results.
+        # The FULL review runs (box-isolated) BEFORE the view step; the F5 summary is
+        # computed here, once, over the full result and is NEVER touched by filtering.
         review_result = copy.deepcopy(eng.review())
+        full_findings = copy.deepcopy(artifacts.dossiers)
+        f5_summary = _f5_summary(review_result)
+        # Separated, pure VIEW step over the findings ONLY — recomputes no box.
+        view_rows, available, remaining, applied, rejection = _findings_view(
+            full_findings, filters
+        )
         data = {
             "review_result": review_result,
-            "dossiers": copy.deepcopy(artifacts.dossiers),
-            "f5_summary": _f5_summary(review_result),
+            "dossiers": full_findings,          # the full canonical findings (unchanged)
+            "f5_summary": f5_summary,
+            "available_facets": available,      # the full filter menu (always)
+            "findings": view_rows,              # the VIEW rows (narrowed when filtered)
+            "remaining_facets": remaining,      # recomputed over the view
+            "applied_filters": applied,         # echo ({} when none / rejected)
+            "filter_rejection": rejection,      # None unless a filter was rejected
         }
     else:  # pragma: no cover - dispatch guarantees a known menu intent
         raise NotImplementedError(
             f"intent {routed.intent!r} is in INTENT_MENU but has no executor in "
             "agent/dispatch_exec.py — add one when the menu grows"
         )
+
+    # Non-findings intents do not support facet filters this slice: surface a
+    # structured rejection (explicit, not silently ignored) while the underlying
+    # read's rows above still stand, unfiltered.
+    if filters and routed.intent != "RUN_REVIEW":
+        data["filter_rejection"] = _unsupported_intent_rejection(routed.intent, filters)
 
     return ExecutionResult(
         intent=routed.intent,
