@@ -223,9 +223,15 @@ def test_ext1_does_not_disturb_locked_2b_cases():
 
 def test_ext1_locked_cases_first_three_in_order(tmp_path):
     # The three locked cases keep their leading order; E1–E4 are appended after.
+    # (ext-3 appends the four document-pre-pass checks after E1–E4; the three-locked-first
+    # invariant and the E-check positions are unchanged — the tail is extended, not relaxed.)
     checks = [s.check for s in _statuses(_export_to(tmp_path))]
     assert checks[:3] == ["DUP_CLAIM", "NO_GST_REG", "SEQ_GAP"]
-    assert checks[3:] == ["E1", "E2", "E3", "E4"]
+    assert checks[3:7] == ["E1", "E2", "E3", "E4"]
+    assert checks[7:] == [
+        "gst_amount_mismatch", "correct_period",
+        "total_inconsistency", "reg11_supplier_gst_absent",
+    ]
 
 
 # ---------------------------------------------------------------------------
