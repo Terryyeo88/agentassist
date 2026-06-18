@@ -102,6 +102,17 @@ stays at `orchestrator/`, never at `api/`. This posture is **enforced by an AST 
 classify+execute endpoint** in this slice (Lane C2, deferred). *Consider promoting to a grep gate over
 `api/` later* if it grows beyond the demo seam.
 
+**T6.2 update (`POST /command` landed — Lane C2):** the AST import-scan over `api/` **stays green**.
+`api/app.py` now imports `agent.classifier_factory` / `agent.intent_classifier` / `agent.dispatch_exec`
+/ `agent.intent_curated` and may **construct** the live classifier (`AnthropicClassifierBackend`) under
+`AGENT_UI_CLASSIFIER=live` — but the `anthropic` SDK import stays **lazy/confined to that backend's
+call site** (`agent/intent_classifier.py::AnthropicClassifierBackend._create`), so importing `api/`
+triggers **no** `anthropic` import and `tests/test_t62_command.py::test_api_imports_no_anthropic`
+(over every `api/**/*.py`) passes. **Live tokens are a runtime event only** under the env flag (live
+**without** `ANTHROPIC_API_KEY` → loud `ClassifierConfigError` → 500, never a silent fallback); the
+default path is scripted + token-free. The boundary stays at `orchestrator/` (untouched), never at
+`api/`. No new CI grep is added.
+
 **CI / Node toolchain separation (T6.1):** repo CI is **pytest-only** (`.github/workflows/ci.yml`:
 flake8 + the `orchestrator/` import-scan + `pytest -n auto`). T6.1 adds `fastapi`+`uvicorn` to
 `requirements.txt` so `api/` imports cleanly in the existing Python job; **the Python suite is the merge
