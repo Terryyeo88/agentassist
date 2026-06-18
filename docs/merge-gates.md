@@ -124,6 +124,16 @@ check (`tests/test_t63_facet_engine.py::TestHermeticPure`): `agent/facets.py` im
 importing it loads none of anthropic/SDK/streamlit/fastapi/orchestrator/engine, and `orchestrator/` does
 not import `agent.facets`. NOT wired into any surface in this slice (engine only).
 
+**`agent/dispatch_exec.py` imports `agent/facets.py` note (T6.3 Slice 2, 2026-06-18):** the dispatch-execution
+layer now imports the pure `agent/facets.py` (and nothing else new) to attach the data-derived filter menu
+(`available_facets`) and apply optional, surface-supplied, **view-only** findings filters over the canonical
+findings (validated against the real domain, box-isolated, never silently empty). Both modules sit in the
+`agent/` row above; `dispatch_exec.py` stays free of `anthropic`/SDK/network/`orchestrator/`/`ui/`/`fastapi`/SAP
+exactly as before. **No posture change and no new grep rule** — the boundary stays at `orchestrator/`. Proven by
+the extended AST import-scan in `tests/test_t59d_dispatch_exec.py` + `tests/test_t63s2_facet_dispatch.py`
+(`dispatch_exec` imports `agent.facets` and no banned root; `orchestrator/` does not reach `dispatch_exec`).
+Still NOT wired to UI (Slice 3) or NL (Slice 4); findings-only.
+
 **CI / Node toolchain separation (T6.1):** repo CI is **pytest-only** (`.github/workflows/ci.yml`:
 flake8 + the `orchestrator/` import-scan + `pytest -n auto`). T6.1 adds `fastapi`+`uvicorn` to
 `requirements.txt` so `api/` imports cleanly in the existing Python job; **the Python suite is the merge
