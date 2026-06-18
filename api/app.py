@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Union
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -140,11 +140,22 @@ class CommandRequest(BaseModel):
     ``utterance`` is classified to an intent; ``client_id`` / ``period`` are the SURFACE
     CONTEXT (the frontend supplies them) — identity slots come from context, NEVER guessed
     by the model. They are merged over the classifier's params on the Classified path.
+
+    ``filters`` is a VIEW parameter (T6.3 Slice 3a) — surface-supplied findings facets
+    (``{facet_name: value | [values]}``), NOT identity and NOT classifier-extracted.
+    Pydantic gives SHAPE validation only; DOMAIN validation stays the engine's job — an
+    off-domain value flows through to a structured ``filter_rejection`` in the response
+    body (a result, not a 4xx). It can only narrow a view over already-computed findings;
+    it never touches identity and never triggers a write. (Findings facets only this slice.)
     """
 
     utterance: str = Field(..., description="Free-text request to classify.")
     client_id: str = Field("", description="Surface context client id (e.g. sbodemosg).")
     period: str = Field("", description="Surface context period (e.g. 2024Q3).")
+    filters: Dict[str, Union[str, List[str]]] = Field(
+        default_factory=dict,
+        description="View-only findings facet filters; validated downstream by the engine.",
+    )
 
 
 def _classifier_mode() -> str:
@@ -278,6 +289,9 @@ def post_command(req: CommandRequest) -> dict:
         params,
         artifacts=shared_frozen_artifacts(),
         engine=_shared_frozen_engine(),
+        # View-only; the engine validates it against the real domain (off-domain →
+        # structured filter_rejection in the body, never a 4xx; never touches identity).
+        filters=req.filters,
     )
     return {
         **base,
