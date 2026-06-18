@@ -9,6 +9,7 @@ Public API:
     get_source_document(provider, doc_num) -> str | None
     read_vendor_gst_status(catalog, card_name) -> dict
     read_prior_period_treatment(store, key) -> dict
+    read_ledger(ledger) -> list[dict]                                    # T5.9d
     read_proposals(staging_store) -> list[dict]                          # T5.9a1
     read_decision_ledger(decision_ledger, *, fingerprint) -> list[dict]  # T5.9a1
 
@@ -93,6 +94,40 @@ def read_prior_period_treatment(store: dict, key: str) -> dict:
         "treatment": record.get("treatment"),
         "record": record,
     }
+
+
+def read_ledger(ledger: list[dict]) -> list[dict]:
+    """List the justification-ledger entries (read-only projection).
+
+    T5.9d (option B). The product surface's SHOW_LEDGER intent routes here. The
+    registry has long declared a Tier-0 ``read_ledger`` ToolSpec (agent/registry.py)
+    but carried NO implementation; this closes that gap with a pure projection over
+    the DI'd justification-ledger list — the hash-chained audit log of the agent's
+    tool calls, persisted as a list of entry dicts (e.g. the frozen
+    tests/fixtures/demo-artifacts/ledger.json). Read-only: never appends, never
+    mutates the source.
+
+    The chain-integrity fields (``prev_hash`` / ``entry_hash``) and the raw
+    ``call_params`` are an internal detail, not part of the read view — mirrors how
+    read_decision_ledger omits its hash-chain fields.
+
+    Returns:
+        One view dict per entry, in chain (preservation) order:
+        {"entry_id", "tool_name", "tier", "outcome", "justification",
+         "blocked_reason", "timestamp"}.
+    """
+    return [
+        {
+            "entry_id": e.get("entry_id"),
+            "tool_name": e.get("tool_name"),
+            "tier": e.get("tier"),
+            "outcome": e.get("outcome"),
+            "justification": e.get("justification"),
+            "blocked_reason": e.get("blocked_reason"),
+            "timestamp": e.get("timestamp"),
+        }
+        for e in ledger
+    ]
 
 
 def read_proposals(staging_store: "StagingStore") -> list[dict]:
