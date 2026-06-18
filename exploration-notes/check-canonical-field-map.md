@@ -229,31 +229,45 @@ under the extract feeder (§E).
 
 ---
 
-## E. Coverage status today (T2.12 slice 2B)
+## E. Coverage status today (T2.12 slice 2B + 2B-ext-1)
 
-Code: `feeders/coverage_status.py` (`derive_coverage_statuses` `:70-103`) + the seam
+Code: `feeders/coverage_status.py` (`derive_coverage_statuses` `:70-128`) + the seam
 `feeders/extract_reader.py:233-244` (`coverage_status`), surfaced into the chain DUCK-TYPED at
 `orchestrator/chain.py:310-329` (`_emit_check_coverage` → `result["check_coverage"]`).
 
-Exactly **three** `CoverageStatus` entries are emitted (one per in-scope check). Levels:
+**Seven** `CoverageStatus` entries are emitted: the three locked 2B cases FIRST and in order,
+then the four line-level E-checks added by **2B-ext-1**. Levels:
 `full` / `degraded(reason)` / `unavailable` (`coverage_status.py:29-31`); a non-`full` MUST
 carry a non-empty reason, `full` carries none (`:49-55`).
 
-| Check | Coverage signal | `full` when | non-`full` level | exact reason string |
-|-------|-----------------|-------------|------------------|---------------------|
-| DUP_CLAIM | `(listing, NumAtCard)` `is_covered` (present **AND** populated) | `coverage.is_covered(LISTING_SHEET, "NumAtCard")` (`:86`) | `degraded` (`:89`) | `"NumAtCard absent or unpopulated — DUP_CLAIM under-detects."` (`:63`) |
-| NO_GST_REG | `(business_partners, FederalTaxID)` `is_covered` | `coverage.is_covered(BUSINESS_PARTNERS_SHEET, "FederalTaxID")` (`:92`) | `unavailable` (`:95`) | `"FederalTaxID absent — NO_GST_REG cannot run; require supplier-master sheet at onboarding."` (`:64-66`) |
-| SEQ_GAP | company-wide population present | `company_wide_population_present` = `bool(all_sales_headers)` (`extract_reader.py:241`, used `:98`) | `degraded` (`:101`) | `"company-wide document population absent — SEQ_GAP limited to within-period."` (`:67`) |
+The **Emitted?** column records whether the check derives an explicit `CoverageStatus` and in
+which slice; checks not listed remain implicit-full (no key emitted).
+
+| Check | Emitted? | Coverage signal | `full` when | non-`full` level | exact reason string |
+|-------|----------|-----------------|-------------|------------------|---------------------|
+| DUP_CLAIM | yes (2B) | `(listing, NumAtCard)` `is_covered` (present **AND** populated) | `coverage.is_covered(LISTING_SHEET, "NumAtCard")` (`:86`) | `degraded` (`:89`) | `"NumAtCard absent or unpopulated — DUP_CLAIM under-detects."` (`:63`) |
+| NO_GST_REG | yes (2B) | `(business_partners, FederalTaxID)` `is_covered` | `coverage.is_covered(BUSINESS_PARTNERS_SHEET, "FederalTaxID")` (`:92`) | `unavailable` (`:95`) | `"FederalTaxID absent — NO_GST_REG cannot run; require supplier-master sheet at onboarding."` (`:64-66`) |
+| SEQ_GAP | yes (2B) | company-wide population present | `company_wide_population_present` = `bool(all_sales_headers)` (`extract_reader.py:241`, used `:98`) | `degraded` (`:101`) | `"company-wide document population absent — SEQ_GAP limited to within-period."` (`:67`) |
+| E1 | yes (ext-1) | `(documents, VatGroup)` ∧ `(documents, LineTotal)` `is_covered` | both covered (`:123`) | `degraded` (`:127`) | `"<missing>/… absent or unpopulated — E1 under-detects."` (`:126`) |
+| E2 | yes (ext-1) | `(documents, VatGroup)` ∧ `(documents, TaxTotal)` `is_covered` | both covered (`:123`) | `degraded` (`:127`) | `"<missing>/… absent or unpopulated — E2 under-detects."` (`:126`) |
+| E3 | yes (ext-1) | `(documents, VatGroup)` ∧ `(documents, LineTotal)` ∧ `(documents, TaxTotal)` `is_covered` | all covered (`:123`) | `degraded` (`:127`) | `"<missing>/… absent or unpopulated — E3 under-detects."` (`:126`) |
+| E4 | yes (ext-1) | `(documents, VatGroup)` ∧ `(documents, LineTotal)` ∧ `(documents, TaxTotal)` `is_covered` | all covered (`:123`) | `degraded` (`:127`) | `"<missing>/… absent or unpopulated — E4 under-detects."` (`:126`) |
+| COMPLETENESS, declared_A, declared_B, gst_amount_mismatch, correct_period, total_inconsistency, reg11_supplier_gst_absent | no — implicit | — | — | — | — |
 
 - `is_covered` is **value-aware**: present-AND-populated (`extract_reader.py:75-82`). A
   present-but-0%-populated column (e.g. NumAtCard in SBODEMOSG) is NOT covered → `degraded`.
+- ext-1 reuses the SAME `is_covered(surface, field)` predicate over the documents surface; the
+  E-check reason names the specific missing field(s) and is `degraded` (the check runs and
+  under-detects — it does not cannot-run), mirroring DUP_CLAIM←NumAtCard.
 - SEQ_GAP's signal is NOT a `COVERAGE_FIELDS` (surface,field) entry — it's the presence of any
   `all`-scope sales rows (`extract_reader.py:241`), the surface `detect_seq_gaps` needs to tell
   "issued in another period" from "never issued anywhere".
-- **Everything else is implicit-full**: only these three are derived (`:83-103`). The other 11
-  checks emit no coverage status (no key). `check_coverage` is absent entirely on readers
-  without the seam — live `SapChainReader` and frozen replay (`chain.py:318-324`) — so those
-  paths stay byte-identical.
+- **The remaining seven checks are implicit-full** (no key derived, `:83-128`). `check_coverage`
+  is absent entirely on readers without the seam — live `SapChainReader` and frozen replay
+  (`chain.py:318-324`) — so those paths stay byte-identical.
+- **Out of scope (later slices):** CardCode (its only consumers NO_GST_REG/DUP_CLAIM are the
+  locked 2B cases), and computed_boxes/declared_B (computed_boxes is a derived chain artifact,
+  not an export `(surface, field)`; declared_B also needs `declared_f5`, ext-2).
 
 ---
 
@@ -312,7 +326,7 @@ no pre-existing cells to correct. Citations are the authoritative source for eac
 | C. Series/Cancelled/NumAtCard/DocCurrency/FederalTaxID all mappable | AUTHORED | `extract_schema.py:100-114,164,183,191-208` |
 | D. frozen surfaces S0/S1/S2/S3/S5 | AUTHORED | `tests/fixtures/sbodemosg-extract/capture-manifest.json` |
 | D. **NumAtCard 0% populated (34/34 None)** | AUTHORED — counted in fixtures | `purchase-invoices.raw.json`, `listing-headers.json` |
-| E. 3 emitted CoverageStatus + exact strings | AUTHORED | `coverage_status.py:63-103`; `extract_reader.py:233-244`; `chain.py:310-329` |
-| E. everything else implicit-full | AUTHORED — only 3 derived | `coverage_status.py:83-103` |
+| E. emitted CoverageStatus + exact strings + **Emitted? column** | AUTHORED (PR #66) → UPDATED (2B-ext-1): now 7 emitted (3 locked 2B + E1–E4) | `coverage_status.py:63-128`; `extract_reader.py:233-244`; `chain.py:310-329` |
+| E. **E1–E4 now explicit (ext-1)**; remaining 7 implicit-full | UPDATED — E1–E4 flipped no→yes (ext-1), `is_covered` over documents surface, degraded | `coverage_status.py:106-128` |
 | F. **DocTotal collision REFUTED — `(surface,field)` keyed** | AUTHORED — distinct entries `:246`/`:252` | `extract_schema.py:234-253`; `extract_reader.py:41-82` |
 | G. orchestrator/report import nothing from feeders (duck-typed) | AUTHORED | grep clean; `chain.py:322` |
