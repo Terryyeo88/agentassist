@@ -1041,9 +1041,14 @@ def _declared_f5(m: ReportModel, story: list) -> None:
 def _listing_findings(m: ReportModel, story: list) -> None:
     """Render T2.10 listing-level check findings (SEQ_GAP + DUP_CLAIM) when present.
 
-    Skipped entirely when model.listing_findings is None (legacy callers) or when
-    both finding lists are empty.  Renders a separate subsection for each check
-    type that has at least one finding.
+    The pass EXECUTION STATE (tfix) drives whether — and how — the section renders, so a
+    clean run is positively marked examined and a thrown pass is marked could-not-run,
+    never silently absent (which read identically before the fix):
+      * "not_examined" with no findings → skipped (Section 6 carries the not-examined
+        line — the historical legacy behaviour);
+      * "unavailable" → a "could not run" note surfacing the execution reason;
+      * "examined" with no findings → a positive "checks performed; no findings" note;
+      * any findings → the per-check subsection tables below.
 
     Args:
         m:     The ReportModel containing listing_findings.
@@ -1052,7 +1057,9 @@ def _listing_findings(m: ReportModel, story: list) -> None:
     lf = m.listing_findings
     if lf is None:
         return
-    if not lf.seq_gap_findings and not lf.dup_claim_findings:
+    status = getattr(lf, "status", "examined")
+    has_findings = bool(lf.seq_gap_findings or lf.dup_claim_findings)
+    if status == "not_examined" and not has_findings:
         return
 
     story.append(Paragraph("Invoice Listing Completeness Checks", _H2))
@@ -1062,6 +1069,21 @@ def _listing_findings(m: ReportModel, story: list) -> None:
         "totals or gate outcomes.",
         _SMLX,
     ))
+
+    if status == "unavailable":
+        story.append(Paragraph(
+            f"These checks could not run for this review ({lf.reason}); "
+            "invoice-listing completeness is NOT covered by this report.",
+            _SMALL,
+        ))
+        return
+
+    if not has_findings:
+        story.append(Paragraph(
+            "Checks performed — no sequence gaps or duplicate input-tax claims detected.",
+            _SMALL,
+        ))
+        return
 
     if lf.seq_gap_findings:
         story.append(Spacer(1, 0.25 * cm))
