@@ -287,4 +287,30 @@ def run_chain(
             "BOX-ISOLATION VIOLATION: listing checks corrupted F5 box values"
         )
 
+    # T2.12 slice 2B: surface per-check DATA-COVERAGE status when the injected reader
+    # declares one (the extract-feeder path). Emission only — never asserts a verdict.
+    _emit_check_coverage(result, reader)
+
     return result, build_gate_results(_records)
+
+
+def _emit_check_coverage(result: dict, reader) -> None:
+    """Attach ``result["check_coverage"]`` from the reader's coverage-status seam, if any.
+
+    The extract feeder (``feeders.ExtractChainReader``) exposes ``coverage_status()`` →
+    ``list[CoverageStatus]``, mapping its value-population-aware coverage onto a per-check
+    status (full / degraded(reason) / unavailable) so a reviewer never signs a silently-
+    partial review. Read DUCK-TYPED so ``orchestrator/`` imports nothing from ``feeders/``.
+
+    Readers WITHOUT the seam — the live ``SapChainReader`` and the frozen-replay reader —
+    add nothing, so the chain output stays byte-identical on those paths. A failing probe
+    is non-fatal: coverage is a surfaced caveat, never a chain-halting condition.
+    """
+    status_fn = getattr(reader, "coverage_status", None)
+    if not callable(status_fn):
+        return
+    try:
+        statuses = status_fn()
+        result["check_coverage"] = [s.as_dict() for s in statuses]
+    except Exception as exc:  # never let a coverage probe break the chain
+        log.warning(f"coverage status unavailable (non-fatal): {exc}")
