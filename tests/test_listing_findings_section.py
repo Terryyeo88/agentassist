@@ -158,19 +158,28 @@ class TestNotExaminedSuppression:
         combined = " ".join(items).lower()
         assert "duplicate input-tax claims" in combined
 
-    # ── NEITHER present → both items kept ────────────────────────────────────
+    # ── NEITHER present (examined-clean) → BOTH items suppressed ─────────────
+    # tfix: listing_findings present-and-empty means the pass RAN and found nothing
+    # (status "examined").  Both checks share one try, so NEITHER is "not performed";
+    # both not-examined lines are suppressed and the report marks the run examined-clean
+    # via the listing section (was BUG 2: a clean run mislabelled as "not examined").
 
-    def test_neither_keeps_seq_gap_item(self):
+    def test_neither_suppresses_seq_gap_item(self):
+        sec = render_listing_findings_section(_CO_NEITHER)
+        assert sec.status == "examined"
+        items = _items(_CO_NEITHER, listing_section=sec)
+        assert not any("sequence gap detection" in i.lower() for i in items), (
+            "examined-clean run must not claim sequence gap detection was not examined"
+        )
+
+    def test_neither_suppresses_dup_claim_item(self):
         sec = render_listing_findings_section(_CO_NEITHER)
         items = _items(_CO_NEITHER, listing_section=sec)
-        assert any("sequence gap detection" in i.lower() for i in items)
+        assert not any("duplicate input-tax claims" in i.lower() for i in items), (
+            "examined-clean run must not claim duplicate input-tax claims was not examined"
+        )
 
-    def test_neither_keeps_dup_claim_item(self):
-        sec = render_listing_findings_section(_CO_NEITHER)
-        items = _items(_CO_NEITHER, listing_section=sec)
-        assert any("duplicate input-tax claims" in i.lower() for i in items)
-
-    # ── SEQ_GAP only → seq-gap item suppressed, dup-claim item kept ──────────
+    # ── SEQ_GAP only → BOTH items suppressed (the pass ran; both checks examined) ──
 
     def test_seq_only_suppresses_seq_gap_item(self):
         sec = render_listing_findings_section(_CO_SEQ_ONLY)
@@ -181,15 +190,16 @@ class TestNotExaminedSuppression:
             "must be suppressed"
         )
 
-    def test_seq_only_keeps_dup_claim_item(self):
+    def test_seq_only_suppresses_dup_claim_item(self):
+        # tfix: DUP_CLAIM ran clean in the same pass, so its line is suppressed too —
+        # the pass was performed; nothing about it is "not examined".
         sec = render_listing_findings_section(_CO_SEQ_ONLY)
         items = _items(_CO_SEQ_ONLY, listing_section=sec)
-        assert any("duplicate input-tax claims" in i.lower() for i in items), (
-            "No DUP_CLAIM findings present — duplicate input-tax claims item must "
-            "still appear in Not-Examined"
+        assert not any("duplicate input-tax claims" in i.lower() for i in items), (
+            "listing pass ran — duplicate input-tax claims must not read as not examined"
         )
 
-    # ── DUP_CLAIM only → dup-claim item suppressed, seq-gap item kept ────────
+    # ── DUP_CLAIM only → BOTH items suppressed (the pass ran; both checks examined) ──
 
     def test_dup_only_suppresses_dup_claim_item(self):
         sec = render_listing_findings_section(_CO_DUP_ONLY)
@@ -200,12 +210,12 @@ class TestNotExaminedSuppression:
             "item must be suppressed"
         )
 
-    def test_dup_only_keeps_seq_gap_item(self):
+    def test_dup_only_suppresses_seq_gap_item(self):
+        # tfix: SEQ_GAP ran clean in the same pass, so its line is suppressed too.
         sec = render_listing_findings_section(_CO_DUP_ONLY)
         items = _items(_CO_DUP_ONLY, listing_section=sec)
-        assert any("sequence gap detection" in i.lower() for i in items), (
-            "No SEQ_GAP findings present — sequence gap detection item must still "
-            "appear in Not-Examined"
+        assert not any("sequence gap detection" in i.lower() for i in items), (
+            "listing pass ran — sequence gap detection must not read as not examined"
         )
 
     # ── BOTH present → both items suppressed ─────────────────────────────────

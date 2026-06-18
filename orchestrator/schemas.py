@@ -29,7 +29,7 @@ Deprecated:
 """
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 
 class Period(TypedDict):
@@ -395,7 +395,14 @@ class CompileOutput(TypedDict):
     e1_reconciliation: E1Reconciliation
     surfaced_warnings: list[str]           # Gate-level warnings preserved for report
     declared_f5_findings: list[dict]       # T2.9: declared-vs-computed findings ([] if none)
-    listing_findings: list[dict]           # T2.10: SEQ_GAP + DUP_CLAIM findings ([] if none)
+    # T2.10: SEQ_GAP + DUP_CLAIM findings ([] if checks ran clean; None if the checks
+    # could not run — see listing_checks_status). A failed run is never [] (zero findings).
+    listing_findings: list[dict] | None
+    # tfix: chain-level execution signal set ONLY when the listing checks THREW (Option B —
+    # distinct from 2B's per-field check_coverage; orchestrator imports nothing from feeders).
+    # Absent on the success path, preserving offline-replay byte-identity.
+    # {"level": "unavailable", "reason": "<execution fact>"} when set.
+    listing_checks_status: NotRequired[dict]
 
 
 class ReportInput(TypedDict):

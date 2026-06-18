@@ -341,12 +341,22 @@ class ListingFindingsSection:
     Attributes:
         seq_gap_findings:   SEQ_GAP finding dicts from listing_findings in
                             CompileOutput.  Empty list means no gaps detected
-                            or the listing fetch was skipped.
+                            (status "examined") or the pass was skipped/failed.
         dup_claim_findings: DUP_CLAIM finding dicts.  Empty list means no
                             duplicates detected or NumAtCard was unpopulated.
+        status:             Execution state of the listing pass, kept distinct so the
+                            report never reads a thrown pass as a clean one (tfix):
+                              "examined"     — the checks RAN (findings may be empty);
+                              "unavailable"  — the checks could NOT run (threw);
+                              "not_examined" — the pass was never run (legacy
+                                               compile_output with no listing_findings key).
+        reason:             Execution-fact caveat; non-empty ONLY for "unavailable"
+                            (mirrors 2B's non-empty-reason discipline). No IRAS rationale.
     """
     seq_gap_findings: list[dict]
     dup_claim_findings: list[dict]
+    status: str = "examined"
+    reason: str = ""
 
 
 @dataclass
@@ -405,6 +415,14 @@ class SignatureSection:
 # check was "not performed" when it was in fact run and produced output.
 _SEQ_GAP_NE_MARKER = "sequence gap detection"
 _DUP_CLAIM_NE_MARKER = "duplicate input-tax claims"
+
+# tfix: distinct caveat shown when the listing pass THREW (status "unavailable").
+# Keeps the could-not-run state separate from both the static "not performed" lines
+# (never-run) and a clean run.  States the EXECUTION fact only — no IRAS rationale.
+_LISTING_UNAVAILABLE_ITEM = (
+    "Invoice listing completeness checks (sequence gap detection and duplicate "
+    "input-tax claims) could not run: {reason}"
+)
 
 
 # ── Builder functions ─────────────────────────────────────────────────────────
@@ -718,20 +736,42 @@ def render_listing_findings_section(
 
     Reads compile_output["listing_findings"] (SEQ_GAP + DUP_CLAIM dicts produced
     by orchestrator.check_listing after gate_5) and partitions them into two typed
-    lists.  An absent key or empty list produces an empty ListingFindingsSection —
-    this is the normal case when the listing fetch was not run or found no issues.
+    lists, AND derives the pass execution state (tfix) so the report keeps three
+    states distinct — examined / unavailable / not_examined:
+
+      * ``listing_checks_status.level == "unavailable"`` (chain set it because the
+        listing checks THREW) → status "unavailable" (could not run);
+      * else ``"listing_findings"`` key present (the chain ran the pass; findings may
+        be []) → status "examined";
+      * else the key is absent (legacy compile_output predating the listing pass)
+        → status "not_examined".
+
+    The execution state is DERIVED from existing compile_output keys — it is read,
+    never written — so this stays read-only over compile_output and the offline-replay
+    oracle (which serialises compile_output) is byte-unaffected.
 
     Args:
-        compile_output: CompileOutput dict; reads 'listing_findings' (optional key).
+        compile_output: CompileOutput dict; reads 'listing_findings' +
+                        'listing_checks_status' (both optional keys).
 
     Returns:
-        ListingFindingsSection: seq_gap_findings and dup_claim_findings partitioned
-            from the flat listing_findings list.  Never None; always safe to read.
+        ListingFindingsSection: partitioned findings plus the derived status/reason.
+            Never None; always safe to read.
     """
+    chain_status: dict = compile_output.get("listing_checks_status") or {}
+    if chain_status.get("level") == "unavailable":
+        status, reason = "unavailable", str(chain_status.get("reason") or "")
+    elif "listing_findings" in compile_output:
+        status, reason = "examined", ""
+    else:
+        status, reason = "not_examined", ""
+
     raw: list[dict] = compile_output.get("listing_findings") or []
     return ListingFindingsSection(
         seq_gap_findings=[f for f in raw if f.get("check") == "SEQ_GAP"],
         dup_claim_findings=[f for f in raw if f.get("check") == "DUP_CLAIM"],
+        status=status,
+        reason=reason,
     )
 
 
@@ -836,15 +876,31 @@ def build_not_examined_section(
             continue
         items.append(item)
 
-    # T2.10: independently suppress SEQ_GAP and DUP_CLAIM not-examined items
-    # when the respective checks ran and produced findings.  Suppression is
-    # independent: a SEQ_GAP finding only removes the sequence-gap line; a
-    # DUP_CLAIM finding only removes the duplicate-claims line.
-    if listing_section is not None:
-        if listing_section.seq_gap_findings:
-            items = [i for i in items if _SEQ_GAP_NE_MARKER not in i.lower()]
-        if listing_section.dup_claim_findings:
-            items = [i for i in items if _DUP_CLAIM_NE_MARKER not in i.lower()]
+    # T2.10 + tfix: the SEQ_GAP/DUP_CLAIM not-examined lines are driven by the listing
+    # pass EXECUTION STATE, so the report keeps three states distinct and never claims a
+    # check was "not performed" when it was in fact run (the clean-run mislabel, BUG 2):
+    #   * "examined"     — BOTH checks ran (they share one try; findings may be empty),
+    #                      so neither "not performed" line applies → suppress both. The
+    #                      findings (or the "no findings" note) are shown by the listing
+    #                      section renderer.
+    #   * "unavailable"  — the checks THREW (could not run). Drop the static "not
+    #                      performed" lines and surface a DISTINCT "could not run" caveat
+    #                      so a reviewer never reads a thrown pass as a never-run one.
+    #   * "not_examined" — legacy compile_output with no listing pass → keep the static
+    #                      lines (the historical behaviour).
+    # listing_section is None (legacy direct callers) keeps the static lines unchanged.
+    if listing_section is not None and listing_section.status in ("examined", "unavailable"):
+        # The pass ran (examined) or threw (unavailable) — either way the static "not
+        # performed" lines no longer hold, so drop both.
+        items = [
+            i for i in items
+            if _SEQ_GAP_NE_MARKER not in i.lower()
+            and _DUP_CLAIM_NE_MARKER not in i.lower()
+        ]
+        if listing_section.status == "unavailable":
+            # Replace them with a DISTINCT could-not-run caveat (not the static never-run
+            # line), so a reviewer never reads a thrown pass as a never-run one.
+            items.append(_LISTING_UNAVAILABLE_ITEM.format(reason=listing_section.reason))
 
     # Surface any deduplicated anomalies (unknown VatGroups).
     # .get() with default guards against older chain runs that lack this key.
