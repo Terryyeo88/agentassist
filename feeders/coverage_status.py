@@ -81,8 +81,37 @@ _ECHECK_LINE_FIELDS: dict[str, tuple[str, ...]] = {
     "E4": ("VatGroup", "LineTotal", "TaxTotal"),
 }
 
+# T2.12-2B-ext-3: the four document-pre-pass (T2.8) checks, keyed on the document_pdfs
+# surface (PR #66 check→field map §A/§B). Unlike the line fields, document_pdfs is NOT a
+# COVERAGE_FIELDS (surface, field) pair — the PDF provider is an engine-level seam
+# (engine/review.py Phase 3, inputs.provider) the ChainReader does not carry. The signal is
+# therefore a CHECK-KEYED bool (mirroring SEQ_GAP's company-wide population bool), not an
+# is_covered probe. All four share one PDF-ingest gate (run_documents_pass skips a doc_num
+# whose provider returns None, so reconcile is never reached), so when document_pdfs is
+# absent NONE can run → UNAVAILABLE (cannot-run, the NO_GST_REG pattern — not degraded). The
+# provider is binary; there is no present-but-sparse middle state representable here.
+_DOC_PREPASS_CHECKS: tuple[str, ...] = (
+    "gst_amount_mismatch",
+    "correct_period",
+    "total_inconsistency",
+    "reg11_supplier_gst_absent",
+)
 
-def derive_coverage_statuses(coverage, *, company_wide_population_present: bool) -> list:
+
+def _doc_unavailable_reason(check: str) -> str:
+    """Coverage FACT only (no IRAS rationale) for an absent document_pdfs surface."""
+    return (
+        f"source documents (document_pdfs) absent — {check} cannot run; "
+        "supply source-document PDFs at onboarding."
+    )
+
+
+def derive_coverage_statuses(
+    coverage,
+    *,
+    company_wide_population_present: bool,
+    document_pdfs_present: bool = False,
+) -> list:
     """Map an ``ExtractCoverage`` (value-population-aware) onto the in-scope checks.
 
     Args:
@@ -91,10 +120,18 @@ def derive_coverage_statuses(coverage, *, company_wide_population_present: bool)
         company_wide_population_present: whether the company-wide listing surface carried
                   any rows — SEQ_GAP needs it to distinguish "issued in another period"
                   from "never issued anywhere".
+        document_pdfs_present: whether a source-document (PDF) surface is available for the
+                  document-pre-pass checks (ext-3). NOT a COVERAGE_FIELDS pair — the PDF
+                  provider is an engine-level seam, so this is a check-keyed bool like
+                  ``company_wide_population_present``. Defaults to ``False`` (the honest
+                  "absent unless declared present"): the extract feeder is a listing-only
+                  export with no PDF surface, so its reader passes ``False`` and the four
+                  document checks are reported ``unavailable``.
 
     Returns:
         list[CoverageStatus] — the three locked 2B cases (DUP_CLAIM, NO_GST_REG, SEQ_GAP)
-        FIRST and in order, then the four line-level E-checks (E1–E4) appended by ext-1.
+        FIRST and in order, then the four line-level E-checks (E1–E4) appended by ext-1,
+        then the four document-pre-pass checks appended by ext-3.
     """
     statuses: list = []
 
@@ -126,5 +163,14 @@ def derive_coverage_statuses(coverage, *, company_wide_population_present: bool)
         else:
             reason = f"{'/'.join(missing)} absent or unpopulated — {check} under-detects."
             statuses.append(CoverageStatus(check, DEGRADED, reason))
+
+    # ext-3: the four document-pre-pass checks, keyed on the document_pdfs surface bool.
+    # present → full; absent → unavailable (cannot-run, shared PDF-ingest gate). All four
+    # are identical at this granularity (binary provider, no present-but-sparse middle state).
+    for check in _DOC_PREPASS_CHECKS:
+        if document_pdfs_present:
+            statuses.append(CoverageStatus(check, FULL))
+        else:
+            statuses.append(CoverageStatus(check, UNAVAILABLE, _doc_unavailable_reason(check)))
 
     return statuses

@@ -231,17 +231,23 @@ class ExtractChainReader:
         return ExtractCoverage(fields=fields, populated=populated)
 
     def coverage_status(self) -> list:
-        """Map this export's coverage onto per-check status (T2.12 slice 2B + 2B-ext-1).
+        """Map this export's coverage onto per-check status (T2.12 slice 2B + ext-1 + ext-3).
 
         Returns ``list[CoverageStatus]`` for the in-scope checks: the three locked 2B
-        cases (DUP_CLAIM, NO_GST_REG, SEQ_GAP) then the four line-level E-checks (E1–E4,
-        added by ext-1). SEQ_GAP's company-wide signal is the presence of any company-wide
-        ('all' scope) sales rows — the surface ``detect_seq_gaps`` consumes to tell "issued
-        in another period" from "never issued anywhere". Emission only; asserts no verdict.
+        cases (DUP_CLAIM, NO_GST_REG, SEQ_GAP), then the four line-level E-checks (E1–E4,
+        ext-1), then the four document-pre-pass checks (ext-3). SEQ_GAP's company-wide
+        signal is the presence of any company-wide ('all' scope) sales rows — the surface
+        ``detect_seq_gaps`` consumes to tell "issued in another period" from "never issued
+        anywhere". An extract is a listing/transaction export with NO source-document (PDF)
+        surface — the PDF provider is a separate engine-level seam this reader does not carry
+        — so ``document_pdfs_present=False`` and the four document checks are ``unavailable``.
+        Emission only; asserts no verdict.
         """
         company_wide_present = bool(self._listing.get("all_sales_headers"))
         return derive_coverage_statuses(
-            self.coverage(), company_wide_population_present=company_wide_present
+            self.coverage(),
+            company_wide_population_present=company_wide_present,
+            document_pdfs_present=False,
         )
 
 
