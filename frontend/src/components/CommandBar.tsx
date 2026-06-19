@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { postCommand, type CommandResponse, type ExecutionResult } from "../api";
+import {
+  postCommand,
+  type CommandResponse,
+  type ExecutionResult,
+  type RunReviewData,
+} from "../api";
+import { FacetFilter } from "./FacetFilter";
 
 /**
  * CommandBar — T6.2 LIVE command bar (Lane A + B + C1 join).
@@ -30,8 +36,6 @@ function ExecutionView({ execution }: { execution: ExecutionResult }) {
   const ledger = data.ledger as unknown[] | undefined;
   const proposals = data.proposals as unknown[] | undefined;
   const adjudications = data.adjudications as Record<string, unknown>[] | undefined;
-  const dossiers = data.dossiers as unknown[] | undefined;
-  const f5 = data.f5_summary as { boxes?: Record<string, number> } | undefined;
 
   return (
     <div className="cmd-result">
@@ -60,12 +64,6 @@ function ExecutionView({ execution }: { execution: ExecutionResult }) {
           </ul>
         </div>
       )}
-      {dossiers && f5?.boxes && (
-        <div>
-          Frozen review — {dossiers.length} dossiers; F5 net GST{" "}
-          <span className="mono">{f5.boxes.box_8_net_gst}</span>.
-        </div>
-      )}
 
       {execution.notes.length > 0 && (
         <div className="caveat">{execution.notes.join(" ")}</div>
@@ -74,7 +72,139 @@ function ExecutionView({ execution }: { execution: ExecutionResult }) {
   );
 }
 
-function CommandResult({ response }: { response: CommandResponse }) {
+// applied_filters echoed by the server is the SINGLE SOURCE OF TRUTH for what is selected.
+// Normalise its scalar-or-array values into a uniform {facet: string[]}.
+function normalizeFilters(applied: Record<string, string | string[]>): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(applied)) {
+    out[k] = Array.isArray(v) ? v.map(String) : [String(v)];
+  }
+  return out;
+}
+
+// Toggle one value within a facet (OR within a facet, AND across facets — the engine's
+// semantics). Pure: returns the next filter REQUEST; the server still does the filtering.
+function toggleFilter(
+  current: Record<string, string[]>,
+  facet: string,
+  value: string
+): Record<string, string[]> {
+  const next: Record<string, string[]> = {};
+  for (const [k, vs] of Object.entries(current)) next[k] = [...vs];
+  const cur = next[facet] ?? [];
+  if (cur.includes(value)) {
+    const kept = cur.filter((v) => v !== value);
+    if (kept.length) next[facet] = kept;
+    else delete next[facet];
+  } else {
+    next[facet] = [...cur, value];
+  }
+  return next;
+}
+
+/**
+ * RunReviewResult — the RUN_REVIEW execution rendered as a filterable view (T6.3 Slice 3b).
+ *
+ * Thin view over the validated server seam: the facet menu, the narrowed findings, the
+ * "X of Y shown" count, the active-filters line and any filter_rejection all read straight
+ * off the response `data` — nothing is recomputed in the browser. The F5 boxes come from
+ * the FULL result and do NOT move under a filter (box-isolation, made visible).
+ */
+function RunReviewResult({
+  data,
+  busy,
+  onToggle,
+  onClear,
+}: {
+  data: RunReviewData;
+  busy: boolean;
+  onToggle: (facet: string, value: string) => void;
+  onClear: () => void;
+}) {
+  const selected = normalizeFilters(data.applied_filters);
+  const shown = data.findings.length;
+  const total = data.dossiers.length;
+  const rejection = data.filter_rejection;
+  const activeFacets = Object.entries(selected).filter(([, vs]) => vs.length > 0);
+
+  return (
+    <div className="cmd-result">
+      <div className="cmd-result-head">
+        Frozen review — <strong>{shown} of {total}</strong> findings shown.
+      </div>
+
+      {/* F5 boxes from the FULL result — box-isolation made visible (never change on filter). */}
+      <div className="f5 cmd-f5" aria-label="F5 summary">
+        {Object.entries(data.f5_summary.boxes).map(([k, v]) => (
+          <div className="box" key={k}>
+            <div className="k">{k.replace(/_/g, " ")}</div>
+            <div className="v">
+              {data.f5_summary.currency} {Number(v).toLocaleString()}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <FacetFilter
+        available={data.available_facets}
+        remaining={data.remaining_facets}
+        selected={selected}
+        onToggle={onToggle}
+        onClear={onClear}
+        busy={busy}
+      />
+
+      {rejection && (
+        <div className="callout warn" role="alert">
+          {rejection.message}
+        </div>
+      )}
+
+      {activeFacets.length > 0 && (
+        <div className="active-filters">
+          Filtering by{" "}
+          {activeFacets.map(([f, vs]) => (
+            <span key={f} className="mono active-filter">
+              {f}={vs.join(" | ")}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <ul className="facet-findings">
+        {data.findings.length === 0 && (
+          <li className="facet-empty">No findings match this filter (an honest empty set).</li>
+        )}
+        {data.findings.map((f) => (
+          <li key={f.finding_id} className="facet-finding">
+            <span className="qr-check">{f.check_id}</span>
+            <span className="mono finding-id">{f.finding_id}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// A RUN_REVIEW result is the only one carrying a facet menu (reads carry no facets).
+function asRunReviewData(response: CommandResponse | null): RunReviewData | null {
+  if (response && response.kind === "result" && "available_facets" in response.execution.data) {
+    return response.execution.data as unknown as RunReviewData;
+  }
+  return null;
+}
+
+function CommandResult({
+  response,
+  busy,
+  onToggle,
+  onClear,
+}: {
+  response: CommandResponse;
+  busy: boolean;
+  onToggle: (facet: string, value: string) => void;
+  onClear: () => void;
+}) {
   if (response.kind === "out_of_scope") {
     return <div className="callout info">{response.message}</div>;
   }
@@ -85,6 +215,12 @@ function CommandResult({ response }: { response: CommandResponse }) {
       </div>
     );
   }
+  const runReview = asRunReviewData(response);
+  if (runReview) {
+    return (
+      <RunReviewResult data={runReview} busy={busy} onToggle={onToggle} onClear={onClear} />
+    );
+  }
   return <ExecutionView execution={response.execution} />;
 }
 
@@ -93,6 +229,10 @@ export function CommandBar({ clientId, period }: Props) {
   const [response, setResponse] = useState<CommandResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // The utterance that produced the current RUN_REVIEW result. Filtering re-POSTs THIS
+  // utterance (with the chosen filters + the surface identity) — never a model guess.
+  // null for reads / no result, which is what hides the facet panel.
+  const [reviewUtterance, setReviewUtterance] = useState<string | null>(null);
 
   async function run(text: string) {
     if (!text.trim()) return;
@@ -101,12 +241,39 @@ export function CommandBar({ clientId, period }: Props) {
     try {
       const res = await postCommand(text.trim(), clientId, period);
       setResponse(res);
+      // Remember the utterance only when this is a filterable RUN_REVIEW result.
+      setReviewUtterance(asRunReviewData(res) ? text.trim() : null);
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
       setResponse(null);
+      setReviewUtterance(null);
     } finally {
       setBusy(false);
     }
+  }
+
+  // Re-run the last RUN_REVIEW with a new filter set. Always sends `filters` (even {} on a
+  // clear) so the validated, box-isolated server result stays the single source of truth —
+  // we never filter client-side.
+  async function changeFilters(next: Record<string, string[]>) {
+    if (reviewUtterance === null) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await postCommand(reviewUtterance, clientId, period, next);
+      setResponse(res);
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Build the next filter request from the server-echoed selection + the toggle.
+  function handleToggle(facet: string, value: string) {
+    const current = asRunReviewData(response);
+    const selection = current ? normalizeFilters(current.applied_filters) : {};
+    changeFilters(toggleFilter(selection, facet, value));
   }
 
   return (
@@ -141,7 +308,12 @@ export function CommandBar({ clientId, period }: Props) {
       {err && <div className="callout warn">{err}</div>}
       {response && (
         <>
-          <CommandResult response={response} />
+          <CommandResult
+            response={response}
+            busy={busy}
+            onToggle={handleToggle}
+            onClear={() => changeFilters({})}
+          />
           <div className="cmd-mode">
             classifier: <span className="mono">{response.classifier_mode}</span> · {response.disclaimer}
           </div>

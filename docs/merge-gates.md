@@ -144,6 +144,15 @@ remains `anthropic`-free; **no new boundary, no posture change, no new grep rule
 `orchestrator/`. Proven by `tests/test_t63s3a_command_filters.py` (+ the existing `api/` AST import-scan in
 `tests/test_t62_command.py`). NO frontend (Slice 3b), NO NL extraction (Slice 4); findings-only.
 
+**The React facet UI sends the filter (T6.3 Slice 3b, 2026-06-19) — frontend-only:** Slice 3b is
+**`frontend/` ONLY** (`src/api.ts` gains a `filters?` request field + the RUN_REVIEW `data` types; a new
+`FacetFilter` component; round-trip wiring in `CommandBar.tsx`; chip CSS; `+7 vitest`). **No Python is
+touched, so the pytest merge gate is UNCHANGED** — `api/`/`orchestrator/` and every boundary are byte-identical,
+no new grep rule. The browser does **no** filtering itself: a chip click re-`POST`s `/command` with `filters`
+and renders the validated, box-isolated server result (the single source of truth). **vitest stays outside CI**
+(the T6.1 toolchain separation above): the merge gate remains pytest-only and depends on no Node; the binding
+check for 3b is a **live browser smoke**, not CI. NO NL extraction (Slice 4); findings-only.
+
 **CI / Node toolchain separation (T6.1):** repo CI is **pytest-only** (`.github/workflows/ci.yml`:
 flake8 + the `orchestrator/` import-scan + `pytest -n auto`). T6.1 adds `fastapi`+`uvicorn` to
 `requirements.txt` so `api/` imports cleanly in the existing Python job; **the Python suite is the merge

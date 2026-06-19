@@ -77,6 +77,43 @@ body {
 .cmd-result li { margin: 2px 0; }
 .cmd-mode { margin-top: 8px; font-size: 12px; color: var(--ink-faint); }
 
+/* ── Facet filter (T6.3 Slice 3b) ─────────────────────────────── */
+.cmd-f5 { padding: 4px 0 10px; }
+.facets {
+  margin: 8px 0 4px; padding: 10px 12px;
+  background: var(--paper-sunk); border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.facets-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.facets-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint);
+}
+.facets-clear { padding: 4px 9px; font-size: 12px; }
+.facet-group { margin-top: 8px; }
+.facet-name {
+  font-family: var(--font-mono); font-size: 11px; color: var(--clay-deep); margin-bottom: 4px;
+}
+.facet-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--paper-raised); color: var(--ink);
+}
+.chip:hover:not(:disabled) { border-color: var(--clay-soft); background: var(--clay-wash); }
+.chip.on { background: var(--clay); border-color: var(--clay-deep); color: #fff; }
+.chip .chip-count {
+  font-family: var(--font-mono); font-size: 10px; opacity: 0.75;
+}
+.active-filters { margin-top: 8px; font-size: 12px; color: var(--ink-soft); }
+.active-filter { margin-right: 8px; color: var(--clay-deep); }
+.facet-findings { list-style: none; margin: 10px 0 0; padding: 0; max-height: 40vh; overflow: auto; }
+.facet-finding {
+  display: flex; align-items: baseline; gap: 10px; padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.facet-finding .finding-id { color: var(--ink-faint); }
+.facet-empty { padding: 10px 8px; color: var(--ink-faint); font-style: italic; }
+
 /* ── Buttons ──────────────────────────────────────────────────── */
 button {
   font-family: var(--font-sans); font-size: 13px; font-weight: 500;
