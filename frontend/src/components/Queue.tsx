@@ -1,4 +1,23 @@
-import type { Group, QueueItem } from "../api";
+import type { FacetMap, Group, QueueItem } from "../api";
+import { FacetFilter } from "./FacetFilter";
+
+/**
+ * Facet props (T6.3 Slice 4) — the SERVER-driven facet menu, relocated onto the queue. The
+ * menu / counts / selection all come from a RUN_REVIEW POST /command response held in App;
+ * `visibleIds` is the set of finding_ids the server returned for the current filter (null when
+ * no filter is active → show every row). The browser never filters or counts locally.
+ */
+interface FacetProps {
+  available: FacetMap;
+  remaining: FacetMap;
+  selected: Record<string, string[]>;
+  onToggle: (facet: string, value: string) => void;
+  onClear: () => void;
+  busy: boolean;
+  shown: number; // server findings count (N)
+  total: number; // full server set (M)
+  visibleIds: Set<string> | null; // server-narrowed view; null = no active filter
+}
 
 interface Props {
   items: QueueItem[];
@@ -7,6 +26,7 @@ interface Props {
   setActiveTab: (g: Group) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  facets?: FacetProps;
 }
 
 const TAB_LABELS: Record<Group, string> = {
@@ -32,15 +52,19 @@ export function Queue({
   setActiveTab,
   selectedId,
   onSelect,
+  facets,
 }: Props) {
-  const counts: Record<Group, number> = { needs_review: 0, marked_known: 0, decided: 0 };
-  for (const it of items) counts[bucketOf(it, decided)]++;
+  // Narrow to the SERVER's filtered finding_ids when a filter is active; else keep every row.
+  const narrowed =
+    facets?.visibleIds ? items.filter((it) => facets.visibleIds!.has(it.finding_id)) : items;
 
-  const visible = items.filter((it) => bucketOf(it, decided) === activeTab);
+  const counts: Record<Group, number> = { needs_review: 0, marked_known: 0, decided: 0 };
+  for (const it of narrowed) counts[bucketOf(it, decided)]++;
+
+  const visible = narrowed.filter((it) => bucketOf(it, decided) === activeTab);
 
   return (
-    <div className="panel">
-      <h3>Review queue</h3>
+    <div className="panel queue-panel">
       <div className="tabs" role="tablist">
         {(Object.keys(TAB_LABELS) as Group[]).map((g) => (
           <button
@@ -55,11 +79,28 @@ export function Queue({
           </button>
         ))}
       </div>
+
+      {facets && Object.keys(facets.available).length > 0 && (
+        <div className="facet-block">
+          <div className="facet-block-head">
+            <span className="facet-block-label">
+              Filter · {facets.shown} of {facets.total} shown
+            </span>
+          </div>
+          <FacetFilter
+            available={facets.available}
+            remaining={facets.remaining}
+            selected={facets.selected}
+            onToggle={facets.onToggle}
+            onClear={facets.onClear}
+            busy={facets.busy}
+          />
+        </div>
+      )}
+
       <ul className="queue-list">
         {visible.length === 0 && (
-          <li style={{ padding: "16px", color: "var(--ink-faint)" }}>
-            Nothing in “{TAB_LABELS[activeTab]}”.
-          </li>
+          <li className="queue-empty">Nothing in “{TAB_LABELS[activeTab]}”.</li>
         )}
         {visible.map((it) => (
           <li key={it.finding_id}>
@@ -67,13 +108,15 @@ export function Queue({
               className={`queue-row${selectedId === it.finding_id ? " active" : ""}`}
               onClick={() => onSelect(it.finding_id)}
             >
+              <div className="qr-check">{it.check_id}</div>
               <div className="qr-top">
-                <span className="qr-check">{it.check_id}</span>
-                {it.severity && <span className={`badge sev-${it.severity}`}>{it.severity}</span>}
+                <span className="qr-vendor">{it.vendor || "—"}</span>
+                {it.severity && <span className={`sev-label sev-${it.severity}`}>{it.severity}</span>}
                 {it.demoted && <span className="badge demoted">known</span>}
               </div>
-              <div className="qr-vendor">{it.vendor || "—"}</div>
-              <div className="qr-doc">doc {it.doc_num ?? "—"}</div>
+              <div className="qr-doc">
+                doc {it.doc_num ?? "—"} · {it.doc_date ?? "—"}
+              </div>
             </button>
           </li>
         ))}
