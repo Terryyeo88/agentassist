@@ -1,0 +1,59 @@
+# =============================================================================
+# STATUS: PROPOSED / DEMO — NOT AUTHORED.
+# =============================================================================
+# Xero demo client config for the T2.12-Xero feeder. Pairs with the frozen
+# fixture:
+#   tests/fixtures/xero-f5-export/AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx
+# Synthetic data in the real Xero export format — no PII. Credentials are
+# referenced by env-var NAME only; no secrets in this file.
+#
+# CITATION DEFERRAL (Terry's demo call): the five tax_code_mappings below are
+# Terry-provided DEMO categories. Their IRAS authority is DEFERRED, not filled —
+# each value carries a "cite DEFERRED" marker pointing at DEBT-1. This config
+# MUST NOT be treated as gate-clean / authored until every deferral is replaced
+# with a confirmed IRAS Annex E row (NR-in-Box-5 rule: model inference is not
+# authority). See KNOWN-LIMITATIONS-xero-demo.md (DEBT-1, DEBT-2).
+# =============================================================================
+
+client_id: xero_demo                       # Must match the filename stem exactly.
+client_name: "Xero Demo Pte Ltd"
+gst_registration_number: ""                # Synthetic demo — no real GST reg number.
+applicable_gst_rate: 0.09                  # Fixture is 9% data. NB: not yet threaded
+                                           # into _classify_line (E4 default 0.07) — DEBT-5.
+
+source_system: xero                        # != "sap_b1" -> suppresses the SO->SR / SI->TX
+                                           # defaults (config/loader.py:195-197). Load-bearing
+                                           # despite the "logging/display only" docstring (DEBT-10).
+
+# Required block (config/loader.py:273-277) even though a Xero client has no SAP.
+# Dummy placeholder; credentials are still env-var names. See DEBT-9.
+sap_b1:
+  service_layer_url: "https://unused.invalid:50000/b1s/v2"
+  company_db: "UNUSED"
+  username_env_var: "SAP_USERNAME"
+  password_env_var: "SAP_PASSWORD"
+  ssl_verify: true
+
+period_defaults:
+  fiscal_year_start_month: 1
+
+custom_vat_groups: {}
+
+# Keys = the five Option-A normalized tokens (re-recon R2), uppercased to match
+# the loader (config/loader.py:376 uppercases keys on load; runtime match is
+# .strip().upper()). Values MUST be canonical VatGroup codes, validated against
+# _STANDARD_VAT_GROUPS (config/loader.py:63-67) — SR / TX / ZR are all in that set.
+#
+# Each value's IRAS authority is DEFERRED for the demo — see DEBT-1.
+tax_code_mappings:
+  "STANDARD-RATED SUPPLIES": SR            # cite DEFERRED — Annex E SR row unconfirmed, see DEBT-1
+  "STANDARD-RATED PURCHASES": TX           # cite DEFERRED — Annex E TX row unconfirmed, see DEBT-1
+  "SR-NOGST (0%) [TEST]": SR               # cite DEFERRED — Annex E SR row unconfirmed, see DEBT-1
+  "ZR-BROKEN (9%) [TEST]": ZR              # cite DEFERRED — Annex E ZR row unconfirmed, see DEBT-1
+  "SI-STALE (8%) [TEST]": TX               # cite DEFERRED — Annex E TX row unconfirmed, see DEBT-1
+
+completeness_threshold: 0.10
+
+report:
+  reviewer_name: ""
+  firm_name: ""
