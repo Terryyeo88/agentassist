@@ -50,6 +50,14 @@ The correct allowed/forbidden map:
 | `api/` (T6.1 seam) | **NO** | YES | YES | via `engine/` |
 | `feeders/` (T2.12 extract) | **NO** | **NO** | **NO** | **NO** |
 
+**`api/` → `feeders/` edge (source selector + coverage-only upload, 2026-06-29):** `api/` MAY now
+also import `feeders/` — the new `POST /review/upload` coverage path constructs
+`feeders.extract_reader.ExtractChainReader` over an uploaded `.xlsx`. `feeders/` is a pure stdlib
+leaf (`openpyxl` lazy, `.xlsx` path only) importing NO
+`anthropic`/`agent`/`engine`/`orchestrator`/`reasoning`/`documents`, so this edge keeps `api/`
+**`anthropic`-free and engine-free**; the existing `api/` rule (imports no `anthropic`) is intact.
+Pinned by the AST import-scan tests. Detail in the `api/` posture block below.
+
 **`ui/` import posture (T5.8 demo showcase — documentation only, NOT a Gate-a grep):**
 The `ui/` package is a new top-level consumer. It **may** import `agent/`, `engine/`, and `report/`
 (it renders over the engine seam and the existing report path), but the Mock + Sign render path **must
@@ -112,6 +120,19 @@ triggers **no** `anthropic` import and `tests/test_t62_command.py::test_api_impo
 **without** `ANTHROPIC_API_KEY` → loud `ClassifierConfigError` → 500, never a silent fallback); the
 default path is scripted + token-free. The boundary stays at `orchestrator/` (untouched), never at
 `api/`. No new CI grep is added.
+
+**Source-selector update (`POST /review/upload` landed — the `api/` → `feeders/` edge, 2026-06-29):**
+the new coverage-only upload route adds the **only** new import edge for `api/`: `api/app.py` imports
+`feeders.extract_reader.ExtractChainReader` to build a COVERAGE-ONLY (data-presence) view over an
+uploaded `.xlsx` export. The existing `api/` rules are intact — `api/` still imports **no**
+`anthropic`, and on this path it never reaches the engine: the route NEVER calls
+`run_chain`/`engine.review.review` (live findings over an uploaded extract are **DEFERRED** to the
+feeder→engine wiring). `feeders/` stays a pure stdlib leaf (`openpyxl` lazy, `.xlsx` path only; no
+`anthropic`/`agent`/`engine`/`orchestrator`/`reasoning`/`documents`), so the new edge keeps `api/`
+`anthropic`-free and engine-free. The AST import-scan over `api/` **stays green** — proven by
+`tests/test_tsource_selector_upload.py` (over every `api/**/*.py`: imports no `anthropic`; the new
+edge reaches only `feeders/`). The boundary stays at `orchestrator/` (untouched); no new CI grep is
+added.
 
 **`agent/facets.py` note (T6.3 Slice 1, 2026-06-18):** the deterministic faceted-filter engine lives in
 `agent/`, so it sits inside the `agent/` row above — but it is deliberately **stricter than the row
@@ -320,3 +341,9 @@ git merge --no-ff <branch> -m "Merge <branch>: <one-line summary>
 - **2026-06-17:** T2.12 extract feeder (slice A) — `feeders/` added to the allowed/forbidden
   import map as a top-level leaf (imports nothing upward; injected-only `ChainReader` impls).
   Posture documented (mirrors the `ui/` note); **no CI grep added** (a code change, deferred).
+- **2026-06-29:** Source selector + coverage-only upload — the `api/` → `feeders/` edge added to
+  the import map / `api/` posture block (`POST /review/upload` constructs
+  `feeders.extract_reader.ExtractChainReader`; `api/` stays `anthropic`-free and engine-free; the
+  route never calls `run_chain`/`engine.review.review`). Pinned by the AST import-scan in
+  `tests/test_tsource_selector_upload.py`; **no new CI grep added**. Built ≠ validated; the Xero
+  branch is coverage-only, engine execution over an uploaded extract DEFERRED.
