@@ -1,40 +1,60 @@
 /*
- * Design tokens — lifted from the target mock's aesthetic ONLY (palette + type), not
- * its data. Clay/paper palette; Newsreader (serif display), Inter (sans body), IBM Plex
- * Mono (ids / hashes / numbers). Nothing here implies the mock's fictional findings.
+ * Design tokens — dark "slate" palette (T6.3 Slice 4). Lifted from the target mock's aesthetic
+ * ONLY (palette + radii), not its data. Per the build decision the TYPE stays the codebase's
+ * existing Inter / IBM Plex Mono / Newsreader stacks (the Hanken/JetBrains switch was declined —
+ * no new runtime font fetch beyond what index.html already loads). Nothing here implies the
+ * mock's fictional findings.
  */
 :root {
-  /* Paper / clay palette */
-  --paper: #f4efe4;
-  --paper-raised: #fbf7ee;
-  --paper-sunk: #ece5d6;
-  --ink: #2a2722;
-  --ink-soft: #6c6357;
-  --ink-faint: #968b7b;
-  --line: #ddd3c0;
-  --line-strong: #cabfa8;
+  /* Surfaces (dark slate) */
+  --paper: #1e2834;        /* app background (body)            */
+  --bg-deep: #1a232f;      /* topbar, sidebar, header bar      */
+  --bg-strip: #202a36;     /* the F5 "returns" strip background */
+  --paper-raised: #26313e; /* cards / panels                   */
+  --paper-sunk: #28333f;   /* chips, inset rows                */
+  --raised-2: #313d4b;     /* secondary buttons                */
+  --banner: #232e3b;       /* scripted-mode banner             */
 
-  --clay: #b9512a;
-  --clay-deep: #98401f;
-  --clay-soft: #e9d3c4;
-  --clay-wash: #f6e8de;
+  /* Lines (white at low alpha — not solid greys) */
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.12);
+  --line-faint: rgba(255, 255, 255, 0.05);
 
-  --sage: #5c7a59;
-  --sage-wash: #e6ede2;
+  /* Ink */
+  --ink: #f3f4f6;
+  --ink-body: #cfd1d6;
+  --ink-soft: #9fb1c1;
+  --ink-faint: #7c8ea0;
+  --ink-fainter: #6f8296;
+  --ink-nav: #b8c6d2;
 
-  /* Trust signals */
-  --warn: #9a6b13;
-  --warn-wash: #f7ecd2;
-  --warn-line: #e3c887;
+  /* Accent (primary) + CTA */
+  --accent: #3d8bc4;       /* links, active states, brand "F5" */
+  --cta: #ec8a2e;          /* orange — Send, Sign, net-GST value */
 
-  /* Type */
+  /* Severity */
+  --sev-high: #d3746a;
+  --sev-medium: #d4a45c;
+  --sev-low: #5aa897;
+  --sev-known: #9fb1c1;
+
+  /* Trust + status */
+  --warn: #e2a44f;         /* UNVALIDATED / candidate amber    */
+  --danger: #ec5b56;
+  --ok: #25c26e;
+
+  /* Type — unchanged from the codebase (decision: keep Inter / IBM Plex) */
   --font-display: "Newsreader", Georgia, "Times New Roman", serif;
   --font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 
-  /* Spacing / radius */
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 16px;
-  --shadow-card: 0 1px 2px rgba(42, 39, 34, 0.06), 0 8px 24px rgba(42, 39, 34, 0.05);
+  /* Radius */
+  --r-sm: 9px;
+  --r-md: 11px;
+  --r-lg: 14px;
+  --r-xl: 18px; /* the composer card */
+
+  /* Shadow */
+  --shadow-card: 0 10px 34px rgba(0, 0, 0, 0.3);
+  --shadow-soft: 0 8px 26px rgba(0, 0, 0, 0.22);
 }
