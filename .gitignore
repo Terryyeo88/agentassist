@@ -27,6 +27,7 @@ cookies.txt
 config/clients/*.yaml
 !config/clients/example.yaml
 !config/clients/sbodemosg.yaml
+!config/clients/xero_demo.yaml
 
 # Generated outputs
 audit/
