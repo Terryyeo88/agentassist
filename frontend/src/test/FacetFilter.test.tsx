@@ -1,248 +1,136 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
-import { CommandBar } from "../components/CommandBar";
+import { render, screen, fireEvent, within } from "@testing-library/react";
+import { App } from "../App";
+import type { ReviewPayload } from "../api";
+import { FacetFilter } from "../components/FacetFilter";
 
 /**
- * T6.3 Slice 3b — the React facet UI over the SERVER filter seam.
+ * FacetFilter — REWRITTEN for T6.3 Slice 4 (facets relocated onto the queue, still SERVER-DRIVEN).
  *
- * Everything is mocked at `fetch`: the menu is data-derived from `available_facets`, a chip
- * click triggers a `/command` re-POST carrying that filter (the SERVER does the filtering —
- * the browser never filters client-side), the narrowed `findings` + "X of Y shown" +
- * `remaining_facets` chip counts render, clear resets, `filter_rejection` renders honestly,
- * the F5 boxes are unchanged under a filter, and a read (SHOW_LEDGER) shows no facet panel.
- *
- * vitest is NOT the merge gate (CI is pytest-only — T6.1 toolchain separation); the binding
- * check is the live browser smoke. These tests pin the contract over the mocked api.
+ * The first block pins the FacetFilter CONTRACT directly: the menu is data-derived and
+ * source-agnostic (no hardcoded Severity/Check/Type), the chip count is the SERVER's
+ * `remaining_facets` drill-down (a chip can read 0), the selected state is the SERVER-echoed
+ * selection (OR-within-a-facet = several pressed chips in one facet), and a chip click is a
+ * REQUEST (onToggle) — the component never filters locally. The final test asserts the
+ * relocation: the same FacetFilter now renders on the Findings queue, not the command result.
  */
 
-// ── Fixtures (real-shaped: only the frozen check types; raw-dossier findings) ──────────
-const F5 = {
-  currency: "SGD",
-  boxes: { box_1_standard_rated_sales: 369589.97, box_8_net_gst: 12663.87 },
-};
+describe("FacetFilter contract (server-driven, drill-down)", () => {
+  const base = {
+    available: {
+      error_code: { E1: 8, NO_GST_REG: 7, E2: 5 },
+      counterparty: { "SG Electronics": 2 },
+      proposal_status: { staged: 0 }, // a future facet — proves nothing is hardcoded
+    },
+    remaining: {
+      error_code: { E1: 8, NO_GST_REG: 0, E2: 0 },
+      counterparty: { "SG Electronics": 2 },
+      proposal_status: { staged: 0 },
+    },
+    onToggle: vi.fn(),
+    onClear: vi.fn(),
+    busy: false,
+  };
 
-function mkFindings(code: string, n: number) {
-  return Array.from({ length: n }, (_, i) => ({
-    finding_id: `detect:${code}:${i + 1}`,
-    check_id: code,
-    finding_type: "deterministic",
-  }));
-}
+  it("renders whatever facets `available` carries — source-agnostic, not hardcoded", () => {
+    render(<FacetFilter {...base} selected={{}} />);
+    expect(screen.getByText(/error code/i)).toBeInTheDocument();
+    expect(screen.getByText(/counterparty/i)).toBeInTheDocument();
+    expect(screen.getByText(/proposal status/i)).toBeInTheDocument();
+  });
 
-// The canonical 21-finding SBODEMOSG set, mixed across the four real check types.
-const ALL_FINDINGS = [
-  ...mkFindings("E1", 8),
-  ...mkFindings("NO_GST_REG", 7),
-  ...mkFindings("E2", 5),
-  ...mkFindings("gst_amount_mismatch", 1),
-];
+  it("chip counts come from `remaining_facets` (drill-down) — a chip can read 0", () => {
+    render(<FacetFilter {...base} selected={{ error_code: ["E1"] }} />);
+    expect(within(screen.getByRole("button", { name: /^E1/ })).getByText("8")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /^E2/ })).getByText("0")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /NO_GST_REG/ })).getByText("0")).toBeInTheDocument();
+  });
 
-const AVAILABLE = {
-  error_code: { E1: 8, NO_GST_REG: 7, E2: 5, gst_amount_mismatch: 1 },
-  counterparty: { "SG Electronics": 2, "Far East Imports": 1 },
-};
+  it("selection is the SERVER echo (OR-within-a-facet = multiple pressed in one facet)", () => {
+    render(<FacetFilter {...base} selected={{ error_code: ["E1", "E2"] }} />);
+    expect(screen.getByRole("button", { name: /^E1/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^E2/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /NO_GST_REG/ })).toHaveAttribute("aria-pressed", "false");
+  });
 
-function runReviewResponse(data: Record<string, unknown>) {
-  return {
-    kind: "result",
-    classifier_mode: "scripted",
-    disclaimer: "Demo / illustrative — validation_status=unvalidated.",
-    intent: "RUN_REVIEW",
+  it("a chip click is a REQUEST (onToggle), Clear calls onClear, and never filters locally", () => {
+    const onToggle = vi.fn();
+    const onClear = vi.fn();
+    render(<FacetFilter {...base} selected={{ error_code: ["E1"] }} onToggle={onToggle} onClear={onClear} />);
+    fireEvent.click(screen.getByRole("button", { name: /^E2/ }));
+    expect(onToggle).toHaveBeenCalledWith("error_code", "E2");
+    fireEvent.click(screen.getByRole("button", { name: /Clear/i }));
+    expect(onClear).toHaveBeenCalled();
+  });
+
+  it("Clear is shown only when a selection is active", () => {
+    const { rerender } = render(<FacetFilter {...base} selected={{}} />);
+    expect(screen.queryByRole("button", { name: /Clear/i })).toBeNull();
+    rerender(<FacetFilter {...base} selected={{ error_code: ["E1"] }} />);
+    expect(screen.getByRole("button", { name: /Clear/i })).toBeInTheDocument();
+  });
+
+  it("renders nothing when there are no facets", () => {
+    const { container } = render(<FacetFilter {...base} available={{}} remaining={{}} selected={{}} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("FacetFilter placement (relocated onto the queue)", () => {
+  const REVIEW: ReviewPayload = {
+    client: { client_id: "sbodemosg", client_name: "SAP B1 Demo", company_db: "SBODEMOSG" },
+    period: { start: "2024-07-01", end: "2024-09-30", label: "2024Q3" },
+    validation_status: "unvalidated",
+    f5_summary: { currency: "SGD", boxes: { box_8_net_gst: 12663.87 } },
+    disclaimer: "validation_status=unvalidated.",
+    queue: [
+      {
+        finding_id: "detect:E1:958", check_id: "E1", finding_type: "deterministic", group: "needs_review",
+        vendor: "SG Electronics", severity: "MEDIUM", description: "d", recommendation: "r", doc_num: 958,
+        doc_date: "2024-07-02", error_code: "E1", display_name: "E1", iras_basis: "b",
+        iras_basis_caveat: "Illustrative citation — UNVALIDATED.", demoted: false, annotation: null,
+        prior_dispositions: [], fingerprint: null, candidate_framing_text: "c",
+        completeness: { required: [], present: [], missing: [], satisfied: true }, inputs_hash: "h",
+        proposal_id: null, proposal_status: null, validation_status: "unvalidated",
+      },
+    ],
+  };
+  const RUN_REVIEW = {
+    kind: "result", classifier_mode: "scripted", disclaimer: "never writes back to SAP.", intent: "RUN_REVIEW",
     execution: {
-      intent: "RUN_REVIEW",
-      outcome: "executed",
-      sequence: ["run_review_chain"],
-      tiers: [1],
-      params: { client_id: "sbodemosg", period: "2024Q3" },
-      data,
+      intent: "RUN_REVIEW", outcome: "executed", sequence: [], tiers: [1], params: {},
+      data: {
+        review_result: {}, dossiers: [{ finding_id: "detect:E1:958", check_id: "E1", finding_type: "deterministic" }],
+        f5_summary: REVIEW.f5_summary, available_facets: { error_code: { E1: 1 } },
+        findings: [{ finding_id: "detect:E1:958", check_id: "E1", finding_type: "deterministic" }],
+        remaining_facets: { error_code: { E1: 1 } }, applied_filters: {}, filter_rejection: null,
+      },
       notes: [],
     },
   };
-}
 
-const FULL_REVIEW = runReviewResponse({
-  dossiers: ALL_FINDINGS,
-  findings: ALL_FINDINGS,
-  f5_summary: F5,
-  available_facets: AVAILABLE,
-  remaining_facets: AVAILABLE,
-  applied_filters: {},
-  filter_rejection: null,
-});
-
-const E1_REVIEW = runReviewResponse({
-  dossiers: ALL_FINDINGS, // the FULL canonical set is unchanged (Y)
-  findings: mkFindings("E1", 8), // the narrowed VIEW (X)
-  f5_summary: F5, // identical boxes — box-isolation
-  available_facets: AVAILABLE, // the full menu always
-  remaining_facets: { error_code: { E1: 8 }, counterparty: { "SG Electronics": 2 } },
-  applied_filters: { error_code: ["E1"] },
-  filter_rejection: null,
-});
-
-const REJECTION_REVIEW = runReviewResponse({
-  dossiers: ALL_FINDINGS,
-  findings: ALL_FINDINGS, // full rows still stand on a rejection
-  f5_summary: F5,
-  available_facets: AVAILABLE,
-  remaining_facets: AVAILABLE,
-  applied_filters: {},
-  filter_rejection: {
-    reason: "not_in_domain",
-    facet: "error_code",
-    value: "E9",
-    domain: ["E1", "NO_GST_REG", "E2", "gst_amount_mismatch"],
-    requested_filters: { error_code: ["E9"] },
-    message:
-      "value 'E9' is not in the 'error_code' domain; real values: ['E1', 'NO_GST_REG', 'E2', 'gst_amount_mismatch'].",
-  },
-});
-
-const LEDGER_RESULT = {
-  kind: "result",
-  classifier_mode: "scripted",
-  disclaimer: "Demo / illustrative.",
-  intent: "SHOW_LEDGER",
-  execution: {
-    intent: "SHOW_LEDGER",
-    outcome: "executed",
-    sequence: ["read_ledger"],
-    tiers: [0],
-    params: { client_id: "sbodemosg", period: "2024Q3" },
-    data: { ledger: [{ a: 1 }, { a: 2 }] }, // a read — NO facets
-    notes: [],
-  },
-};
-
-// fetch that routes by the request body's `filters` — mirrors the server seam: a filter in,
-// a narrowed view out. Default RUN_REVIEW with no filter → the full set.
-function reviewFetch() {
-  return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url.includes("/command")) {
-      const body = JSON.parse(String(init?.body ?? "{}"));
-      const ec = body.filters?.error_code;
-      const wantsE1 = Array.isArray(ec) ? ec.includes("E1") : ec === "E1";
-      return Promise.resolve(
-        new Response(JSON.stringify(wantsE1 ? E1_REVIEW : FULL_REVIEW), { status: 200 })
-      );
-    }
-    return Promise.reject(new Error(`unexpected fetch: ${url}`));
-  });
-}
-
-function staticFetch(payload: unknown) {
-  return vi.fn(() => Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })));
-}
-
-async function runReview() {
-  fireEvent.click(screen.getByRole("button", { name: /Run a review/i }));
-  await waitFor(() => expect(screen.getByText("21 of 21")).toBeInTheDocument());
-}
-
-describe("FacetFilter / CommandBar (T6.3 Slice 3b)", () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/review/")) return Promise.resolve(new Response(JSON.stringify(REVIEW), { status: 200 }));
+        if (url.includes("/audit")) return Promise.resolve(new Response(JSON.stringify({ entries: [] }), { status: 200 }));
+        if (url.includes("/command")) return Promise.resolve(new Response(JSON.stringify(RUN_REVIEW), { status: 200 }));
+        return Promise.reject(new Error(`unexpected fetch: ${url}`));
+      })
+    )
+  );
   afterEach(() => vi.restoreAllMocks());
 
-  it("renders the data-derived facet menu with value:count from available_facets", async () => {
-    vi.stubGlobal("fetch", reviewFetch());
-    render(<CommandBar clientId="sbodemosg" period="2024Q3" />);
-    await runReview();
+  it("the facet menu lives on the Findings queue, NOT in the command result", async () => {
+    render(<App />);
+    await screen.findByAltText(/AgentAssist/i);
+    // Not on the Review home.
+    expect(screen.queryByLabelText(/Filter findings/i)).toBeNull();
 
-    expect(screen.getByText(/Filter findings/i)).toBeInTheDocument();
-    // Whatever keys available_facets carries — error_code AND counterparty, not hardcoded.
-    expect(screen.getByText("error code")).toBeInTheDocument();
-    expect(screen.getByText("counterparty")).toBeInTheDocument();
-
-    // value:count chip — E1 with its count of 8 (from remaining = full when unfiltered).
-    const e1 = screen.getByRole("button", { name: /E1/ });
-    expect(within(e1).getByText("8")).toBeInTheDocument();
-    // A counterparty value chip is present (data-derived, not hardcoded).
-    expect(screen.getByRole("button", { name: /SG Electronics/ })).toBeInTheDocument();
-  });
-
-  it("a chip click re-POSTs /command with that filter and renders the narrowed view", async () => {
-    const fetchMock = reviewFetch();
-    vi.stubGlobal("fetch", fetchMock);
-    render(<CommandBar clientId="sbodemosg" period="2024Q3" />);
-    await runReview();
-    expect(screen.getAllByText(/detect:/).length).toBe(21);
-
-    fireEvent.click(screen.getByRole("button", { name: /E1/ }));
-
-    // "X of Y shown" reflects findings (8) vs dossiers (21).
-    await waitFor(() => expect(screen.getByText("8 of 21")).toBeInTheDocument());
-    // The narrowed findings render (8 E1 rows; no NO_GST_REG/E2 rows).
-    expect(screen.getAllByText(/detect:E1:/).length).toBe(8);
-    expect(screen.queryByText(/detect:NO_GST_REG:/)).toBeNull();
-    // The re-POST carried the filter (server does the filtering).
-    const filteredCall = fetchMock.mock.calls.find((c) => {
-      const b = JSON.parse(String((c[1] as RequestInit)?.body ?? "{}"));
-      return b.filters && JSON.stringify(b.filters).includes("E1");
-    });
-    expect(filteredCall).toBeTruthy();
-    // Active-filters display.
-    expect(screen.getByText(/error_code=E1/)).toBeInTheDocument();
-  });
-
-  it("remaining_facets drive the post-filter chip counts (drill-down)", async () => {
-    vi.stubGlobal("fetch", reviewFetch());
-    render(<CommandBar clientId="sbodemosg" period="2024Q3" />);
-    await runReview();
-    fireEvent.click(screen.getByRole("button", { name: /E1/ }));
-    await waitFor(() => expect(screen.getByText("8 of 21")).toBeInTheDocument());
-
-    // E1 still counts 8 over the narrowed view; E2 drops to 0 (not in the view).
-    expect(within(screen.getByRole("button", { name: /E1/ })).getByText("8")).toBeInTheDocument();
-    expect(within(screen.getByRole("button", { name: /E2/ })).getByText("0")).toBeInTheDocument();
-  });
-
-  it("clear-filters resets to the full view (re-POST filters={})", async () => {
-    vi.stubGlobal("fetch", reviewFetch());
-    render(<CommandBar clientId="sbodemosg" period="2024Q3" />);
-    await runReview();
-    fireEvent.click(screen.getByRole("button", { name: /E1/ }));
-    await waitFor(() => expect(screen.getByText("8 of 21")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /Clear filters/i }));
-    await waitFor(() => expect(screen.getByText("21 of 21")).toBeInTheDocument());
-    expect(screen.queryByText(/error_code=E1/)).toBeNull();
-  });
-
-  it("the F5 summary is unchanged under a filter (box-isolation, visible)", async () => {
-    vi.stubGlobal("fetch", reviewFetch());
-    const { container } = render(<CommandBar clientId="sbodemosg" period="2024Q3" />);
-    await runReview();
-    const f5Before = container.querySelector(".cmd-f5")!.textContent;
-
-    fireEvent.click(screen.getByRole("button", { name: /E1/ }));
-    await waitFor(() => expect(screen.getByText("8 of 21")).toBeInTheDocument());
-    const f5After = container.querySelector(".cmd-f5")!.textContent;
-
-    expect(f5After).toBe(f5Before);
-    expect(f5Before).toContain("12,663.87"); // the real box_8 net GST
-  });
-
-  it("renders filter_rejection as an honest message (never a silent empty / crash)", async () => {
-    vi.stubGlobal("fetch", staticFetch(REJECTION_REVIEW));
-    render(<CommandBar clientId="sbodemosg" period="2024Q3" />);
-    fireEvent.click(screen.getByRole("button", { name: /Run a review/i }));
-
-    await waitFor(() =>
-      expect(screen.getByText(/is not in the 'error_code' domain/i)).toBeInTheDocument()
-    );
-    // The full rows still stand alongside the rejection (not an empty set).
-    expect(screen.getByText("21 of 21")).toBeInTheDocument();
-  });
-
-  it("shows NO facet panel for a SHOW_LEDGER (read) result", async () => {
-    vi.stubGlobal("fetch", staticFetch(LEDGER_RESULT));
-    render(<CommandBar clientId="sbodemosg" period="2024Q3" />);
-    fireEvent.click(screen.getByRole("button", { name: /Show ledger/i }));
-
-    await waitFor(() =>
-      expect(screen.getByText(/Justification ledger/i)).toBeInTheDocument()
-    );
-    expect(screen.queryByText(/Filter findings/i)).toBeNull();
+    const navEl = screen.getByRole("navigation", { name: /Primary/i });
+    fireEvent.click(within(navEl).getByRole("button", { name: /Findings/i }));
+    expect(await screen.findByLabelText(/Filter findings/i)).toBeInTheDocument();
   });
 });
