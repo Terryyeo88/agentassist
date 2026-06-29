@@ -377,3 +377,40 @@ button.ghost { background: transparent; }
   font-size: 12px; color: var(--ink-fainter); line-height: 1.75; max-width: 900px;
 }
 .loading, .errorbox { padding: 40px; text-align: center; color: var(--ink-soft); }
+
+/* ── Source selector + Xero coverage (tsource-selector) ───────────── */
+.source-selector, .xero-upload {
+  max-width: 760px; margin: 0 auto; padding: 72px 28px 44px; width: 100%;
+}
+.source-title { font-family: var(--font-display); font-size: 26px; margin: 18px 0 6px; color: var(--ink); }
+.source-sub { color: var(--ink-soft); margin: 0 0 26px; max-width: 560px; }
+.source-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 720px) { .source-cards { grid-template-columns: 1fr; } }
+.source-card {
+  display: flex; flex-direction: column; gap: 8px; text-align: left; cursor: pointer;
+  background: var(--paper-raised); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+  padding: 20px 18px; color: var(--ink); transition: border-color 120ms, transform 120ms;
+}
+.source-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.source-card-title { font-weight: 600; font-size: 16px; }
+.source-card-desc { color: var(--ink-soft); font-size: 12.5px; line-height: 1.6; }
+.source-back {
+  background: none; border: none; color: var(--ink-soft); cursor: pointer; padding: 0;
+  font-size: 13px; margin-bottom: 8px;
+}
+.source-back:hover { color: var(--accent); }
+.xero-file-label {
+  display: inline-flex; flex-direction: column; gap: 8px; color: var(--ink-soft);
+  font-size: 13px; margin-bottom: 8px;
+}
+.xero-file-input { color: var(--ink-body); }
+.xero-coverage { margin-top: 22px; background: var(--bg-strip); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px 18px; }
+.xero-coverage-head { font-size: 13px; color: var(--ink-soft); margin-bottom: 10px; }
+.xero-coverage-head strong { color: var(--warn); text-transform: uppercase; letter-spacing: 0.04em; }
+.xero-coverage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.xero-coverage-table th { text-align: left; color: var(--ink-faint); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.xero-coverage-table td { padding: 7px 8px; border-bottom: 1px solid var(--line-faint); color: var(--ink-body); vertical-align: top; }
+.cov-full td:nth-child(2) { color: var(--ok); }
+.cov-degraded td:nth-child(2) { color: var(--warn); }
+.cov-unavailable td:nth-child(2) { color: var(--danger); }
+.xero-disclaimer { margin-top: 14px; font-size: 12px; color: var(--ink-fainter); line-height: 1.7; }
