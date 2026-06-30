@@ -8,7 +8,28 @@ it parses the real Xero "GST F5 Return → Transactions by box number" export fo
 against a committed synthetic fixture. It is **not** real-client validated and **not**
 accuracy-validated, and its tax-code mapping citations are **deferred**.
 
+**PR-A status (branch `t-xero-f5-reader`, built ≠ validated).** A real-**FORMAT** Xero F5
+reader now EXISTS as an **UNWIRED feeder**: `feeders/xero_f5_reader.py`
+(`XeroF5ChainReader`) parses the genuine "Transactions by box number" export (4-row
+title-block skip / structural row-5 header; `" (NN%)"` tax-rate suffix strip incl.
+double-suffix; value-box-only structural selection that SKIPS the tax/restatement boxes —
+Box 6/7/19 — so value↔tax duplication is removed by box-section membership, NOT a content
+hash) and satisfies the same structural `ChainReader` contract as `ExtractChainReader`.
+`tests/test_xero_f5_reader.py` (**8 tests, all pass**) validates it over the committed
+fixture; full suite **2062 passed, 1 skipped**. **This is real-FORMAT validation over
+SYNTHETIC data — NOT accuracy-validated (T2.11) and NOT a real client file.** The reader
+is **NOT wired into the engine** (`POST /review/upload` stays coverage-only;
+`engine/review.py` still calls `run_chain` with no reader) — threading it in is **PR-B
+(deferred, separate PR)**, so uploads do not yet produce real findings. PR-A closes **none**
+of the debts below: the tax-rate→VatGroup mapping is still PROPOSED/UNVALIDATED (DEBT-1),
+real-client validation is still pending (DEBT-3), the absent-surface degrades (DEBT-6/-7/-8)
+are now IMPLEMENTED as honest degradation but the checks remain degraded/unavailable, and
+the E4 rate (DEBT-4/-5, PR-C), loader `sap_b1`-block requirement (DEBT-9, PR-D) and
+`xero_demo.yaml` citations (PR-E) remain open.
+
 Companion files:
+- Reader: `feeders/xero_f5_reader.py` (PR-A — real-FORMAT, SYNTHETIC-data, UNWIRED)
+- Tests: `tests/test_xero_f5_reader.py` (PR-A — 8 tests over the fixture)
 - Config: `config/clients/xero_demo.yaml` (PROPOSED/DEMO, deferred citations)
 - Fixture: `tests/fixtures/xero-f5-export/AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx`
 
@@ -24,6 +45,11 @@ The five `tax_code_mappings` entries in `xero_demo.yaml` carry `cite DEFERRED` m
 instead of confirmed IRAS authority. Each must be traced to a confirmed IRAS Annex E
 row before the mapping is gate-clean. Per the NR-in-Box-5 rule, model inference is not
 authority. **Owner: Terry.** Blocks: treating the Xero mapping as "authored".
+*PR-A update (still OPEN):* the PR-A reader now carries its OWN name-stem→VatGroup map
+(`feeders/xero_f5_reader.py` `_PROPOSED_VAT_GROUP_MAP` / `tax_rate_to_vat_group`) as a
+**PROPOSED / UNVALIDATED CANDIDATE** that **fails loud** (`ValueError`) on an unmapped
+name rather than guessing. This is a candidate, NEVER a verdict; the IRAS Annex E
+citations remain DEFERRED — this debt is NOT closed.
 
 ### DEBT-2 — Category assignments are Terry-provided demo values, not gate-clean
 `STANDARD-RATED SUPPLIES→SR`, `STANDARD-RATED PURCHASES→TX`, `SR-NOGST→SR`,
@@ -35,6 +61,10 @@ but unconfirmed against the IRAS guide; the config header and status are
 The path is validated only against the committed synthetic fixture in the real Xero
 *format*. Real-client validation awaits Avinash's NDA'd Xero export. Until then: demo
 only, not customer-facing.
+*PR-A update (still OPEN):* the PR-A reader (`feeders/xero_f5_reader.py`) is exercised by
+`tests/test_xero_f5_reader.py` over that synthetic fixture — **real-FORMAT-validated, NOT
+accuracy-validated** and NOT a real client file. Real-client validation remains pending;
+this debt is NOT closed.
 
 ### DEBT-4 — SAP-path E4 `expected_rate` defaults to 0.07 (found bug, NOT fixed here)
 `_classify_line` (`mcp-servers/custom/sap_b1_server.py:747`) and the call sites at
@@ -55,17 +85,29 @@ unresolved seam gating the Phase-2 build.
 amount but *different* References. The Xero path must source the dup key from
 `(Contact, amount)` and declare DUP_CLAIM **degraded**. Prefer an additive Xero-specific
 path over editing the SAP detector (box-isolation/determinism).
+*PR-A update (still OPEN):* the PR-A reader has no listing surface — `fetch_listing`
+returns the four canonical buckets EMPTY and `coverage_status()` marks DUP_CLAIM
+**degraded** through the shared `derive_coverage_statuses` seam (honest degradation, no
+fabricated listing). The additive `(Contact, amount)` Xero dup detector is NOT built; this
+debt is NOT closed.
 
 ### DEBT-7 — NO_GST_REG unreachable on the Xero path
 The export has no business-partner master and no `FederalTaxID` column, so NO_GST_REG
 cannot run — it surfaces as coverage **unavailable** (`feeders/coverage_status.py:145-148`).
 BILL-3003 ("NoReg Trading") therefore cannot be flagged; this is honest degradation,
 not a missed finding.
+*PR-A update (still OPEN):* the PR-A reader honours this — `get_business_partner` RAISES
+`KeyError` (never fabricates a BP) and `coverage_status()` marks NO_GST_REG **unavailable**.
+The honest degrade is implemented; the check remains unavailable — this debt is NOT closed.
 
 ### DEBT-8 — SEQ_GAP out of scope on the Xero path
 No `Series`, `Cancelled`, or company-wide listing in the export → SEQ_GAP is out of
 scope (degraded/unavailable via the coverage seam). No within-period sequence range is
 testable.
+*PR-A update (still OPEN):* the PR-A reader carries the reference string in `DocNum` (no
+numeric series) and returns an EMPTY listing, so `coverage_status()` degrades SEQ_GAP via
+the shared seam. The honest degrade is implemented; the check remains degraded — this debt
+is NOT closed.
 
 ### DEBT-9 — Loader requires a `sap_b1` block + credential env vars for a Xero-only client
 `config/loader.py:273-277, 295-302` require a `sap_b1` block and resolve its credential
