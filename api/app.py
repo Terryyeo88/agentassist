@@ -60,6 +60,11 @@ from api.viewmodel import (
 # (openpyxl is lazy on the .xlsx path); it imports NO anthropic/agent/engine/orchestrator,
 # so this edge keeps api/ anthropic-free and engine-free (pinned by the import-scan tests).
 from feeders.extract_reader import ExtractChainReader
+from feeders.xero_f5_reader import (
+    XeroF5ChainReader,
+    is_xero_f5_workbook,
+    parse_review_period,
+)
 from ui.artifacts import VALIDATION_STATUS, DemoArtifacts, load_demo_artifacts
 from ui.sign import DEFAULT_OUTPUT_DIR, sign_working_paper
 
@@ -103,6 +108,19 @@ UPLOAD_COVERAGE_KEYS: tuple[str, ...] = (
     "source_kind", "validation_status", "disclaimer", "coverage_status",
 )
 COVERAGE_ROW_KEYS: tuple[str, ...] = ("check", "level", "reason")
+
+# POST /review/upload Xero-F5 branch (engine path) response contract: the coverage keys PLUS
+# findings — a real-Xero-FORMAT review over an uploaded F5 export, candidates NOT verdicts,
+# validation_status stays "unvalidated" (Inv-5). XERO_UPLOAD_KEYS documents the top-level shape
+# (the source the frontend TS types mirror, as UPLOAD_COVERAGE_KEYS does); FINDING_ROW_KEYS is
+# the engine detect-issue finding row that _xero_f5_review_response projects each finding to.
+XERO_UPLOAD_KEYS: tuple[str, ...] = (
+    "source_kind", "validation_status", "disclaimer", "coverage_status", "findings",
+)
+FINDING_ROW_KEYS: tuple[str, ...] = (
+    "card_name", "description", "doc_date", "doc_num",
+    "error_code", "recommendation", "severity",
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -242,11 +260,19 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
         dest = tmp_dir / f"upload{suffix}"
         dest.write_bytes(body)
         try:
+            # FORMAT ROUTING: a real Xero IRAS-F5 export ("Transactions by box number" sheet)
+            # goes down the engine path and returns REAL (but unvalidated) findings; any other
+            # .xlsx (the synthetic documents/business_partners/listing shape) stays on the
+            # UNCHANGED ExtractChainReader coverage-only path — byte-identical to before.
+            if is_xero_f5_workbook(dest):
+                return _xero_f5_review_response(dest)
             reader = ExtractChainReader(dest)
             coverage_status = [status.as_dict() for status in reader.coverage_status()]
+        except HTTPException:
+            raise
         except Exception as exc:  # noqa: BLE001
             # Any parse failure on an UNTRUSTED upload (bad zip, missing sheet, …) is a
-            # 422 client-input error — never a 500. (No engine call is reachable here.)
+            # 422 client-input error — never a 500.
             raise HTTPException(
                 status_code=422, detail=f"Could not read export: {exc}"
             ) from exc
@@ -258,6 +284,61 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
         "validation_status": VALIDATION_STATUS,
         "disclaimer": DISCLAIMER,
         "coverage_status": coverage_status,
+    }
+
+
+def _xero_f5_review_response(dest: Path) -> dict:
+    """Run the real (UNVALIDATED) engine review over an uploaded Xero IRAS-F5 export.
+
+    Threads PR-A's XeroF5ChainReader through engine.review.review(): the deterministic chain
+    (run_chain) surfaces the line-level E-check findings (E2/E3/E4 on the demo fixture); the
+    surfaces a Xero export lacks (supplier master, document-number listing) degrade honestly in
+    coverage_status (NO_GST_REG unavailable, DUP_CLAIM/SEQ_GAP degraded) — never as silent
+    absence and never fabricated.
+
+    HONEST STATUS: real-Xero-FORMAT findings over (here) SYNTHETIC data — CANDIDATES, never
+    verdicts. validation_status stays "unvalidated" (Inv-5); no AI candidates surface; the
+    VatGroup mapping is PROPOSED (DEBT-1); accuracy is NOT validated (T2.11 unmoved).
+
+    DEBT-9 runtime dependency: load_client_config("xero_demo") hard-requires SAP_USERNAME/
+    SAP_PASSWORD env vars even though NO SAP call is made on this path (XeroF5ChainReader
+    short-circuits every read). Making sap_b1 optional for non-SAP clients is deferred (PR-D).
+    """
+    reader = XeroF5ChainReader(dest)
+    period = parse_review_period(dest)
+
+    # Lazy imports keep api/ anthropic-free AT MODULE IMPORT (Inv-1): engine.review pulls
+    # reasoning.reg2627, whose anthropic import is itself lazy — so importing api.app loads
+    # neither; they resolve only when this endpoint actually runs.
+    from config.loader import load_client_config
+    from engine.review import ReviewInputs, review
+
+    cfg = load_client_config("xero_demo", check_connectivity=False)
+    # A Xero F5 export has no SI-purchase-line / source-document surface; the surfaced findings
+    # come entirely from run_chain via the reader. An empty line_source (Reg26/27 emits a clean
+    # no-LLM artefact) and no provider (documents pass skipped) keep this hermetic.
+    inputs = ReviewInputs(line_source=lambda: [], provider=None, reader=reader)
+    result = review(cfg, period, inputs)
+    if result.status != "completed" or result.compile_output is None:
+        # A reconciliation halt on an untrusted upload is a client-input error, never a 500.
+        raise HTTPException(
+            status_code=422,
+            detail="Review could not complete over this export (reconciliation halted).",
+        )
+
+    # Project each detect issue to exactly the contract finding-row shape so the response stays
+    # contract-stable even if the internal detect-issue dict later gains a field.
+    findings = [
+        {key: issue.get(key) for key in FINDING_ROW_KEYS}
+        for issue in result.compile_output["detect"]["issues"]
+    ]
+    coverage_status = [status.as_dict() for status in reader.coverage_status()]
+    return {
+        "source_kind": "xero_f5_upload",
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": DISCLAIMER,
+        "coverage_status": coverage_status,
+        "findings": findings,
     }
 
 
