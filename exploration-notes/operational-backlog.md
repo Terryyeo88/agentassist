@@ -88,3 +88,13 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
      is the foundation, but the document/PDF provider is a separate build), and (2) a request-resume
      interaction (UI upload + loop re-entry).
    - **Scope:** NOT part of T5.9 (front-door intent routing only). Document only; do not build.
+
+9. **Stale `expected_rate=0.07` default (DEBT-4).**
+   - Verify the current GST rate against the IRAS e-Tax Guide and config-thread it; do **not** trust the hardcoded `0.07` default.
+   - **Independent of the Xero work; affects the LIVE path.** Cross-ref `KNOWN-LIMITATIONS-xero-demo.md` DEBT-4/DEBT-5 and roadmap **OD-8** (rate-threading).
+   - **Scope:** verify-before-encode; not a tax assertion here.
+
+10. **Manual-journal Xero-F5 behaviour — capture + freeze before building T2.24.**
+   - The "a manual journal drops out of the SG Xero F5 report" behaviour is a platform-behaviour claim demonstrated once by Avinash.
+   - Capture it from a **real Xero export** and **freeze as a fixture** before the **T2.24** control-ledger ↔ F5-report reconciliation check is built (cross-ref roadmap T2.24 / ASK cell 1.3e).
+   - **Scope:** prerequisite; verify-before-encode (NR-in-Box-5 precedent).

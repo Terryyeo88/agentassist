@@ -142,6 +142,10 @@ Business reason: the entire 👤 → J+ band in coverage-analysis Document 4 is 
 
 Why it caps at J+: extraction is probabilistic — reading raises recall, not authority. The sole exception is invoice-date → correct-period (B6 → D+). Legal characterisations (export, exemption, Reg 26/27) stay J+ regardless. Extracted values never enter Layer 1, boxes, or gates; the deterministic listing stays the authoritative anchor. DoD achieved: byte-identical box figures/gate results with and without the adapter confirmed on SBODEMOSG Q3 2024 + T2.8 seeds.
 
+**Extension (PLANNED — Avinash debrief; a T2.8 extension, NOT a new task): content-based invoice-identity step.** Open each PDF, classify is-invoice, and pull the invoice number **from inside the file** — the filename is untrusted (foldering/naming varies by firm and by employee). Prerequisite: **T2.15** (legibility gate). Process-not-retain (PDPA / **T3.2**). Feeds 3.1/3.3 and write-to-Xero (**T2.25**). Surfaces a candidate, never asserts; `validation_status="unvalidated"` / `show_ai_candidates=False` unchanged.
+
+**Note (PLANNED — Avinash debrief 3.7):** supplier-GST checking overlaps the existing `NO_GST_REG` / `reg11_supplier_gst_absent` checks — **reconcile, don't duplicate**; rare (<1% of lines) but real.
+
 ### T2.9 — Filed-F5-return ingestion (declared-vs-computed reconciliation) — DONE (built, flag-gated, UNVALIDATED)
 Completed 2026-06-09 on `master`. Owner Terry.
 
@@ -181,6 +185,8 @@ Completed 2026-06-09/10. Owner Terry. Merged to master, commit `4f52b20`, merge 
 **Honest qualifier:** DONE = merged to master, deterministic, unit-tested. **Positive-detection validated on SYNTHETIC crafted cases (T2.10-V); report-rendered; live zero-FP on SBODEMOSG.** SBODEMOSG is a demo/synthetic DB — NOT real-client validation. DUP_CLAIM inert where `NumAtCard` unpopulated (client-onboarding precondition). Findings not gates; does not affect `validation_status` or `show_ai_candidates`.
 
 **Not built in T2.10 (deferred):** claim-outside-period (3D.1.1.c → D+, needs cross-period history); time-of-supply anomaly (3A.1.b → J+, needs payment-date ingestion); purchase-side SEQ_GAP (separate scope decision); @odata.nextLink pagination.
+
+**Extension (PLANNED — Avinash debrief; verify-before-encode):** a **standing-order false-positive guard** — same supplier + same amount + *different* reference can be a genuine recurring delivery, so it must **not** be flagged as a duplicate; and a **quotation/proforma-in-filing flag** — only a tax invoice qualifies as supporting evidence. Both are practitioner observations recorded **verify-before-encode** (not asserted as tax fact; NR-in-Box-5 precedent); each surfaces a candidate, never asserts.
 
 ### T2.10-V — Listing-checks positive-detection validation — DONE (positive-detection validated on synthetic cases; live zero-FP on SBODEMOSG; NOT real-client validated)
 Completed 2026-06-10. Owner Terry. Merged to master, commit `bf7f2f3`, merge commit `037c271`.
@@ -224,6 +230,8 @@ Effort PROPOSED 3–4 wk. Owner Terry/Collin. Advisory firms access client data 
 **Slice 2B-ext-1 — explicit coverage for the E1–E4 line core fields (2026-06-18, branch `t2.12-2b-ext1-coverage-core` off `origin/master` `1540ac6`): BUILT.** First coverage-extension slice. Makes the previously-IMPLICIT-full status EXPLICIT for the four line-level checks **E1–E4** through the SAME 2B mechanism (`derive_coverage_statuses` + value-population-aware `is_covered(surface, field)`) over the `documents` surface — `derive_coverage_statuses` now returns **seven** statuses (the three locked 2B cases first + in order, then E1–E4). **Scope (Terry-ruled):** E1–E4 ONLY, over `(documents, VatGroup/LineTotal/TaxTotal)`; **CardCode and computed_boxes/declared_B descoped** (CardCode's only consumers `NO_GST_REG`/`DUP_CLAIM` are the locked cases; computed_boxes is a derived artifact, not an export `(surface, field)`, and `declared_B` also needs `declared_f5` = ext-2). **Level `degraded`, not `unavailable`** (mirrors `DUP_CLAIM`←`NumAtCard`): the E-checks run over the documents surface and under-detect when a line field is absent/unpopulated; reason names the missing field(s), coverage FACT only — no IRAS rationale. Load-bearing map: E1←VatGroup,LineTotal; E2←VatGroup,TaxTotal; E3/E4←VatGroup,LineTotal,TaxTotal. **No `COVERAGE_FIELDS` change, no keying-shape change** (the four fields were already declared on `DOCUMENTS_SHEET`); **the three locked 2B cases stay byte-identical**. **Emission-only — touches no chain code**: the duck-typed `_emit_check_coverage` path is unchanged; readers without the seam (live SAP, frozen replay) emit no `check_coverage` → `test_offline_replay_byte_identical_to_oracle` still matches (**NO oracle re-freeze**). `orchestrator/` pure; `orchestrator/`/`report/` import nothing from `feeders/`. **Failing-test-first, symmetry-breaking** (`tests/test_t212b_ext1_coverage_core.py`, +22 tests): each line field proven load-bearing per check (blanked independently → that check `degraded`, sparing checks that don't read it), reasons carry no §/IRAS, locked-case dicts asserted unchanged, full chain over the committed export surfaces E1–E4; expected CI total **2010 passed, 1 skipped** (local 1985 + 2 pre-existing `fastapi` collection errors); flake8 CI selectors + feeders-purity clean. **Honest-status:** built + synthetic-format-validated; NOT real-client-export-validated; NOT accuracy-validated (T2.11 unmoved). Trust/liability property, not accuracy.
 
 **Slice 2B-ext-3 — explicit coverage for the four document-pre-pass checks (2026-06-18, branch `t2.12-2b-ext3-document-coverage` off `origin/master` `6f86fc6`): BUILT.** The document-pre-pass coverage slice. Makes the previously-IMPLICIT-full status EXPLICIT for the four T2.8 document checks — `gst_amount_mismatch`, `correct_period`, `total_inconsistency`, `reg11_supplier_gst_absent` (`documents/reconcile.py`) — through the SAME ext-1 mechanism (`derive_coverage_statuses` + check-keyed status, appended after the three locked 2B cases and the four ext-1 E-checks → **eleven** statuses, stable order). **Level `unavailable`, not `degraded`** (Terry-ruled): all four share one PDF-ingest gate (`run_documents_pass` skips a `doc_num` whose provider returns `None`, so `reconcile` is never reached) → when `document_pdfs` is absent NONE can run = the `NO_GST_REG`←`FederalTaxID` cannot-run pattern. Provider is binary — **no present-but-sparse middle state**. **Signal: a check-keyed bool `document_pdfs_present` (default `False`), NOT a `COVERAGE_FIELDS` `is_covered` pair** — `document_pdfs` is not in the coverage model and the PDF provider is an **engine-level seam** (`engine/review.py` Phase 3, `inputs.provider`) running OUTSIDE `run_chain`; mirrors SEQ_GAP's population bool. **Wiring without coupling `run_chain` to the provider:** the `ExtractChainReader` carries no PDF surface, so its `coverage_status()` passes the constant `False`; `run_chain` stays provider-agnostic and the seamless SAP/replay readers emit no `check_coverage` → `test_offline_replay_byte_identical_to_oracle` still matches (**NO oracle re-freeze**). **No `COVERAGE_FIELDS`/keying-shape change.** **Three locked 2B + four ext-1 statuses byte-identical** (asserted); the one ext-1 "E-checks are last" test extended (status-preserving) for the new tail. `orchestrator/` pure; `orchestrator/`/`report/` import nothing from `feeders/`; merged 2C render consumes the four rows via its generic copy + raw-id label fallback (render untouched). **Failing-test-first, symmetry-breaking** (`tests/test_t212b_ext3_document_coverage.py`, +9 tests): provider-present → `full`, provider-absent → `unavailable` (blind `return full` fails absent branch, blind `return unavailable` fails present branch); default-absent proven; reasons carry no §/IRAS; locked+ext-1 dicts unchanged; eleven-status order asserted; full chain over the committed export surfaces the four rows as `unavailable`; expected CI total **2019 passed, 1 skipped** (local 1994 + 2 pre-existing `fastapi` collection errors); flake8 CI selectors + feeders-purity clean. **Honest-status:** built + synthetic-format-validated; NOT real-client-export-validated; NOT accuracy-validated (T2.11 unmoved). Trust/liability property, not accuracy.
+
+**Open decision (Avinash debrief):** the synthetic-fixture shape — Xero-export shape vs the SAP-B1 GST-listing shape the Slice-A exporter currently assumes — is an **open decision; see OD-2** in the Open product / strategy decisions register. The exporter is **not** re-pointed here pending Terry's ruling.
 
 ### T2.12a — Ground-truth capture + offline-replay gate — DONE (2026-06-16; on master)
 Owner Terry. **Frozen ground truth + a passing offline-replay gate for the deterministic chain** — the validation substrate for the deterministic path, distinct from (and a prerequisite-grade input to) the T2.12 product adapter.
@@ -460,6 +468,21 @@ follow-on task** pending a T2.18 sequencing decision — it is deliberately
 or stays an annotation on this entry is an open question for Collin/Terry.
 Buckets 5-7 (11 T2.22-deferred codes — Customer Accounting, Reverse Charge,
 OVR/LVG families) remain untouched and tracked under T2.22.
+
+### T2.24 — Control-ledger ↔ F5-report reconciliation (deterministic) + manual-journal catch — PLANNED
+Effort PROPOSED — needs Terry confirmation. Owner Terry/Collin. Status: PLANNED.
+
+Pure-Python in `orchestrator/`; surfaces a candidate, never asserts; BOX-ISOLATION holds. Reconciles the GST control-account ledger against the F5 report; a divergence is surfaced as a candidate, never a verdict. Manual-journal scenarios: **(a)** an entry that never touches input-tax control is missing from both the ledger and the report → the two tie → only the **source** catches it (out of pure-ledger scope); **(b)** an entry that posts GST to the control account but the report ignores manual journals → the ledger has it, the report does not → **caught by the diff** (the common case). Cross-ref ASK cell **1.3e**. **Prerequisite (verify-before-encode):** the "a manual journal drops out of the SG Xero F5 report" behaviour is a platform-behaviour claim demonstrated once by Avinash — it must be reproduced from a **real Xero export and frozen as a fixture before this check is built** (cross-ref `operational-backlog.md` #10). Highest-leverage item in the debrief priority order. `validation_status="unvalidated"` / `show_ai_candidates=False` unchanged; T2.11 still gates.
+
+### T2.25 — Write-to-Xero export — PLANNED
+Effort PROPOSED — needs Terry confirmation. Owner Terry/Collin. Status: PLANNED.
+
+Extracted invoices → a Xero/QuickBooks import-ready sheet. An **output** capability, **distinct from the T2.12 read adapter**. Synthetic invoices first; real-invoice runs gated on security + NDA/PDPA. Sequenced **after** the invoice-extraction pipeline (shares it). Carries the per-transaction provenance tag (**T2.26**) through, so the review always knows what it ingested. Surfaces candidates, never asserts; `validation_status="unvalidated"` unchanged.
+
+### T2.26 — Per-transaction provenance tag — PLANNED
+Effort PROPOSED — needs Terry confirmation. Owner Terry/Collin. Status: PLANNED.
+
+Tag every transaction `ours-by-extraction` vs `pre-existing`, threaded ingestion → finding. **Day-one ground rule, not a later refinement.** For `ours-by-extraction` lines: suppress/caveat the omission + tax-treatment checks; **keep** the reconciliation checks (valid regardless of who entered the data). **Honest-status line (verbatim):** *never market "independent second pair of eyes" on data we ingested.* Provenance is metadata on a candidate — surfaces, never asserts; BOX-ISOLATION + `validation_status="unvalidated"` unchanged.
 
 ---
 
@@ -958,6 +981,11 @@ visible; it changes nothing about what is or is not validated underneath.
 interactive request-resume loop is a separate GAP gated on document ingestion — see
 `operational-backlog.md`.
 
+### T5.10 — Source-invoice inline view — PLANNED
+Effort PROPOSED — needs Terry confirmation. Owner Terry/Collin. Status: PLANNED.
+
+Show the source invoice in the finding behind a **view button** (retrieval + UI); Avinash confirmed that hunting for the source invoice is a real time-cost. Demo/UI surface only — no engine/box behaviour. Note: the **Decline/remove button** is the UI affordance for the existing **T5.5** annotate-and-demote loop — **not new infra**. Surfaces evidence to the reviewer, never asserts; `validation_status="unvalidated"` unchanged.
+
 ### Tier-5 cross-cutting requirements
 (a) Agent-behavior evals: the honest-status taxonomy (built ≠ unit-tested ≠ demo-validated ≠ real-client-validated) applies to agent BEHAVIORS. Scenario eval harness with fixed fixtures measuring: dossier completeness rate, justification-gate hold rate, zero Tier-2 self-executions over N adversarial runs, language-lint pass rate. No entry above advances past "built" without it. Build deliverable: T5.7.
 (b) Prompt-injection resistance: once the agent reads client documents, every vendor PDF is untrusted input to a tool-bearing system. Injection fixtures (adversarial instructions embedded in invoice descriptions/PDF text) are a mandatory eval category. The tier system is the structural containment (worst case: a poisoned proposal a human reads).
@@ -1137,6 +1165,9 @@ Build (not docs-only), **frontend ONLY — no Python touched, so the pytest merg
 `AGENTASSIST_TECHNICAL_STATE.md`: **§T6.3 (Slice 4)** subsection added (after §T6.3 Slice 3b) + footer D34 + the exec-summary lines annotated (pytest UNCHANGED at 2038, vitest 13 → 28 across 6 files). Roadmap: **T6.3 Slice 4 DONE** bullet added under Tier 5 (after Slice 3b); D34 added. `docs/merge-gates.md`: **checked — no posture change** (Slice 4 is frontend-only — styles + components + vitest; the merge gate stays pytest; `api/`/`orchestrator/` boundary unchanged; vitest remains outside CI).
 `exploration-notes/iras-ask-coverage-analysis.md` + `knowledge-base/sg-tax-code-mappings.md`: **checked — no change required.** T6.3 Slice 4 is a frontend presentation/view layer; it changes no deterministic IRAS-ASK coverage cell and touches no VatGroup→F5-box routing or tax-domain content. Honest scope: a restyle + reorg + relocation over already-built server features — built ≠ demo-validated ≠ accuracy-validated; `validation_status="unvalidated"` + `show_ai_candidates=False` + T2.11 UNCHANGED; nothing customer-facing unlocked; deepens the LOOK + LAYOUT not finding correctness; T2.11 gates customer-facing; T4.1 platform gated.
 
+### D36 — Avinash-debrief roadmap sync — DONE (2026-06-30, branch `t-roadmap-sync-avinash-debrief`)
+Docs-only (.md); no `.py`/tests touched; **pytest baseline unchanged at 2038 passed, 1 skipped** (suite not run — docs-only). Synthesised from the 2026-06 Avinash call debrief. Added **T2.24 / T2.25 / T2.26** + **T5.10** (all PLANNED); amended **T2.8 / T2.10 / T2.12**; new "**Open product / strategy decisions (Terry)**" register **OD-1…OD-8**; ASK-coverage Step-1 row **1.3e** (PLANNED; step-mapping pending ASK-guide verification); `operational-backlog.md` **#9 / #10**. **T2.11 unmoved; all frozen invariants preserved** (surfaces-never-asserts; `orchestrator/` pure-Python; BOX-ISOLATION; `validation_status="unvalidated"` / `show_ai_candidates=False`; labelled-data-for-evaluation-only-never-training); **no decision resolved, no tax semantics encoded** (each practitioner claim recorded verify-before-encode; NR-in-Box-5 precedent). Note the pre-existing tolerated D-divergence (STATE reaches D35, roadmap legitimately tops at D34 — D35 was the source-selector sync, never added to the roadmap) — left as-is, append-only.
+
 ---
 
 ## Final Architectural Reminders
@@ -1151,6 +1182,7 @@ Build (not docs-only), **frontend ONLY — no Python touched, so the pytest merg
 8. Document ingestion expands recall, never authority. A read-derived finding caps at J+ (sole exception: invoice-date → correct-period → D+). Extracted fields never enter Layer 1, boxes, or gates. What converts J+ → D is structured data at source (InvoiceNow/PINT-SG), not reading a PDF.
 9. The MCP connector is one input adapter, not the product. The engine accepts live MCP, CSV/Excel extracts, and (future) PINT-SG against one internal schema. This separability is also the platform prerequisite.
 10. **(NEW) Labelled data is for evaluation, not training.** It powers validation, regression eval, few-shot exemplars, and skill definition-of-done. Claude is used via API; no weights are ever updated.
+11. **(NEW) Never market an "independent second pair of eyes" on data we ingested.** Where AgentAssist entered the data (`ours-by-extraction`, T2.26), the omission and tax-treatment checks are suppressed/caveated and only the reconciliation checks stand; the independence claim applies solely to `pre-existing` data.
 
 ---
 
@@ -1166,3 +1198,18 @@ Build (not docs-only), **frontend ONLY — no Python touched, so the pytest merg
 - **Gate-1 `@odata.count` latent bug (found T2.12a recon, 2026-06-16)** — `orchestrator/steps.py:156` reads the unprefixed `odata.count`, but the v2 Service Layer returns the total under `@odata.count`; Gate 1 therefore warn-passes unconditionally and incomplete pagination is currently uncaught. Doc attribution corrected in this sync; the code fix is a separate failing-test-first task. See `exploration-notes/operational-backlog.md` item #5.
 - **All Singapore tax specifics** (materiality thresholds, Step-4 reconciliation thresholds, paragraph numbers) must be re-verified against the current IRAS e-Tax Guide edition before any customer-facing claim.
 - **Strategy watch:** the platform vision (Tier 4) is a north-star, not a near-term build. Guard against drifting effort into a dashboard before one vertical is validated and sold; the bottleneck remains distribution + trust.
+
+---
+
+## Open product / strategy decisions (Terry) — OPEN
+
+_Recorded as open; none block the docs-sync that introduced them. This is a self-numbered **OD** series — the parenthetical debrief labels (D1/D2/D4) are cross-refs only and are **NOT** the roadmap's D-changelog deltas. **Resolve none here.**_
+
+- **OD-1 — Adapter direction.** Xero-first as an *addition* alongside SAP B1, or a *pivot away* from B1 client integration? Explicit note: *"B1 is expendable for the deterministic validation substrate" ≠ dropping B1 as a client integration path.* OPEN.
+- **OD-2 — Synthetic-data shape.** Xero-export-shaped fixtures vs the SAP-B1 GST-listing shape the Slice-A exporter currently assumes (ties to OD-1; cross-ref T2.12). OPEN.
+- **OD-3 — Positioning** (debrief D1). Quarterly-review vs daily-bookkeeping; the call shows real demand for daily bookkeeping; the debrief had this resolving post-pilot. OPEN.
+- **OD-4 — Pricing** (debrief D2). Deferred until after a pilot run. OPEN.
+- **OD-5 — Delivery-address heuristic** (debrief D4). Verify/scope before encoding — a practitioner rule, **not** IRAS guidance. *Recorded form:* a surfaced reasoning-layer candidate, **default-off**, firing only on a concrete signal (delivery ≠ operating premises), to live in the **general** input-tax-claimability skill — **NOT** the deterministic Reg 26/27 disallowed-category list — its final home pending **OD-7**. Stub only; **no task minted** (T2.27 unused). OPEN.
+- **OD-6 — Provenance-manifest location.** Ours vs Avinash's, given the "store nothing" posture (ties to T2.26). OPEN.
+- **OD-7 — Skill-abstraction timing.** Pull the Tier-4-gated Skill abstraction forward (Final Architectural Reminder #5) vs a narrower per-step KB module. OPEN.
+- **OD-8 — Rate-threading.** Thread `applicable_gst_rate` through classification now vs defer (ties to `operational-backlog.md` #9). OPEN.
