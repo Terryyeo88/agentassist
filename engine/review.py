@@ -52,6 +52,9 @@ from report.render import render_pdf
 
 if TYPE_CHECKING:
     from documents.provider import DocumentProvider
+    # Type-only (never imported at runtime): the structural ChainReader Protocol lives in the
+    # custom MCP server, which orchestrator.chain puts on sys.path. Mirrors chain.py's annotation.
+    import sap_b1_server  # noqa: F401
 
 log = logging.getLogger(__name__)
 
@@ -109,11 +112,20 @@ class ReviewInputs:
                           findings appear in compile_output["declared_f5_findings"].
         analytical_review: When True, run_analytical_review_pass is called and
                           its output appears in result.analytical_review_data.
+        reader:           Optional ChainReader (T2.12/T2.23 structural feeder, e.g.
+                          ExtractChainReader / XeroF5ChainReader) threaded into
+                          run_chain so an uploaded client export drives the
+                          deterministic chain.  Default None — the live-SAP path is
+                          byte-identical (run_chain's _reader_kw collapses to {}).
     """
     line_source: Callable[[], list[dict]]
     provider: "DocumentProvider | None" = None
     declared_f5: dict | None = None
     analytical_review: bool = False
+    # Forward-ref only (never resolved at runtime under `from __future__ import annotations`);
+    # qualified like chain.py's run_chain. Default None keeps every existing no-reader
+    # construction (run_agent.py, ui/engine_seam.py) byte-identical.
+    reader: "sap_b1_server.ChainReader | None" = None
 
 
 @dataclass
@@ -197,7 +209,7 @@ def review(
 
     try:
         compile_output, gate_results = run_chain(
-            client_config, period, declared_f5=inputs.declared_f5
+            client_config, period, declared_f5=inputs.declared_f5, reader=inputs.reader
         )
     except GateFailure as exc:
         return ReviewResult(
