@@ -399,3 +399,77 @@ def _cell(cells: list[str], index: Optional[int]) -> str:
     if index is None or index >= len(cells):
         return ""
     return cells[index]
+
+
+# ---------------------------------------------------------------------------
+# Public helpers for the upload seam (T-xero-engine-wire / PR-B): format
+# detection + review-period extraction from the export's title block.
+# ---------------------------------------------------------------------------
+
+# Title-block line: "For the period Apr 1, 2026 to Jun 30, 2026".
+_PERIOD_RE = re.compile(r"for the period\s+(.+?)\s+to\s+(.+?)\s*$", re.IGNORECASE)
+# A single human-format date inside that line: "Apr 1, 2026".
+_DATE_RE = re.compile(r"([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})")
+# Month-abbreviation → number (locale-independent; strptime %b is locale-sensitive).
+_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def is_xero_f5_workbook(source) -> bool:
+    """True iff the workbook carries the Xero IRAS-F5 "Transactions by box number" sheet.
+
+    The format-routing key for POST /review/upload: a Xero F5 export goes down the engine
+    path, any other .xlsx (the synthetic documents/business_partners/listing shape) stays on
+    the coverage-only ExtractChainReader path. Any open/parse failure → False (not a Xero
+    workbook), so an untrusted/garbage upload falls through to the existing 422 handling.
+    """
+    path = Path(source)
+    if path.suffix.lower() != ".xlsx":
+        return False
+    try:
+        from openpyxl import load_workbook  # lazy
+
+        wb = load_workbook(path, read_only=True, data_only=True)
+        try:
+            return TRANSACTIONS_SHEET in wb.sheetnames
+        finally:
+            wb.close()
+    except Exception:  # noqa: BLE001 — an unreadable upload is simply "not a Xero workbook"
+        return False
+
+
+def _iso_date(human: str) -> str:
+    """Parse one 'Apr 1, 2026' → '2026-04-01' (locale-independent)."""
+    m = _DATE_RE.search(human)
+    if m is None:
+        raise ValueError(f"unparseable Xero date {human!r}")
+    mon = _MONTHS.get(m.group(1)[:3].lower())
+    if mon is None:
+        raise ValueError(f"unknown month in Xero date {human!r}")
+    return f"{int(m.group(3)):04d}-{mon:02d}-{int(m.group(2)):02d}"
+
+
+def parse_review_period(source) -> dict:
+    """Extract {'start','end'} ISO dates from the export's 'For the period … to …' title line.
+
+    Scans the "Transactions by box number" sheet's title block. Raises ValueError if the line
+    is absent or unparseable (the caller surfaces this as a 422 client-input error, never a 500).
+    """
+    from openpyxl import load_workbook  # lazy
+
+    wb = load_workbook(Path(source), read_only=True, data_only=True)
+    try:
+        ws = wb[TRANSACTIONS_SHEET]
+        for raw in ws.iter_rows(min_row=1, max_row=8, values_only=True):
+            for cell in raw:
+                text = schema.ser(cell).strip()
+                m = _PERIOD_RE.match(text)
+                if m:
+                    return {"start": _iso_date(m.group(1)), "end": _iso_date(m.group(2))}
+    finally:
+        wb.close()
+    raise ValueError(
+        f"Xero export missing a 'For the period … to …' line on sheet {TRANSACTIONS_SHEET!r}"
+    )

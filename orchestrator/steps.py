@@ -72,6 +72,24 @@ log = logging.getLogger(__name__)
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _coerce_doc_num(raw):
+    """Coerce a raw DocNum to the chain's document-number value.
+
+    SAP B1 DocNum is an integer document number, so the SAP path always yields an int —
+    BYTE-IDENTICAL to the prior ``int(doc.get("DocNum") or 0)`` (numeric or numeric-string →
+    int; None/"" → 0). The string fallback exists only for a NON-SAP feeder whose external
+    reference is non-numeric (e.g. XeroF5ChainReader's "INV-2001"/"BILL-3002"): rather than
+    crash the deterministic chain, the reference is carried through verbatim so it surfaces in
+    findings. No SAP-path value changes — only a previously-unreachable input type is handled.
+    """
+    if raw is None or raw == "":
+        return 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return str(raw)
+
+
 def _doc_to_record(doc: dict, doc_type: str) -> InvoiceRecord:
     """Normalise a raw SAP B1 OData document dict into an InvoiceRecord.
 
@@ -103,7 +121,7 @@ def _doc_to_record(doc: dict, doc_type: str) -> InvoiceRecord:
     # field reflects only the first — known simplification for Gate 4 traceability.
     first_vg = (lines[0].get("VatGroup") or "").strip() if lines else ""
     return {
-        "doc_num": int(doc.get("DocNum") or 0),
+        "doc_num": _coerce_doc_num(doc.get("DocNum")),
         # SAP sometimes returns a full datetime string "YYYY-MM-DDTHH:MM:SS";
         # slice to 10 chars to keep only the date portion.
         "doc_date": str(doc.get("DocDate", ""))[:10],

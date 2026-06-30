@@ -134,6 +134,26 @@ feeder→engine wiring). `feeders/` stays a pure stdlib leaf (`openpyxl` lazy, `
 edge reaches only `feeders/`). The boundary stays at `orchestrator/` (untouched); no new CI grep is
 added.
 
+**PR-B update (`POST /review/upload` Xero branch is now ENGINE-WIRED — `t-xero-engine-wire`, 2026-06-30):**
+the upload route is now **format-routed** and the "NEVER calls `run_chain`/`engine.review.review`"
+note above applies **only to the non-Xero coverage-only branch**. A real Xero "Transactions by box
+number" export (`feeders.xero_f5_reader.is_xero_f5_workbook`) now goes down an **engine** path —
+`XeroF5ChainReader` → `config.loader.load_client_config("xero_demo")` → `engine.review.review()` →
+the deterministic `run_chain` — returning REAL (but `validation_status="unvalidated"`) findings; any
+other `.xlsx` stays the **byte-identical** coverage-only `ExtractChainReader` branch (engine NOT run).
+The AST import-scan over `api/` **stays green**: the new module-level edge is only the additional
+`feeders.xero_f5_reader` leaf import; **`engine.review` and `config.loader` are imported LAZILY inside
+the endpoint**, so importing `api.app` triggers **no** `anthropic` import (the `reasoning.reg2627`
+anthropic import is itself lazy) and `api/` stays `anthropic`-free **at module import**. The boundary
+stays at `orchestrator/` (untouched). Proven by `tests/test_xero_engine_upload.py` (the 5-key
+`xero_f5_upload` engine-branch contract + the byte-identical 4-key `extract_upload` fall-through) and
+the existing `api/` import-scans. No new CI grep is added. **Honest status:** real-Xero-FORMAT findings
+over SYNTHETIC data — CANDIDATES, never verdicts; NOT a real client file; T2.11 unmoved. **DEBT-9
+runtime note:** this path now requires `SAP_USERNAME`/`SAP_PASSWORD` env vars (dummy values suffice) to
+load `xero_demo.yaml`, even though no SAP call is made — making `sap_b1` optional for non-SAP clients is
+deferred (PR-D). See `KNOWN-LIMITATIONS-xero-demo.md` (PR-B status) and
+`AGENTASSIST_TECHNICAL_STATE.md` §T-xero-engine-wire.
+
 **`agent/facets.py` note (T6.3 Slice 1, 2026-06-18):** the deterministic faceted-filter engine lives in
 `agent/`, so it sits inside the `agent/` row above — but it is deliberately **stricter than the row
 requires**: it is **pure stdlib**, importing no `anthropic`/SDK, no network, and **no `orchestrator/`,
@@ -347,3 +367,12 @@ git merge --no-ff <branch> -m "Merge <branch>: <one-line summary>
   route never calls `run_chain`/`engine.review.review`). Pinned by the AST import-scan in
   `tests/test_tsource_selector_upload.py`; **no new CI grep added**. Built ≠ validated; the Xero
   branch is coverage-only, engine execution over an uploaded extract DEFERRED.
+- **2026-06-30:** PR-B (`t-xero-engine-wire`) — the `POST /review/upload` Xero branch is now
+  **engine-wired** (no longer coverage-only): a real Xero F5 export → `XeroF5ChainReader` →
+  `engine.review.review()` → `run_chain`, returning REAL (`unvalidated`) findings; any other `.xlsx`
+  stays the byte-identical coverage-only `ExtractChainReader` branch. `api/` stays `anthropic`-free
+  at module import (`engine.review`/`config.loader` imported LAZILY in the endpoint; only the
+  `feeders.xero_f5_reader` leaf edge is added at module level). Pinned by
+  `tests/test_xero_engine_upload.py`; **no new CI grep added**. Built ≠ validated — real-FORMAT over
+  SYNTHETIC data, T2.11 unmoved; DEBT-9 (loader requires dummy SAP creds) now a live runtime
+  dependency on this path, still deferred (PR-D).
