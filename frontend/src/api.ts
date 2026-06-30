@@ -80,6 +80,24 @@ export interface SignResponse {
   disclaimer: string;
 }
 
+/*
+ * Source-selector Xero branch (tsource-selector). The coverage-only upload contract —
+ * mirrors api/app.py's UPLOAD_COVERAGE_KEYS / COVERAGE_ROW_KEYS (single source of truth).
+ * Coverage is data-presence, never a validated review.
+ */
+export interface CoverageStatusRow {
+  check: string;
+  level: string; // "full" | "degraded" | "unavailable"
+  reason: string;
+}
+
+export interface UploadCoverageResponse {
+  source_kind: string;
+  validation_status: string;
+  disclaimer: string;
+  coverage_status: CoverageStatusRow[];
+}
+
 // Same-origin in dev: Vite proxies `/api/*` → the uvicorn backend (see vite.config.ts).
 const BASE = "/api";
 
@@ -207,6 +225,25 @@ export type CommandResponse =
       missing: string[];
       message: string;
     };
+
+/**
+ * uploadExtract — POST a client .xlsx GST export to the COVERAGE-ONLY upload route (the
+ * source-selector Xero branch). Raw-body upload (no multipart): the File is the request body
+ * and its name rides as the `?filename=` query param for the server's `.xlsx` suffix gate.
+ * Returns the per-check data-coverage preview. The engine is never run server-side — this
+ * never hits GET /review or POST /command, so it cannot run the B1 review.
+ */
+export async function uploadExtract(file: File): Promise<UploadCoverageResponse> {
+  const resp = await fetch(`${BASE}/review/upload?filename=${encodeURIComponent(file.name)}`, {
+    method: "POST",
+    body: file,
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail || `Upload failed: ${resp.status}`);
+  }
+  return (await resp.json()) as UploadCoverageResponse;
+}
 
 export async function postCommand(
   utterance: string,

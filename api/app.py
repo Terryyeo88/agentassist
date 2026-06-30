@@ -24,11 +24,13 @@ and token-free.
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -54,6 +56,10 @@ from api.viewmodel import (
     build_review_payload,
     f5_summary,
 )
+# api/ → feeders/ edge (source-selector Xero branch). ``feeders`` is a pure stdlib leaf
+# (openpyxl is lazy on the .xlsx path); it imports NO anthropic/agent/engine/orchestrator,
+# so this edge keeps api/ anthropic-free and engine-free (pinned by the import-scan tests).
+from feeders.extract_reader import ExtractChainReader
 from ui.artifacts import VALIDATION_STATUS, DemoArtifacts, load_demo_artifacts
 from ui.sign import DEFAULT_OUTPUT_DIR, sign_working_paper
 
@@ -89,6 +95,14 @@ COMMAND_NEEDS_CLARIFICATION_KEYS: tuple[str, ...] = (
     "classifier_mode", "disclaimer", "kind", "intent", "missing", "message",
 )
 EXECUTION_KEYS: tuple[str, ...] = ("intent", "outcome", "sequence", "tiers", "params", "data", "notes")
+
+# POST /review/upload (source-selector Xero branch) response contract. COVERAGE-ONLY: the
+# top-level key set + the per-check coverage-row key set, pinned by the contract test and
+# mirrored by the TS types in frontend/src/api.ts.
+UPLOAD_COVERAGE_KEYS: tuple[str, ...] = (
+    "source_kind", "validation_status", "disclaimer", "coverage_status",
+)
+COVERAGE_ROW_KEYS: tuple[str, ...] = ("check", "level", "reason")
 
 
 # --------------------------------------------------------------------------- #
@@ -190,6 +204,61 @@ def get_review(client: str, period: str) -> dict:
             ),
         )
     return build_review_payload(shared_artifacts())
+
+
+@app.post("/review/upload")
+async def post_review_upload(request: Request, filename: str = "") -> dict:
+    """COVERAGE-ONLY view over an UPLOADED client GST export (source-selector Xero branch).
+
+    The selector hands this route a single ``.xlsx`` export; it constructs an
+    ``ExtractChainReader`` over the upload and returns that reader's per-check DATA-COVERAGE
+    status (``coverage_status()`` → ``CoverageStatus.as_dict()``). Coverage is a data-presence
+    fact — which canonical fields the export carried — NOT a validated review and NOT a
+    compliance verdict.
+
+    NEVER runs the engine. There is no ``orchestrator.chain.run_chain`` and no
+    ``engine.review.review`` on this path: producing a real review from an uploaded extract
+    needs the feeder→engine wiring and is a SEPARATE later task (deferred). The response is
+    honestly framed — ``validation_status=unvalidated`` + the demo disclaimer.
+
+    Raw-body upload (no multipart dependency): the file BYTES are the request body and
+    ``filename`` (query param) carries the name for the ``.xlsx`` suffix gate. The upload
+    lands ONLY on a private system-temp dir (never the repo / committed fixtures) and is
+    deleted right after the read, so no client data enters the diff. Any unreadable/garbage
+    upload is a client-input error (422), never a 500.
+    """
+    suffix = Path(filename).suffix.lower()
+    if suffix != ".xlsx":
+        raise HTTPException(
+            status_code=422,
+            detail="Upload a single .xlsx GST export workbook (pass ?filename=<name>.xlsx).",
+        )
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=422, detail="Empty upload.")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="aa-extract-upload-"))
+    try:
+        dest = tmp_dir / f"upload{suffix}"
+        dest.write_bytes(body)
+        try:
+            reader = ExtractChainReader(dest)
+            coverage_status = [status.as_dict() for status in reader.coverage_status()]
+        except Exception as exc:  # noqa: BLE001
+            # Any parse failure on an UNTRUSTED upload (bad zip, missing sheet, …) is a
+            # 422 client-input error — never a 500. (No engine call is reachable here.)
+            raise HTTPException(
+                status_code=422, detail=f"Could not read export: {exc}"
+            ) from exc
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    return {
+        "source_kind": "extract_upload",
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": DISCLAIMER,
+        "coverage_status": coverage_status,
+    }
 
 
 @app.get("/audit")
