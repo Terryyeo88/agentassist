@@ -296,7 +296,7 @@ def test_reader_coverage_status_dup_claim_full_when_numatcard_populated(tmp_path
 
 
 def _detect_codes(reader):
-    out = json.loads(sap_b1_server.detect_gst_errors("2024-07-01", "2024-09-30", reader=reader))
+    out = json.loads(sap_b1_server.detect_gst_errors("2024-07-01", "2024-09-30", expected_rate=0.07, reader=reader))
     return {i["error_code"] for i in out["issues"]}
 
 
