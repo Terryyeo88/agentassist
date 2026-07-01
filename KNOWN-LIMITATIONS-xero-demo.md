@@ -23,9 +23,10 @@ is **NOT wired into the engine** (`POST /review/upload` stays coverage-only;
 (deferred, separate PR)**, so uploads do not yet produce real findings. PR-A closes **none**
 of the debts below: the tax-rate→VatGroup mapping is still PROPOSED/UNVALIDATED (DEBT-1),
 real-client validation is still pending (DEBT-3), the absent-surface degrades (DEBT-6/-7/-8)
-are now IMPLEMENTED as honest degradation but the checks remain degraded/unavailable, and
-the E4 rate (DEBT-4/-5, PR-C), loader `sap_b1`-block requirement (DEBT-9, PR-D) and
-`xero_demo.yaml` citations (PR-E) remain open.
+are now IMPLEMENTED as honest degradation but the checks remain degraded/unavailable. The E4
+`0.07`-default removal (DEBT-4, PR-C) is now **DONE** (branch `t-debt4-remove-rate-default`,
+commit `c41d0a8`); the Xero E4 rate-threading concern (DEBT-5), loader `sap_b1`-block requirement
+(DEBT-9, PR-D) and `xero_demo.yaml` citations (PR-E) remain open.
 
 **PR-B status (branch `t-xero-engine-wire`, built ≠ validated).** The PR-A reader is now
 **WIRED into the engine**: `engine/review.py`'s `ReviewInputs` gained an optional `reader`
@@ -49,8 +50,9 @@ verdicts.** It is **NOT a real client file** and asserts **NO GST/accuracy verdi
 unmoved — `validation_status` stays `"unvalidated"`). The tax-rate→VatGroup mapping is still
 **PROPOSED / UNVALIDATED** (DEBT-1). PR-B closes **NONE** of the debts below (DEBT-1/-3/-4/-5/
 -7/-10 stay open); it makes the Xero ingestion path produce real (unvalidated) findings
-end-to-end. Out of scope for PR-B: E4 `0.07` default removal (PR-C), `sap_b1` optional in the
-loader (PR-D), `xero_demo.yaml` citations (PR-E).
+end-to-end. Out of scope for PR-B: E4 `0.07` default removal (PR-C — since **DONE**, branch
+`t-debt4-remove-rate-default`, commit `c41d0a8`), `sap_b1` optional in the loader (PR-D),
+`xero_demo.yaml` citations (PR-E).
 
 Companion files:
 - Reader: `feeders/xero_f5_reader.py` (PR-A — real-FORMAT, SYNTHETIC-data, UNWIRED)
@@ -91,17 +93,47 @@ only, not customer-facing.
 accuracy-validated** and NOT a real client file. Real-client validation remains pending;
 this debt is NOT closed.
 
-### DEBT-4 — SAP-path E4 `expected_rate` defaults to 0.07 (found bug, NOT fixed here)
-`_classify_line` (`mcp-servers/custom/sap_b1_server.py:747`) and the call sites at
-`:1224`, `:1364` default `expected_rate` to `0.07`. This is a pre-existing SAP-path bug
-surfaced during recon. It is **deliberately left untouched** by the Xero work (no
-opportunistic fix). Tracked here for separate remediation.
+### DEBT-4 — SAP-path E4 `expected_rate` defaults to 0.07 — **RESOLVED** (commit `c41d0a8`)
+*Historical (found bug, NOT fixed at Xero-recon time):* `_classify_line`
+(`mcp-servers/custom/sap_b1_server.py:747`) and the call sites at `:1224`, `:1364` default
+`expected_rate` to `0.07`. This was surfaced during recon and deliberately left untouched by the
+Xero work (no opportunistic fix), tracked here for separate remediation.
+
+**RESOLVED (branch `t-debt4-remove-rate-default`, commit `c41d0a8`):** the `= 0.07` default is
+removed on all three functions — `_classify_line`, `validate_invoice_tax_codes`,
+`detect_gst_errors` — so `expected_rate` is now REQUIRED, and a `None`-guard raises a clear
+`ValueError` naming `applicable_gst_rate`. Because only a no-default arg marks a parameter
+REQUIRED in the FastMCP tool schema, the manual MCP surface is now schema-hardened too (a caller
+omitting the rate fails tool-call validation).
+
+**Correction to the original "pre-existing SAP-path bug" framing (imprecise):** the automated
+review chain already threaded `client_config.applicable_gst_rate`
+(`orchestrator/steps.py:321/348`), so the 0.07 default was NEVER consumed on the automated path.
+The real exposure was the **manual MCP (Claude Desktop stdio) surface** — now schema-hardened.
+Behaviour-preserving on every automated path; the offline-replay chain is byte-identical to the
+frozen oracle (box path `calculate_f5_return` takes no rate). Covered by
+`tests/test_debt4_expected_rate_required.py` (6 tests); full suite **2075 passed, 1 skipped**.
+Honest status: correctness/hygiene fix to the deterministic path's tool layer; moves NO rung
+toward T2.11; `show_ai_candidates` / `validation_status="unvalidated"` UNCHANGED.
 
 ### DEBT-5 — Xero E4 rate threading not wired
 The client's `applicable_gst_rate` (0.09) is not threaded into `_classify_line`. Until
 the feeder build wires it (subject to Terry's rate-threading ruling), E4 compares
 against the 0.07 default and fires spuriously on every clean 9% line. This is the one
 unresolved seam gating the Phase-2 build.
+
+> **FLAG for Terry (DEBT-5 is Terry-owned; not touched or closed here).** The DEBT-5
+> description above is **STALE vs the verified code** and this doc is **internally inconsistent**:
+> - The automated chain **does** thread the config rate via `run_chain` /
+>   `orchestrator/steps.py:321/348` — so the claim that `applicable_gst_rate` "is not threaded …
+>   E4 compares against the 0.07 default and fires spuriously on every clean 9% line" no longer
+>   matches the code (and, post-`c41d0a8`, there is no 0.07 default to fall back to at all).
+> - This same doc contradicts itself: line ~42 (PR-B section) states "E4 compares against
+>   `applicable_gst_rate=0.09`" (threaded), while the DEBT-5 text says "not threaded".
+> - `config/clients/xero_demo.yaml:21` carries a "NB: not yet threaded" comment that is likewise
+>   stale.
+> These are recorded as a FLAG for Terry to reconcile as part of the separate DEBT-5 item; no
+> Xero behaviour is changed here and DEBT-5 is **NOT** closed.
 
 ### DEBT-6 — DUP_CLAIM basis differs on the Xero path
 `detect_dup_claims` (`orchestrator/check_listing.py:167`) keys on
