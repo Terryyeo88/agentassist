@@ -103,10 +103,21 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
      interaction (UI upload + loop re-entry).
    - **Scope:** NOT part of T5.9 (front-door intent routing only). Document only; do not build.
 
-9. **Stale `expected_rate=0.07` default (DEBT-4).**
+9. **Stale `expected_rate=0.07` default (DEBT-4). — DONE (commit `c41d0a8`).**
    - Verify the current GST rate against the IRAS e-Tax Guide and config-thread it; do **not** trust the hardcoded `0.07` default.
    - **Independent of the Xero work; affects the LIVE path.** Cross-ref `KNOWN-LIMITATIONS-xero-demo.md` DEBT-4/DEBT-5 and roadmap **OD-8** (rate-threading).
    - **Scope:** verify-before-encode; not a tax assertion here.
+   - **Closure (branch `t-debt4-remove-rate-default`, commit `c41d0a8`):** the `= 0.07` default is removed on `_classify_line` / `validate_invoice_tax_codes` / `detect_gst_errors`; `expected_rate` is now REQUIRED and schema-required at the FastMCP tool layer, with a `None`-guard raising a `ValueError` naming `applicable_gst_rate`. The automated chain already threaded `applicable_gst_rate` (`orchestrator/steps.py:321/348`), so this is behaviour-preserving on every automated path — the offline-replay chain is byte-identical to the frozen oracle; the real exposure closed was the manual MCP surface. Covered by `tests/test_debt4_expected_rate_required.py` (6 tests); full suite **2075 passed, 1 skipped**. Honest-status ladder: built → hermetically-tested → offline-replay-validated; moves NO rung toward T2.11; `show_ai_candidates` / `validation_status="unvalidated"` UNCHANGED.
+
+11. **Mid-period 7%→9% GST rate-transition handling — DEFERRED.**
+   - `expected_rate` is a single scalar per run; a period straddling the 2024-01-01 rate change uses one rate for all lines, so a genuinely mixed-rate period cannot be validated line-accurately.
+   - **Gated on:** date-of-supply semantics sourced from an IRAS primary source; **T2.11-gated** (introduces new tax-date semantics — a tax assertion, not encodable here). Cross-ref roadmap **OD-8** and the rate-transition edge-case fixture gap.
+   - **Scope:** verify-before-encode; document only, build nothing yet.
+
+12. **Manual MCP stdio tool-surface review — DEFERRED.**
+   - The DEBT-4 signature change closes the **schema level** (a manual caller omitting the rate now fails tool-call validation).
+   - **Follow-up:** confirm whether/where `python sap_b1_server.py` (`mcp.run` stdio, "Claude Desktop") is actually deployed against real data, AND review `agent/read_tools_server.py` as a second, separately-served MCP tool surface not covered by the DEBT-4 fix.
+   - **Scope:** review/confirm-deployment; document only, build nothing yet.
 
 10. **Manual-journal Xero-F5 behaviour — capture + freeze before building T2.24.**
    - The "a manual journal drops out of the SG Xero F5 report" behaviour is a platform-behaviour claim demonstrated once by Avinash.
