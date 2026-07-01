@@ -675,10 +675,12 @@ class SapChainReader:
 
     def count(self, entity: str, period_start: str, period_end: str) -> Optional[int]:
         # S0 — relocated verbatim from orchestrator/steps.py::_fetch_entity.
-        # NOTE (backlog #5, OUT OF SCOPE): the v2 Service Layer returns the total
-        # under "@odata.count" (with @), but this reads "odata.count" (no @), so
-        # the probe yields None and Gate 1 warn-passes. Preserved EXACTLY — the
-        # frozen oracle was captured with this behaviour; do NOT fix it here.
+        # backlog #5 fix: the v2 Service Layer returns the total under the
+        # "@odata.count" key (with the @ prefix). This previously read the
+        # unprefixed "odata.count", so the probe always yielded None and Gate 1
+        # warn-passed unconditionally (the pagination-completeness check was
+        # dormant). Reading the correct key un-dormants Gate 1 so a genuine
+        # fetched-vs-reported mismatch now FAILs rather than silently warn-passes.
         date_filter = f"DocDate ge '{period_start}' and DocDate le '{period_end}'"
         inline_count: Optional[int] = None
         try:
@@ -687,7 +689,7 @@ class SapChainReader:
                 "$top": 0,
                 "$inlinecount": "allpages",
             })
-            raw = count_resp.get("odata.count")
+            raw = count_resp.get("@odata.count")
             if raw is not None:
                 inline_count = int(raw)
         except Exception as exc:

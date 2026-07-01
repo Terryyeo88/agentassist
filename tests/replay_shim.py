@@ -102,15 +102,17 @@ class FrozenExtractReader:
         self._inline_counts = _load(extract_dir, "inline-counts.json")["counts"]
 
     def count(self, entity: str, period_start: str, period_end: str):
-        """S0 — reproduce TODAY's Gate-1 dormancy (backlog #5, OUT OF SCOPE).
+        """S0 — the corrected ``@odata.count`` read (backlog #5 fixed).
 
-        The v2 probe response carries the total under "@odata.count" (with @), but the
-        production code reads "odata.count" (no @) → None. We reconstruct that exact wire
-        response and apply the same extraction so the freeze stays bug-fix-following and the
-        oracle's ``sap_inline_count: null`` is reproduced.
+        The v2 probe response carries the total under "@odata.count" (with @). We
+        reconstruct that exact wire response and read the @-prefixed key, matching the
+        corrected production read in ``sap_b1_server.SapChainReader.count`` so the shim
+        stands in for real SAP faithfully (no lingering unprefixed read). The re-frozen
+        oracle records Gate-1 PASS: over the frozen extract sap_inline_count 86 == 86 rows
+        fetched, so pagination is genuinely complete.
         """
         resp = {"@odata.count": self._inline_counts.get(entity), "value": []}
-        raw = resp.get("odata.count")
+        raw = resp.get("@odata.count")
         return int(raw) if raw is not None else None
 
     def fetch_invoices(self, entity: str, period_start: str, period_end: str) -> list:
