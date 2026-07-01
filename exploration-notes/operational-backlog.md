@@ -21,7 +21,19 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
    first real-client run, define: how long bundles are kept, where they live in production
    (local disk vs. object storage), and who has read access. See Appendix C #25 for the
    broader PDPA context.
-5. **Gate 1 latent bug — `@odata.count` key mismatch (found T2.12a recon, 2026-06-16).**
+5. **Gate 1 `@odata.count` key mismatch — FIXED (branch `t-gate1-odata-count`, commits `743fb0d` / `1670d5a` / `484ff5b`).** _(found T2.12a recon, 2026-06-16; historical root-cause below retained.)_
+   - **CLOSURE (fix landed):** the production read is corrected — `SapChainReader.count`
+     (`mcp-servers/custom/sap_b1_server.py`, `743fb0d`) now reads `@odata.count`, with a
+     failing-test-first `tests/test_gate1_odata_count.py` (3 tests: probe reads the `@`-prefixed
+     key; Gate 1 FAILs on a real fetched-vs-reported mismatch; a complete fetch surfaces the count
+     and Gate 1 verifies it). The shim was made faithful — `tests/replay_shim.py::FrozenExtractReader.count`
+     reads `@odata.count` too (`1670d5a`), no longer perpetuating the dormant read — and the
+     offline-replay oracle `_replay-oracle.compiled.json` was re-frozen (its sha256 in
+     `capture-manifest.json` updated, `484ff5b`). On the complete frozen data (50/34/1/1 = 86 rows
+     == inline counts) Gate 1 flips **WARN_PASS → PASS** via a human-audited 5-leaf oracle diff, all
+     propagations of the Gate-1 result; **BOX-ISOLATION held** (every F5 box byte-identical). Honest
+     status: correctness fix to the deterministic path, offline-replay-validated — moves NO rung
+     toward T2.11; `show_ai_candidates` / `validation_status="unvalidated"` unchanged.
    - **Root cause:** the count-probe reads `count_resp.get("odata.count")`, but the
      v2 Service Layer returns the total under **`@odata.count`** (with the `@` prefix). The key
      never matches → `inline_count` is always `None`. This is a v1→v2 OData key-prefix
@@ -30,25 +42,27 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
    - **Location update (T2.23, 2026-06-16):** the probe + buggy extraction moved from
      `orchestrator/steps.py::_fetch_entity` into `SapChainReader.count` in
      `mcp-servers/custom/sap_b1_server.py` (the S0 surface of the chain source seam). The bug
-     was **preserved verbatim** — T2.23 is behaviour-preserving and the frozen oracle encodes
-     today's `None` → Gate-1 dormancy. The fix still belongs to a separate failing-test-first
-     task and should now target `SapChainReader.count`.
+     was **preserved verbatim** — T2.23 is behaviour-preserving and the frozen oracle encoded
+     the `None` → Gate-1 dormancy. _(Superseded by the CLOSURE above: the fix targeted
+     `SapChainReader.count` and has landed.)_
    - **Impact:** Gate 1 warn-passes **unconditionally** on this instance, so incomplete
      pagination is currently uncaught — the gate is effectively dormant; completeness rests only
      on the structural `len(page) < 20` sentinel, never on a SAP-reported arithmetic total.
    - **Doc correction owed:** `AGENTASSIST_TECHNICAL_STATE.md` (line ~689, Gate-1 dormancy) and
-     line ~1326 attribute this to "Service Layer (version 1000250) does not return `odata.count`".
-     That attribution is **disproven** — fix in the next doc-sync.
-   - **Scope:** the fix itself is **out of scope here** — separate failing-test-first task (write
-     a test asserting Gate 1 reads `@odata.count` and FAILs on a real mismatch, then correct the
-     key). Found read-only during T2.12a read-surface recon; nothing changed in this commit.
+     line ~1326 attributed this to "Service Layer (version 1000250) does not return `odata.count`".
+     That attribution was **disproven** and has since been corrected in the docs alongside the fix.
+   - **Scope (historical):** at recon time the fix was out of scope — a separate failing-test-first
+     task (write a test asserting Gate 1 reads `@odata.count` and FAILs on a real mismatch, then
+     correct the key). _(Done — see CLOSURE above.)_
    - **T2.12 extract-feeder note (2026-06-17, slice A):** the new `feeders.ExtractChainReader.count()`
      returns the export's **TRUE** row count (an export carries every row, so it counts honestly) —
-     it does NOT reproduce this dormant `None`. The SAP path (`SapChainReader.count`) and the frozen
-     oracle / `tests/replay_shim.py::FrozenExtractReader.count` are **untouched** — both still mirror
-     the bug, both still coupled to the pending re-freeze. The feeder's `count()` is therefore
-     unit-tested against the known count ONLY and is **never** asserted against the frozen S0 /
-     oracle; the full `run_chain`-over-feeder vs-oracle byte-identity stays gated on this re-freeze.
+     it does NOT reproduce this dormant `None`; that honest-count behaviour is unchanged. At the
+     time of this note the SAP path (`SapChainReader.count`) and the frozen oracle /
+     `tests/replay_shim.py::FrozenExtractReader.count` were untouched and still mirrored the bug.
+     _(Superseded by the CLOSURE above: both readers now read `@odata.count` and the re-freeze has
+     landed, so the full `run_chain`-over-feeder vs-oracle byte-identity is no longer gated on it.)_
+     The feeder's `count()` remains unit-tested against the known count ONLY and is **never**
+     asserted against the frozen S0 / oracle.
 
 6. **`finding_id` collision on `(source, check_id, doc_num)` (found T5.3h/T5.8, 2026-06-16).**
    - **Root cause:** `agent.dossier.extract_findings` derives `finding_id = f"detect:{code}:{doc_num}"`
