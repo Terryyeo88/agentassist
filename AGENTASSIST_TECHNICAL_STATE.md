@@ -2900,13 +2900,15 @@ mapping, E1 candidate detection, unknown VatGroup flagging, round-last arithmeti
 
 ---
 
-#### Tool 13: `validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07) -> str`
+#### Tool 13: `validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float) -> str`
 
 **Purpose**: Per-line E1–E4 tax code validation across all invoices and credit notes in a
 period, plus a VatGroup inventory of every code found (T1.1 update).
 
-**Inputs**: ISO date strings. `expected_rate` defaults to 0.07 (7%, matching SBODEMOSG); pass
-0.09 for post-2024 production data.
+**Inputs**: ISO date strings. `expected_rate` is now **REQUIRED** (no default — DEBT-4 fixed,
+commit `c41d0a8`); pass the client's `applicable_gst_rate` (`config/loader.py` mandates it in
+`[0.05, 0.15]`, e.g. 0.09 for post-2024 production data). Omitting it fails loudly with a
+`ValueError` naming `applicable_gst_rate` rather than silently assuming 7%.
 
 **Outputs**: JSON with `period`, `expected_rate`, `vatgroup_inventory` (dict keyed by VatGroup
 with category, side, box mapping, doc count, and known-to-mapping flag), `issues` (list of
@@ -2948,7 +2950,7 @@ any error-detection logic.
 
 ---
 
-#### Tool 14: `detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07) -> str`
+#### Tool 14: `detect_gst_errors(period_start: str, period_end: str, expected_rate: float) -> str`
 
 **Purpose**: Full compliance audit combining E1–E4 line checks on invoices and credit notes,
 a COMPLETENESS heuristic, and a NO_GST_REG supplier check (now covering purchase credit notes
@@ -2996,6 +2998,33 @@ exploration-notes/v3-raw-chats/test3-error-detection.md for the raw chat log and
 **What is not yet handled**: Same manual journal gap as Tools 12 and 13. Credit notes:
 RESOLVED T1.1. The NO_GST_REG check issues one API call per unique supplier per run; at
 production scale with many unique suppliers, this could be slow.
+
+---
+
+#### DEBT-4 — `expected_rate = 0.07` default removed (RESOLVED, commit `c41d0a8`)
+
+The E4 GST-rate check functions in `mcp-servers/custom/sap_b1_server.py` — `_classify_line`,
+`validate_invoice_tax_codes`, `detect_gst_errors` — previously defaulted `expected_rate` to
+`0.07`. That default was **never consumed on the automated review path**: the chain already
+threads `client_config.applicable_gst_rate` (`orchestrator/steps.py:321/348`). The 0.07 default
+was a latent foot-gun only on the manual MCP (Claude Desktop stdio) surface, where a caller
+omitting the rate silently got 7%.
+
+**Fixed:** the `= 0.07` default is removed on all three functions — `expected_rate` is now
+REQUIRED (`_classify_line`'s is keyword-only so the defaulted `entity_type` / `credit_note` can
+follow), and a `None`-guard raises a clear `ValueError` naming `applicable_gst_rate`. Because
+only a no-default arg marks a parameter REQUIRED in the FastMCP tool schema, this also hardens
+the manual-MCP surface at the schema level (a manual caller omitting the rate now fails tool-call
+validation). Behaviour-preserving on every automated path (`orchestrator/steps.py` already passes
+the rate); the offline-replay chain is byte-identical to the frozen oracle (box-isolation
+trivial — the box path `calculate_f5_return` takes no rate). Covered by the failing-test-first
+`tests/test_debt4_expected_rate_required.py` (6 tests); full suite **2075 passed, 1 skipped**
+(baseline 2069 + 6).
+
+**Honest status:** correctness/hygiene fix to the deterministic path's tool layer; built →
+hermetically-tested → offline-replay-validated. Moves NO rung toward T2.11; asserts no tax
+verdict. `show_ai_candidates` and `validation_status="unvalidated"` UNCHANGED. See
+`KNOWN-LIMITATIONS-xero-demo.md` DEBT-4 and `exploration-notes/operational-backlog.md` item #9.
 
 ---
 
