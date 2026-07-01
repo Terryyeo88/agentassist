@@ -746,7 +746,18 @@ def _resolve_reader(reader: Any) -> "ChainReader":
     return reader if reader is not None else SapChainReader()
 
 
-def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_rate: float = 0.07, credit_note: bool = False) -> list:
+# DEBT-4: there is NO silent expected_rate default. Callers MUST pass the client's
+# applicable_gst_rate (config.loader mandates it in [0.05, 0.15]); a missing rate
+# fails loudly rather than silently checking every SR/TX line against 7%.
+_EXPECTED_RATE_REQUIRED_MSG = (
+    "expected_rate is required and has no default — pass the client's "
+    "applicable_gst_rate (config.loader mandates it in [0.05, 0.15]). "
+    "There is no silent 0.07 fallback (DEBT-4)."
+)
+
+
+def _classify_line(line: dict, doc: dict, entity_type: str = "sales", *,
+                   expected_rate: float, credit_note: bool = False) -> list:
     """Check one document line for E1–E4 issues. Returns a list of issue dicts.
 
     Args:
@@ -755,7 +766,9 @@ def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_r
                        CardName, DocCurrency).
         entity_type:   'sales' or 'purchase' — controls which error checks apply.
         expected_rate: Expected GST rate as a decimal (e.g. 0.07 or 0.09).
-                       Used only for the E4 rate-deviation check.
+                       REQUIRED keyword-only, no default — used by the E4
+                       rate-deviation check. Passing None raises ValueError
+                       (DEBT-4: no silent 0.07 default).
         credit_note:   If True, prepends "Credit note — " to issue descriptions
                        so callers can distinguish credit note issues from invoice
                        issues at a glance.
@@ -765,6 +778,8 @@ def _classify_line(line: dict, doc: dict, entity_type: str = "sales", expected_r
             doc_currency, card_name, vat_group, line_total, tax_total,
             error_code ('E1'–'E4'), and a human-readable description.
     """
+    if expected_rate is None:
+        raise ValueError(_EXPECTED_RATE_REQUIRED_MSG)
     issues = []
     vg = (line.get("VatGroup") or "").strip()
     vg = normalize_vat_group(vg, _tax_code_mappings)
@@ -1223,7 +1238,7 @@ def _vg_category(vg: str) -> str:
 
 
 @mcp.tool()
-def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float = 0.07, reader=None) -> str:
+def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate: float, reader=None) -> str:
     """Check all invoice and credit note lines in a period for E1–E4 tax code errors.
 
     In addition to the per-line error list, builds a vatgroup_inventory that
@@ -1233,8 +1248,9 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
     Args:
         period_start:  ISO date string 'YYYY-MM-DD'.
         period_end:    ISO date string 'YYYY-MM-DD'.
-        expected_rate: Expected GST rate as a decimal; defaults to 0.07 (7%).
-            Pass 0.09 for post-2024 production data.
+        expected_rate: Expected GST rate as a decimal. REQUIRED — no default;
+            pass the client's applicable_gst_rate (config.loader mandates it).
+            Passing None raises ValueError (DEBT-4: no silent 0.07 default).
         reader:        Optional ChainReader (T2.23). None -> default SAP-backed
             reader. Internal DI only; left untyped (see calculate_f5_return).
 
@@ -1247,6 +1263,8 @@ def validate_invoice_tax_codes(period_start: str, period_end: str, expected_rate
             - issues: list of E1–E4 issue dicts from _classify_line
             - summary: per-code and total issue counts
     """
+    if expected_rate is None:
+        raise ValueError(_EXPECTED_RATE_REQUIRED_MSG)
     # T2.23: reads via the chain source seam; default = SAP-backed reader.
     reader = _resolve_reader(reader)
     invoices = reader.fetch_invoices("Invoices", period_start, period_end)
@@ -1363,16 +1381,17 @@ def _reader_field_covered(reader, surface: str, field: str) -> bool:
 
 
 @mcp.tool()
-def detect_gst_errors(period_start: str, period_end: str, expected_rate: float = 0.07, reader=None) -> str:
+def detect_gst_errors(period_start: str, period_end: str, expected_rate: float, reader=None) -> str:
     """Audit GST compliance: E1–E4 line errors on invoices and credit notes, purchase completeness check, and supplier GST registration validation.
 
-    Issues sorted HIGH → MEDIUM → LOW. expected_rate defaults to 0.07; pass 0.09
-    for post-2024 production data.
+    Issues sorted HIGH → MEDIUM → LOW. expected_rate is REQUIRED (no default) —
+    pass the client's applicable_gst_rate (config.loader mandates it).
 
     Args:
         period_start:  ISO date string 'YYYY-MM-DD'.
         period_end:    ISO date string 'YYYY-MM-DD'.
-        expected_rate: Expected GST rate as a decimal. Defaults to 0.07 (7%).
+        expected_rate: Expected GST rate as a decimal. REQUIRED — no default;
+            passing None raises ValueError (DEBT-4: no silent 0.07 default).
         reader:        Optional ChainReader (T2.23). None -> default SAP-backed
             reader. Internal DI only; left untyped (see calculate_f5_return).
 
@@ -1387,6 +1406,8 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float =
                 NO_GST_REG   — input tax claimed from a supplier with no GST
                                registration number on their business partner record
     """
+    if expected_rate is None:
+        raise ValueError(_EXPECTED_RATE_REQUIRED_MSG)
     # --- Fetch (T2.23: via the chain source seam; default = SAP-backed reader) ---
     reader = _resolve_reader(reader)
     invoices = reader.fetch_invoices("Invoices", period_start, period_end)

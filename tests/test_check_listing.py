@@ -474,7 +474,7 @@ class TestZpE2Production:
     def test_zp_with_tax_flagged_e2(self):
         import sap_b1_server
         line, doc = self._make_zp_line(1200.00, 84.00)
-        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase")
+        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase", expected_rate=0.07)
         error_codes = [i["error_code"] for i in issues]
         assert "E2" in error_codes, (
             f"ZP line with TaxTotal=84 must be flagged E2; got codes: {error_codes}"
@@ -484,7 +484,7 @@ class TestZpE2Production:
         # Acceptance: the specific DocNum 610 / TaxTotal=84 case per task spec
         import sap_b1_server
         line, doc = self._make_zp_line(1200.00, 84.00)
-        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase")
+        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase", expected_rate=0.07)
         e2_issues = [i for i in issues if i["error_code"] == "E2"]
         assert len(e2_issues) == 1, (
             f"Expected exactly 1 E2 issue for ZP+TaxTotal=84; got {len(e2_issues)}"
@@ -495,7 +495,7 @@ class TestZpE2Production:
         # ZP line with TaxTotal=0 is correct — must NOT be flagged E2
         import sap_b1_server
         line, doc = self._make_zp_line(1200.00, 0.00)
-        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase")
+        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase", expected_rate=0.07)
         error_codes = [i["error_code"] for i in issues]
         assert "E2" not in error_codes, (
             "ZP line with TaxTotal=0 must NOT be flagged E2"
@@ -518,7 +518,7 @@ class TestZpE2Production:
         line = {"VatGroup": "ZR", "LineTotal": 1000.00, "TaxTotal": 70.00, "LineNum": 0}
         doc = {"DocNum": 900, "DocDate": "2024-07-15", "DocCurrency": "SGD",
                "CardName": "Test", "CardCode": "C10000"}
-        issues = sap_b1_server._classify_line(line, doc, entity_type="sales")
+        issues = sap_b1_server._classify_line(line, doc, entity_type="sales", expected_rate=0.07)
         assert any(i["error_code"] == "E2" for i in issues), "ZR+TaxTotal>0 must still flag E2"
 
     def test_nr_still_flagged_e2(self):
@@ -527,7 +527,7 @@ class TestZpE2Production:
         line = {"VatGroup": "NR", "LineTotal": 500.00, "TaxTotal": 45.00, "LineNum": 0}
         doc = {"DocNum": 611, "DocDate": "2024-09-15", "DocCurrency": "SGD",
                "CardName": "Test Vendor", "CardCode": "V10000"}
-        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase")
+        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase", expected_rate=0.07)
         assert any(i["error_code"] == "E2" for i in issues), "NR+TaxTotal>0 must still flag E2"
 
     def test_si_with_tax_not_flagged_e2(self):
@@ -536,7 +536,7 @@ class TestZpE2Production:
         line = {"VatGroup": "SI", "LineTotal": 1000.00, "TaxTotal": 70.00, "LineNum": 0}
         doc = {"DocNum": 800, "DocDate": "2024-07-15", "DocCurrency": "SGD",
                "CardName": "Test Vendor", "CardCode": "V20000"}
-        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase")
+        issues = sap_b1_server._classify_line(line, doc, entity_type="purchase", expected_rate=0.07)
         assert not any(i["error_code"] == "E2" for i in issues), (
             "SI+TaxTotal>0 must NOT be flagged E2 (SI is standard-rated)"
         )
@@ -611,7 +611,7 @@ class TestZpE2Agreement:
         line = {"VatGroup": "ZP", "LineTotal": 1200.00, "TaxTotal": 84.00, "LineNum": 0}
         doc = {"DocNum": 610, "DocDate": "2024-07-15", "DocCurrency": "SGD",
                "CardName": "Test Vendor", "CardCode": "V10000"}
-        prod_issues = sap_b1_server._classify_line(line, doc, entity_type="purchase")
+        prod_issues = sap_b1_server._classify_line(line, doc, entity_type="purchase", expected_rate=0.07)
         prod_e2 = any(i["error_code"] == "E2" for i in prod_issues)
 
         # Reference: code-set membership check (same logic used by run_test_3)
@@ -629,7 +629,7 @@ class TestZpE2Agreement:
         line = {"VatGroup": "ZP", "LineTotal": 1200.00, "TaxTotal": 0.00, "LineNum": 0}
         doc = {"DocNum": 610, "DocDate": "2024-07-15", "DocCurrency": "SGD",
                "CardName": "Test Vendor", "CardCode": "V10000"}
-        prod_issues = sap_b1_server._classify_line(line, doc, entity_type="purchase")
+        prod_issues = sap_b1_server._classify_line(line, doc, entity_type="purchase", expected_rate=0.07)
         prod_e2 = any(i["error_code"] == "E2" for i in prod_issues)
         ref_e2 = "ZP" in rbt.E2_ZERO_RATE_CODES and 0.00 > 0.01
         assert not prod_e2 and not ref_e2
