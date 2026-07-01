@@ -113,7 +113,12 @@ class ClientConfig:
                                  recall/precision measurement gate is met.
         source_system:           Name of the client's accounting system (e.g.
                                  "xero", "myob", "quickbooks"). Optional, defaults
-                                 to "sap_b1". Used only for logging/display.
+                                 to "sap_b1". LOAD-BEARING (DEBT-10 — not merely
+                                 logging/display): selects the SAP-default tax-code
+                                 remap (effective_tax_code_mappings) AND gates whether
+                                 a sap_b1 connection block is required at load (DEBT-9).
+                                 An OPEN label — only "sap_b1"-lookalike typos are
+                                 rejected; any distinct system name is accepted.
         tax_code_mappings:       Source-system tax code (uppercase) -> canonical
                                  AgentAssist VatGroup code, exactly as declared
                                  in the client YAML. Empty by default. See
@@ -268,13 +273,43 @@ def load_client_config(
     except yaml.YAMLError as exc:
         raise ConfigError(f"YAML parse error in {config_path}:\n  {exc}") from exc
 
+    # --- Step 2.5: ingestion discriminator (gates the sap_b1 requirement) ---
+
+    # source_system is an OPEN accounting-system label ("xero"/"myob"/"quickbooks"/…),
+    # defaulting to "sap_b1". It is LOAD-BEARING (DEBT-10): it selects the SAP-default
+    # tax-code remap (see effective_tax_code_mappings) AND — as of DEBT-9 — whether a
+    # sap_b1 connection block is required. Only "sap_b1"-sourced clients need the block.
+    source_system: str = str(raw.get("source_system") or "sap_b1")
+    # Typo-guard: reject a value a user plausibly wrote while intending "sap_b1" (which
+    # would otherwise SILENTLY switch off the SAP block requirement and fail deep at
+    # connect time). The set stays OPEN for every genuine non-SAP system — only
+    # sap_b1-lookalikes are rejected.
+    _canon_source = "".join(ch for ch in source_system.lower() if ch.isalnum())
+    if source_system != "sap_b1" and _canon_source in {"sapb1", "sap"}:
+        raise ConfigError(
+            f"source_system '{source_system}' in '{client_id}.yaml' looks like a typo of "
+            f"'sap_b1'.\n"
+            f"  Use exactly 'sap_b1' for a SAP Business One client, or a distinct "
+            f"accounting-system\n"
+            f"  name (e.g. 'xero', 'myob', 'quickbooks') for a file-import client."
+        )
+    is_sap_sourced: bool = source_system == "sap_b1"
+
     # --- Step 3: required fields ---
 
-    for key in ("client_id", "client_name", "applicable_gst_rate", "sap_b1"):
+    for key in ("client_id", "client_name", "applicable_gst_rate"):
         _require_field(raw, key, config_path)
-    sap = raw["sap_b1"]
-    for key in ("service_layer_url", "company_db", "username_env_var", "password_env_var"):
-        _require_field(sap, key, config_path, parent="sap_b1")
+    # DEBT-9: the sap_b1 connection block + credentials are required IFF the client is
+    # SAP-sourced. File-import clients carry no block; their SAP connection fields
+    # default to "" below (run_chain still calls configure_client unconditionally, but
+    # the injected file reader never contacts SAP).
+    if is_sap_sourced:
+        _require_field(raw, "sap_b1", config_path)
+        sap = raw["sap_b1"]
+        for key in ("service_layer_url", "company_db", "username_env_var", "password_env_var"):
+            _require_field(sap, key, config_path, parent="sap_b1")
+    else:
+        sap = raw.get("sap_b1") or {}
 
     # --- Step 4: client_id / filename consistency ---
 
@@ -286,22 +321,28 @@ def load_client_config(
             f"  Fix: update client_id in the YAML to '{client_id}'."
         )
 
-    # --- Step 5: credential env-var resolution ---
+    # --- Step 5: credential env-var resolution (SAP-sourced clients only) ---
 
-    username_var: str = sap["username_env_var"]
-    password_var: str = sap["password_env_var"]
-    # Use .get() rather than direct lookup so we can collect all missing vars
-    # in one pass and report them together instead of failing on the first one.
-    missing_vars = [v for v in (username_var, password_var) if not os.environ.get(v)]
-    if missing_vars:
-        raise ConfigError(
-            f"Credential environment variable(s) not set: {', '.join(missing_vars)}\n"
-            f"  These are referenced in config/clients/{client_id}.yaml.\n"
-            f"  Add them to your .env file (or shell environment) before running AgentAssist.\n"
-            f"  Example .env entry: {missing_vars[0]}=your_value_here"
-        )
-    username: str = os.environ[username_var]
-    password: str = os.environ[password_var]
+    if is_sap_sourced:
+        username_var: str = sap["username_env_var"]
+        password_var: str = sap["password_env_var"]
+        # Use .get() rather than direct lookup so we can collect all missing vars
+        # in one pass and report them together instead of failing on the first one.
+        missing_vars = [v for v in (username_var, password_var) if not os.environ.get(v)]
+        if missing_vars:
+            raise ConfigError(
+                f"Credential environment variable(s) not set: {', '.join(missing_vars)}\n"
+                f"  These are referenced in config/clients/{client_id}.yaml.\n"
+                f"  Add them to your .env file (or shell environment) before running AgentAssist.\n"
+                f"  Example .env entry: {missing_vars[0]}=your_value_here"
+            )
+        username: str = os.environ[username_var]
+        password: str = os.environ[password_var]
+    else:
+        # File-import client: no SAP connection. Empty strings (not None) — run_chain
+        # configures the client unconditionally, so "" is the tolerated no-contact state.
+        username = ""
+        password = ""
 
     # --- Step 6: GST rate plausibility ---
 
@@ -329,15 +370,20 @@ def load_client_config(
             f"  Remove or rename the conflicting key(s) in config/clients/{client_id}.yaml."
         )
 
-    # Strip trailing slash so all callers can safely append "/Endpoint" without
-    # producing double-slash URLs regardless of what the YAML author wrote.
-    service_layer_url: str = sap["service_layer_url"].rstrip("/")
-    company_db: str = sap["company_db"]
-    ssl_verify: bool = bool(sap.get("ssl_verify", True))
+    # SAP connection fields — populated for SAP-sourced clients; "" for file-import
+    # clients (DEBT-9). Strip trailing slash so callers can append "/Endpoint" safely.
+    if is_sap_sourced:
+        service_layer_url: str = sap["service_layer_url"].rstrip("/")
+        company_db: str = sap["company_db"]
+        ssl_verify: bool = bool(sap.get("ssl_verify", True))
+    else:
+        service_layer_url = ""
+        company_db = ""
+        ssl_verify = True
 
-    # --- Step 8: optional SAP connectivity probe ---
+    # --- Step 8: optional SAP connectivity probe (SAP-sourced clients only) ---
 
-    if check_connectivity:
+    if check_connectivity and is_sap_sourced:
         _probe_sap_login(service_layer_url, company_db, username, password, ssl_verify)
 
     # `or {}` makes downstream .get() calls safe even when these optional
@@ -359,7 +405,8 @@ def load_client_config(
 
     # --- Step 9: tax_code_mappings validation (non-SAP-B1 source systems) ---
 
-    source_system: str = str(raw.get("source_system") or "sap_b1")
+    # source_system already resolved + typo-guarded in Step 2.5 (it gates the sap_b1
+    # requirement above).
 
     # `or {}` handles both the key being absent and it being explicitly null in YAML.
     raw_mappings: dict = dict(raw.get("tax_code_mappings") or {})
