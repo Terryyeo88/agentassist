@@ -690,7 +690,7 @@ fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect →
 
 **Design decisions and known limitations**:
 
-- **Gate 1 dormancy (latent `@odata.count` key-mismatch bug — corrected 2026-06-16)**: the earlier attribution — that SBODEMOSG's SAP B1 Service Layer "does not return `odata.count`" — is **disproven**. The v2 Service Layer **does** return the total, under **`@odata.count`** (with the `@` prefix); the count is present (probe 2026-06-16: count-probe response keys were `['@odata.count', '@odata.context', 'value']`). The bug is on our side: `orchestrator/steps.py:156` reads the **unprefixed** key (`count_resp.get("odata.count")`), which never matches, so `inline_count` is always `None`. Consequently Gate 1 **warn-passes unconditionally** on this instance and incomplete pagination is **currently uncaught** — the gate is effectively dormant; completeness rests only on the structural `len(page) < 20` sentinel in the fetch helper, never on a SAP-reported arithmetic total. This is a v1→v2 OData key-prefix mismatch, **not** a missing SAP feature. The fix itself is **out of scope here** — a separate failing-test-first task (assert Gate 1 reads `@odata.count` and fails on a real mismatch, then correct the key); see `exploration-notes/operational-backlog.md` item #5.
+- **Gate 1 `@odata.count` key-mismatch bug — FIXED (branch `t-gate1-odata-count`, commits `743fb0d` / `1670d5a` / `484ff5b`)**: the earlier attribution — that SBODEMOSG's SAP B1 Service Layer "does not return `odata.count`" — was already **disproven** in-doc. The v2 Service Layer **does** return the total, under **`@odata.count`** (with the `@` prefix); the count is present (probe 2026-06-16: count-probe response keys were `['@odata.count', '@odata.context', 'value']`). The bug was on our side: the count-probe read the **unprefixed** key (`count_resp.get("odata.count")`), which never matched, so `inline_count` / `sap_inline_count` were always `None`, Gate 1 **warn-passed unconditionally**, and incomplete pagination went **uncaught** — the gate was effectively dormant, resting only on the structural `len(page) < 20` sentinel in the fetch helper, never on a SAP-reported arithmetic total. **This is now fixed:** the probe (relocated in T2.23 from `orchestrator/steps.py` to `SapChainReader.count` in `mcp-servers/custom/sap_b1_server.py`) reads `@odata.count`; `tests/replay_shim.py::FrozenExtractReader.count` — which had been perpetuating the dormant read — reads `@odata.count` too; a failing-test-first `tests/test_gate1_odata_count.py` (3 tests) asserts the probe reads the `@`-prefixed key, that Gate 1 FAILs on a real fetched-vs-reported mismatch, and that a complete fetch surfaces the count and Gate 1 verifies it. **Stale-pointer correction:** earlier docs pointed at `orchestrator/steps.py:156` as the buggy read — that is stale; T2.23 relocated the probe to `SapChainReader.count`, where the fix was applied, and `steps.py:156` is now only a docstring. On the frozen SBODEMOSG extract, pagination is COMPLETE (rows fetched per entity 50 / 34 / 1 / 1 = **86**, exactly equal to the frozen inline counts), so the corrected Gate 1 flips from WARN_PASS to **PASS** (verifying a genuinely-complete fetch, not catching an incompleteness); the offline-replay oracle was re-frozen accordingly (see "The count / oracle trap" below and `exploration-notes/operational-backlog.md` item #5). This was a v1→v2 OData key-prefix mismatch, **not** a missing SAP feature. **Honest status:** a correctness fix to the deterministic path, offline-replay-validated; it moves **NO** rung toward T2.11 (still NOT accuracy-validated), and `show_ai_candidates` / `validation_status="unvalidated"` are UNCHANGED, GST / F5 box figures byte-identical (BOX-ISOLATION held).
 - **~4× redundant fetch (tech-debt)**: Steps b/c/d (`calculate`, `classify`, `detect`) each re-fetch from SAP independently. The Fetch step (step a) builds only the `FetchManifest` (doc_nums set for Gate 4, items_examined for the report); it does not pre-fetch on behalf of the tool steps. Each chain run makes ~4× the minimum necessary SAP round-trips. Deferred to T1.6.1.
 - **Source-adapter decision deferred**: The three tool-step functions call `sap_b1_server` directly. Substituting an alternative source (CSV extract, test fixture) would require changing step function signatures. Deferred until a second source adapter is needed.
 - **`compile` step**: Aggregates four step outputs deterministically. Surfaced warnings are built from data (not scraped from logs): Gate 1 inline-count absence, Gate 2 calc anomalies, Gate 3 unknown-VatGroup entries.
@@ -1329,7 +1329,7 @@ fetch_listing_data → detect_seq_gaps(period_sales, all_sales) + detect_dup_cla
 | SEQ_GAP (sales invoices) | 0 | 0 — DocNums 357–956 exist in earlier periods; period-boundary fix confirmed working |
 | DUP_CLAIM (purchase invoices) | 0 | 0 — NumAtCard 0% populated in SBODEMOSG |
 | BOX-ISOLATION | PASS | Boxes identical before/after listing checks |
-| Gates 1–5 | PASS / WARN_PASS | Gate 1 WARN_PASS — **not** a benign SAP limitation: the WARN_PASS is the latent `@odata.count` key-mismatch (see Gate-1 dormancy bullet / backlog #5); the gate is dormant, not satisfied |
+| Gates 1–5 | PASS / WARN_PASS | Gate 1 WARN_PASS (as observed 2026-06-09) — **not** a benign SAP limitation: the WARN_PASS was the `@odata.count` key-mismatch, i.e. the gate was dormant, not satisfied. **This bug is now FIXED** (branch `t-gate1-odata-count`, commits `743fb0d` / `1670d5a` / `484ff5b`; see Gate-1 bullet / backlog #5) — the probe reads `@odata.count`, so a re-run over this (complete) data would show Gate 1 **PASS** verifying the count |
 | `listing_findings` key present | YES | — |
 
 ### Honest qualifier (mandatory)
@@ -1384,7 +1384,7 @@ Additional assertions verified: PDF renders without error; `listing_findings` ke
 
 **Hermetic section tests** (`tests/test_listing_findings_section.py`, 31 tests): all four present/absent combinations (neither/SEQ/DUP/both) verified for partitioning, suppression independence, PDF render, box-isolation, backward-compat (no listing_section arg).
 
-**Live read-only FP check** (SBODEMOSG Q3 2024, 2026-06-10): `fetch_listing_data` fetched 50 period sales headers, 34 period purchase headers, 1005 company-wide sales headers, 624 company-wide purchase headers via `page_size=20` pagination. Result: SEQ_GAP=0, DUP_CLAIM=0 — zero false positives. Gates 1–5 all passed (Gate 1 WARN_PASS — the "normal" reading is disproven: this is the latent `@odata.count` key-mismatch, not a benign SAP limitation; see Gate-1 dormancy bullet / backlog #5).
+**Live read-only FP check** (SBODEMOSG Q3 2024, 2026-06-10): `fetch_listing_data` fetched 50 period sales headers, 34 period purchase headers, 1005 company-wide sales headers, 624 company-wide purchase headers via `page_size=20` pagination. Result: SEQ_GAP=0, DUP_CLAIM=0 — zero false positives. Gates 1–5 all passed (Gate 1 WARN_PASS as observed on 2026-06-10 — the "normal" reading is disproven: this was the `@odata.count` key-mismatch dormancy, not a benign SAP limitation). **That bug is now FIXED post-2026-06-10** (branch `t-gate1-odata-count`, commits `743fb0d` / `1670d5a` / `484ff5b`; see Gate-1 bullet / backlog #5): the probe reads `@odata.count`, so re-running this read (the fetch was complete — 50/34/1/1 = 86 rows, matching the inline counts) would now show Gate 1 **PASS** verifying the count, not a dormant WARN_PASS.
 
 **Report section (T2.10-V added):** `ListingFindingsSection` dataclass + `render_listing_findings_section` in `report/sections.py`; `_listing_findings` renderer in `report/render.py` (between `_findings` and `_cross_findings`); `listing_findings` field in `ReportModel`. Both T2.9 (`declared_f5`) and T2.10 (`listing_findings`) sections coexist in one PDF — verified post-rebase with crafted compile-output carrying both. Not-Examined suppression extended to carry both `declared_f5_findings` and `listing_section` kwargs independently. **PDF section heading renamed to "Invoice Listing Completeness Checks"** (commit 958ed3d — original heading "Listing-Level Checks - T2.10" exposed an internal task ID in the client-facing PDF; no functional change).
 
@@ -3640,11 +3640,21 @@ AT THE FEEDER; the checking core is untouched and tax-code normalisation still f
 ### The count / oracle trap
 
 `ExtractChainReader.count()` returns the export's **TRUE** document count (50/34/1/1) — an export
-has every row, so it counts honestly. This deliberately does NOT reproduce the dormant
-`@odata.count` → None of the live feeder / oracle (operational-backlog #5). It is unit-tested
+has every row, so it counts honestly; that honest-count behaviour is unchanged. It is unit-tested
 against the known count ONLY and is **never** asserted against the frozen S0 / oracle, and is kept
-out of the S1/S2/S3/S5 round-trip. `SapChainReader.count` and `tests/replay_shim.py::FrozenExtractReader.count`
-are **untouched** (both still mirror the bug, both coupled to the pending re-freeze).
+out of the S1/S2/S3/S5 round-trip. **UPDATE (branch `t-gate1-odata-count`):** the `@odata.count`
+key-mismatch this section described as dormant in the live feeder / oracle (operational-backlog #5)
+is now **FIXED** — `SapChainReader.count` (`mcp-servers/custom/sap_b1_server.py`, commit `743fb0d`)
+and `tests/replay_shim.py::FrozenExtractReader.count` (commit `1670d5a`) **both now read
+`@odata.count`** (they no longer mirror the bug), and the re-freeze has **landed**: the offline-replay
+oracle `_replay-oracle.compiled.json` was re-frozen and its sha256 in `capture-manifest.json` updated
+(commit `484ff5b`). On the frozen extract the fetch is complete (86 rows == inline counts), so
+Gate 1 flips WARN_PASS→PASS — a human-audited **5-leaf** oracle diff (`gates[0].status`
+WARN_PASS→PASS; `gates[0].message` removed; `gates[0].checked.sap_inline_count` null→86;
+`fetch_manifest.sap_inline_count` null→86; `surfaced_warnings` [1 dormancy warning]→[]), all
+propagations of the Gate-1 result. **BOX-ISOLATION held** — every F5 box byte-identical, no
+timestamp / finding / reorder change; the offline-replay harness re-runs byte-identical to the
+re-frozen oracle.
 
 ### Module-placement decision
 
@@ -3663,7 +3673,8 @@ closes only with a real client export — GTM-gated), NOT accuracy-validated (**
 The new adapter is **injected-only, not on the default chain** — default-path output is unchanged.
 Deferred to **slice 2B**: the coverage→check-status mapping, the three field-absence/degradation
 cases, the working-paper coverage flow. Adapter-vs-oracle byte-identity (full `run_chain` over the
-feeder) remains gated on the `@odata.count` re-freeze.
+feeder) was, at the time of this entry, gated on the `@odata.count` re-freeze; that **re-freeze has
+since landed** (branch `t-gate1-odata-count`, commit `484ff5b`), un-gating that follow-on.
 
 ### Follow-up — Gap A closed: doc-level `DocTotal` (branch `t2.12a-doctotal-gap`, 2026-06-17)
 
@@ -3689,8 +3700,9 @@ suite green, zero regression; offline-replay still byte-identical to the oracle 
 untouched). **Honest-status unchanged** — still built, synthetic-format-validated; this closes a
 synthetic-projection gap, it does NOT raise the rung (NOT real-client-export-validated, NOT
 accuracy-validated — T2.11 still gates). The **durable** closure — a feeder-vs-oracle FX-list
-byte-identity check — remains gated on the `@odata.count` re-freeze (adapter-vs-oracle ungates only
-then). The coverage-seam declaration for the per-doc `DocTotal` (distinct from the listing
+byte-identity check — was, at the time of this entry, gated on the `@odata.count` re-freeze; that
+**re-freeze has since landed** (branch `t-gate1-odata-count`, commit `484ff5b`), so the
+adapter-vs-oracle gate is now un-gated. The coverage-seam declaration for the per-doc `DocTotal` (distinct from the listing
 `DocTotal`) is a **2B** concern: `COVERAGE_FIELDS` is keyed by field name and cannot yet represent
 the same field on two surfaces — left untouched here.
 
@@ -3827,9 +3839,12 @@ consumer — the T5.3h loop-context (`replay_review`/`replay_chain`) — is beha
 
 Behaviour-preserving refactor. **No** extract/CSV logic, **no** new source adapter, **no**
 check-disabling, **no** Surface-B field-absence decision (NumAtCard / FederalTaxID / Series /
-company-wide coverage all remain T2.12). The `@odata.count` dormancy (operational-backlog #5)
-is **preserved verbatim, not fixed** — `SapChainReader.count` and `FrozenExtractReader.count`
-both reproduce today's `None` → Gate-1 warn-pass. `config/loader.py` and
+company-wide coverage all remain T2.12). At the time of this refactor the `@odata.count` dormancy
+(operational-backlog #5) was **preserved verbatim, not fixed** — `SapChainReader.count` and
+`FrozenExtractReader.count` both reproduced the `None` → Gate-1 warn-pass. **That dormancy has
+since been FIXED** (branch `t-gate1-odata-count`, commits `743fb0d` / `1670d5a` / `484ff5b`): both
+readers now read `@odata.count` and the oracle was re-frozen (Gate 1 WARN_PASS→PASS on the complete
+frozen data; BOX-ISOLATION held). `config/loader.py` and
 `check_listing_reference.py` untouched; BOX-ISOLATION intact (the F5 boxes sit above the seam,
 unchanged). Nothing customer-facing moves — **T2.11 still gates**.
 
