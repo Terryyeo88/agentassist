@@ -21,18 +21,14 @@ gst_registration_number: ""                # Synthetic demo — no real GST reg 
 applicable_gst_rate: 0.09                  # Fixture is 9% data. NB: not yet threaded
                                            # into _classify_line (E4 default 0.07) — DEBT-5.
 
-source_system: xero                        # != "sap_b1" -> suppresses the SO->SR / SI->TX
-                                           # defaults (config/loader.py:195-197). Load-bearing
-                                           # despite the "logging/display only" docstring (DEBT-10).
+source_system: xero                        # != "sap_b1" -> file-import client. Suppresses the
+                                           # SO->SR / SI->TX SAP-default tax-code remap AND makes
+                                           # the sap_b1 connection block optional (DEBT-9 fix):
+                                           # a Xero client has no SAP, so no block is declared.
 
-# Required block (config/loader.py:273-277) even though a Xero client has no SAP.
-# Dummy placeholder; credentials are still env-var names. See DEBT-9.
-sap_b1:
-  service_layer_url: "https://unused.invalid:50000/b1s/v2"
-  company_db: "UNUSED"
-  username_env_var: "SAP_USERNAME"
-  password_env_var: "SAP_PASSWORD"
-  ssl_verify: true
+# No sap_b1 block: this is a file-import (Xero) client — source_system != "sap_b1"
+# makes the SAP connection block optional at load (DEBT-9). SAP connection fields
+# default to "" and are never contacted (the Xero reader short-circuits every read).
 
 period_defaults:
   fiscal_year_start_month: 1

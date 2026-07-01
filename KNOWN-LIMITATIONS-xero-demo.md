@@ -25,8 +25,9 @@ of the debts below: the tax-rate→VatGroup mapping is still PROPOSED/UNVALIDATE
 real-client validation is still pending (DEBT-3), the absent-surface degrades (DEBT-6/-7/-8)
 are now IMPLEMENTED as honest degradation but the checks remain degraded/unavailable. The E4
 `0.07`-default removal (DEBT-4, PR-C) is now **DONE** (branch `t-debt4-remove-rate-default`,
-commit `c41d0a8`); the Xero E4 rate-threading concern (DEBT-5), loader `sap_b1`-block requirement
-(DEBT-9, PR-D) and `xero_demo.yaml` citations (PR-E) remain open.
+commit `c41d0a8`); the loader `sap_b1`-block requirement (DEBT-9, PR-D) is now also **DONE**
+(branch `t-debt9-sap-decouple`, commit `8daf757`). The Xero E4 rate-threading concern (DEBT-5)
+and `xero_demo.yaml` citations (PR-E) remain open.
 
 **PR-B status (branch `t-xero-engine-wire`, built ≠ validated).** The PR-A reader is now
 **WIRED into the engine**: `engine/review.py`'s `ReviewInputs` gained an optional `reader`
@@ -173,22 +174,37 @@ is NOT closed.
 *PR-B update (still OPEN):* on the engine-wired upload path SEQ_GAP stays **DARK** — surfaced
 as **degraded** in the response `coverage_status`, never a silent absence. NOT closed.
 
-### DEBT-9 — Loader requires a `sap_b1` block + credential env vars for a Xero-only client
-`config/loader.py:273-277, 295-302` require a `sap_b1` block and resolve its credential
-env vars at load, even when `source_system != "sap_b1"`. The demo config uses a **dummy
-`sap_b1` block** as a workaround. A cleaner fix — making `sap_b1` optional when
-`source_system != "sap_b1"` — touches shared config validation and needs its own
-invariant review; deferred.
-*PR-B update (NOW A LIVE RUNTIME DEPENDENCY, still OPEN):* PR-B wired the engine-review
+### DEBT-9 — Loader requires a `sap_b1` block + credential env vars for a Xero-only client — RESOLVED (branch `t-debt9-sap-decouple`, commit `8daf757`)
+`config/loader.py:273-277, 295-302` (historically) required a `sap_b1` block and resolved its
+credential env vars at load, even when `source_system != "sap_b1"`. The demo config used a
+**dummy `sap_b1` block** as a workaround. A cleaner fix — making `sap_b1` optional when
+`source_system != "sap_b1"` — touches shared config validation and needed its own
+invariant review; historically deferred.
+*PR-B update (was NOW A LIVE RUNTIME DEPENDENCY):* PR-B wired the engine-review
 upload path, so `load_client_config("xero_demo")` (and therefore `POST /review/upload`'s Xero
-branch) now hard-requires `SAP_USERNAME`/`SAP_PASSWORD` env vars at runtime even though **NO
-SAP call is made** on this path — `XeroF5ChainReader` short-circuits every read. **The
-upload-review path requires those env vars (dummy values suffice) at runtime.** PR-B touches
-ZERO loader code; making `sap_b1` optional for non-SAP clients remains **deferred to PR-D** —
-this debt is NOT closed.
+branch) hard-required `SAP_USERNAME`/`SAP_PASSWORD` env vars at runtime even though **NO
+SAP call is made** on this path — `XeroF5ChainReader` short-circuits every read. That made the
+upload-review path require those env vars (dummy values sufficed) at runtime.
+*RESOLVED (`8daf757`):* the `sap_b1` block + creds are now required **iff**
+`source_system == "sap_b1"` (the default — SAP clients keep the loud load-time guard).
+File-import clients (`source_system: xero`/`myob`/`quickbooks`/…) omit the block; their SAP
+connection fields default to `""` (not `None` — `run_chain` calls `configure_client`
+unconditionally, so `""` is the tolerated no-contact state). A **typo-guard** rejects only
+values confusable with `sap_b1` (canonical-lowercased-alnum ∈ {`sapb1`,`sap`} and != `sap_b1`)
+with a "did you mean sap_b1?" error, so a mistyped `sapb1` cannot silently switch off the SAP
+requirement; `source_system` otherwise stays an OPEN label (no closed allow-list). The dummy
+`sap_b1` block was deleted from `config/clients/xero_demo.yaml`. This is **no longer a runtime
+dependency for the Xero path**. **Honest status:** pure plumbing; built → hermetically-tested
+→ offline-replay-validated on the SAP path (offline-replay **byte-identical** to the frozen
+oracle — SAP spine undisturbed). Moves NO rung toward T2.11; `validation_status="unvalidated"`
+and `show_ai_candidates=False` UNCHANGED; no tax semantics. Verified by
+`tests/test_debt9_sap_decouple.py` (18 tests, incl. a real-`run_chain` zero-SAP-contact proof);
+full suite **2093 passed, 1 skipped**. This debt is now CLOSED.
 
-### DEBT-10 — `source_system` docstring understates its effect
-`config/loader.py:114-116` documents `source_system` as "logging/display only", but it
-is functionally load-bearing via `effective_tax_code_mappings` (`:195-197`), where any
-value other than `"sap_b1"` suppresses the SAP SO/SI defaults. The docstring should be
-corrected; do not rely on it for the three-times rule.
+### DEBT-10 — `source_system` docstring understates its effect — RESOLVED (commit `8daf757`)
+`config/loader.py:114-116` (historically) documented `source_system` as "logging/display
+only", but it is functionally load-bearing via `effective_tax_code_mappings` (`:195-197`),
+where any value other than `"sap_b1"` suppresses the SAP SO/SI defaults.
+*RESOLVED (`8daf757`):* the docstring is corrected and `source_system` is now formally
+LOAD-BEARING — it drives `effective_tax_code_mappings` AND (as of DEBT-9) gates the `sap_b1`
+block/creds requirement. This debt is now CLOSED.

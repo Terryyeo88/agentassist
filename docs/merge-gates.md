@@ -149,9 +149,12 @@ stays at `orchestrator/` (untouched). Proven by `tests/test_xero_engine_upload.p
 `xero_f5_upload` engine-branch contract + the byte-identical 4-key `extract_upload` fall-through) and
 the existing `api/` import-scans. No new CI grep is added. **Honest status:** real-Xero-FORMAT findings
 over SYNTHETIC data — CANDIDATES, never verdicts; NOT a real client file; T2.11 unmoved. **DEBT-9
-runtime note:** this path now requires `SAP_USERNAME`/`SAP_PASSWORD` env vars (dummy values suffice) to
-load `xero_demo.yaml`, even though no SAP call is made — making `sap_b1` optional for non-SAP clients is
-deferred (PR-D). See `KNOWN-LIMITATIONS-xero-demo.md` (PR-B status) and
+runtime note:** this path (at PR-B) required `SAP_USERNAME`/`SAP_PASSWORD` env vars (dummy values suffice) to
+load `xero_demo.yaml`, even though no SAP call is made — making `sap_b1` optional for non-SAP clients was
+deferred (PR-D). **Since resolved (branch `t-debt9-sap-decouple`, commit `8daf757`):** the `sap_b1`
+block + creds are now required iff `source_system == "sap_b1"`, so the Xero upload path no longer requires
+SAP creds to load; offline-replay stays byte-identical to the frozen oracle. See
+`KNOWN-LIMITATIONS-xero-demo.md` (PR-B status + DEBT-9 RESOLVED) and
 `AGENTASSIST_TECHNICAL_STATE.md` §T-xero-engine-wire.
 
 **`agent/facets.py` note (T6.3 Slice 1, 2026-06-18):** the deterministic faceted-filter engine lives in
@@ -374,5 +377,7 @@ git merge --no-ff <branch> -m "Merge <branch>: <one-line summary>
   at module import (`engine.review`/`config.loader` imported LAZILY in the endpoint; only the
   `feeders.xero_f5_reader` leaf edge is added at module level). Pinned by
   `tests/test_xero_engine_upload.py`; **no new CI grep added**. Built ≠ validated — real-FORMAT over
-  SYNTHETIC data, T2.11 unmoved; DEBT-9 (loader requires dummy SAP creds) now a live runtime
-  dependency on this path, still deferred (PR-D).
+  SYNTHETIC data, T2.11 unmoved; DEBT-9 (loader requires dummy SAP creds) was at PR-B a live runtime
+  dependency on this path, deferred (PR-D) — **since resolved (branch `t-debt9-sap-decouple`, commit
+  `8daf757`):** `sap_b1` is now optional when `source_system != "sap_b1"`, so the Xero path no longer
+  requires SAP creds to load (offline-replay byte-identical).
