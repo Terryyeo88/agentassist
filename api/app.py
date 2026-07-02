@@ -121,6 +121,27 @@ XERO_UPLOAD_KEYS: tuple[str, ...] = (
     "source_kind", "validation_status", "disclaimer", "coverage_status", "queue",
 )
 
+# POST /review/upload GENERAL-EXTRACT engine branch (BUILD 3) response contract: the Xero-branch
+# keys PLUS `config_scope` — the general-extract path run through the SAME chain via
+# ExtractChainReader, under a DEMO/DEFAULT client config (`extract_demo`), gated by the global
+# default-ON kill switch. Findings are unvalidated candidates computed under a config that is NOT
+# the uploader's; `config_scope="default_demo"` is the marker the surface renders the LOUD
+# default-config caveat from. source_kind is "extract_review" (distinct from the coverage-only
+# "extract_upload"). No per-client identity exists on this path — the switch is GLOBAL only.
+EXTRACT_REVIEW_KEYS: tuple[str, ...] = (
+    "source_kind", "validation_status", "disclaimer", "coverage_status", "queue", "config_scope",
+)
+
+# Global kill switch (BUILD 3) — DEFAULT ON. Disable globally, without a code change, by setting
+# AGENTASSIST_EXTRACT_ENGINE to a falsey token (0/off/false/no). GLOBAL ONLY: an anonymous extract
+# upload has no per-client identity, so there is deliberately no per-client disable.
+_EXTRACT_ENGINE_FLAG = "AGENTASSIST_EXTRACT_ENGINE"
+
+
+def _extract_engine_enabled() -> bool:
+    """Whether the general-extract engine path is ON (default True; env kill switch)."""
+    return os.environ.get(_EXTRACT_ENGINE_FLAG, "").strip().lower() not in {"0", "off", "false", "no"}
+
 
 # --------------------------------------------------------------------------- #
 # Single artifacts source — load ONCE, share the same dicts everywhere (T6.2).
@@ -269,6 +290,12 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
             # UNCHANGED ExtractChainReader coverage-only path — byte-identical to before.
             if is_xero_f5_workbook(dest):
                 return _xero_f5_review_response(dest)
+            # BUILD 3: the general-extract engine path is ON by default (global kill switch).
+            # Enabled → a non-Xero .xlsx runs the SAME chain via ExtractChainReader under the
+            # DEMO config and returns findings (extract_review). OFF → the pre-build coverage-only
+            # ExtractChainReader path, byte-identical to before.
+            if _extract_engine_enabled():
+                return _extract_review_response(dest)
             reader = ExtractChainReader(dest)
             coverage_status = [status.as_dict() for status in reader.coverage_status()]
         except HTTPException:
@@ -341,6 +368,71 @@ def _xero_f5_review_response(dest: Path) -> dict:
         "disclaimer": DISCLAIMER,
         "coverage_status": coverage_status,
         "queue": queue,
+    }
+
+
+def _derive_extract_period(reader) -> dict:
+    """Derive ``{start, end}`` from the extract's own DocDate range.
+
+    A generic extract carries no "for the period …" line (unlike a Xero F5 export). The reader
+    IGNORES the period args (it returns every row), so this only labels the review + scopes the
+    Reg 26/27 pass. Falls back to a wide window when no dated document is present. Plumbing only —
+    no chain/engine change, no tax semantics.
+    """
+    dates: list[str] = []
+    # The four ENTITY_ROUTING buckets (Invoices/PurchaseInvoices/CreditNotes/PurchaseCreditNotes).
+    for entity in ("Invoices", "PurchaseInvoices", "CreditNotes", "PurchaseCreditNotes"):
+        for doc in reader.fetch_invoices(entity, "", ""):
+            iso = str(doc.get("DocDate") or "")[:10]
+            if iso:
+                dates.append(iso)
+    if dates:
+        return {"start": min(dates), "end": max(dates)}
+    return {"start": "1900-01-01", "end": "2999-12-31"}
+
+
+def _extract_review_response(dest: Path) -> dict:
+    """Run the real (UNVALIDATED) engine review over an uploaded GENERAL extract, under a
+    DEMO/DEFAULT client config (BUILD 3 — general-extract path ON; global kill switch).
+
+    Threads ``ExtractChainReader`` through ``engine.review.review()`` EXACTLY as the Xero branch
+    does — NO chain/engine change. Findings are projected into the SHARED central-screen QueueItem
+    shape (``serialize_xero_queue``); the checks the export cannot support degrade honestly in
+    ``coverage_status`` (never fabricated — the fixed-schema reader cannot infer/guess a column).
+
+    THE HONESTY LINE: this run uses the ``extract_demo`` DEFAULT config, NOT the uploader's own tax
+    settings — ``config_scope="default_demo"`` is the marker the surface renders the LOUD
+    default-config caveat from (any rate/tax-code-mapping-dependent finding is the demo's, not the
+    client's). Findings are CANDIDATES, never verdicts; validation_status stays "unvalidated"
+    (Inv-5); no AI candidates; accuracy NOT validated (T2.11 unmoved). Synthetic-format at best;
+    real-client-export validation stays GTM-gated.
+    """
+    reader = ExtractChainReader(dest)
+
+    # Lazy imports keep api/ anthropic-free AT MODULE IMPORT (Inv-1) — same posture as the Xero branch.
+    from config.loader import load_client_config
+    from engine.review import ReviewInputs, review
+
+    cfg = load_client_config("extract_demo", check_connectivity=False)
+    period = _derive_extract_period(reader)
+    inputs = ReviewInputs(line_source=lambda: [], provider=None, reader=reader)
+    result = review(cfg, period, inputs)
+    if result.status != "completed" or result.compile_output is None:
+        # A reconciliation halt on an untrusted upload is a client-input error, never a 500.
+        raise HTTPException(
+            status_code=422,
+            detail="Review could not complete over this export (reconciliation halted).",
+        )
+
+    queue = serialize_xero_queue(result.compile_output["detect"]["issues"])
+    coverage_status = [status.as_dict() for status in reader.coverage_status()]
+    return {
+        "source_kind": "extract_review",
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": DISCLAIMER,
+        "coverage_status": coverage_status,
+        "queue": queue,
+        "config_scope": "default_demo",
     }
 
 
