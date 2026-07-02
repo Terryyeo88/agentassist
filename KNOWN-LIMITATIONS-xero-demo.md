@@ -55,6 +55,40 @@ end-to-end. Out of scope for PR-B: E4 `0.07` default removal (PR-C — since **D
 `t-debt4-remove-rate-default`, commit `c41d0a8`), `sap_b1` optional in the loader (PR-D),
 `xero_demo.yaml` citations (PR-E).
 
+**BUILD 2 status (branch `t-build2-xero-central-review`, built ≠ validated, UNMERGED).** Build 2
+resolves the **findings-dropped UI defect**: PR-B's engine-wired Xero upload already computed real
+line-level findings server-side, but the `XeroUploadPanel` frontend rendered **coverage only** and
+type-erased the findings, so a real Xero F5 upload never surfaced them. They now render.
+**Contract reshape (supersedes PR-B's `findings` key — PR-B history above is NOT rewritten).** The
+`POST /review/upload` **xero_f5** branch response is RESHAPED: the old flat `findings` (the 7-key
+detector rows in the PR-B section above) is REPLACED by `queue: QueueItem[]` — the `findings` key is
+REMOVED. A new `api/viewmodel.serialize_xero_queue()` reuses `serialize_queue_item` /
+`check_reference`, so E2/E3/E4 carry their REAL `CHECK_REGISTRY` `iras_basis` — the SAME citation as
+the SAP path, NOT manufactured — and `finding_id` uses SAP semantics `detect:{code}:{doc_num}`.
+**A1 (shared central review screen):** the Xero findings route into the SAME `<ReviewScreen>`
+(extracted `Queue` + `FindingDetail`) the SAP path uses; decision/sign is an INJECTED capability —
+the SAP path injects it (behaviour-preserving), the Xero upload path OMITS it (no server-side store
+to sign an uploaded review against) and shows an honest review-only note *"sign-off for uploads not
+yet available"* — no dead controls. **B1 (companion-sheet ask):** the panel surfaces a
+supplier-master (companion) sheet ask when a check is degraded/unavailable — a **COVERAGE FACT ONLY**
+(no IRAS rationale); providing/ingesting the sheet is NOT built (deferred, net-new). **Dark checks
+unchanged:** NO_GST_REG (unavailable), DUP_CLAIM/SEQ_GAP (degraded) and the doc-pre-pass
+(unavailable) remain surfaced ONLY in `coverage_status`, NEVER fabricated into the queue. **NO
+engine/chain change** — offline-replay stays byte-identical to the frozen oracle; F5 box-isolation
+intact (18 isolation tests pass); `validation_status="unvalidated"` + `show_ai_candidates=False`
+UNCHANGED. **Honest status:** moves NO rung toward T2.11 — the Xero findings remain **CANDIDATES,
+unvalidated** (offline-replay-validated for the deterministic chain only; NOT a real client file,
+NOT accuracy-validated). **Test counts:** vitest **32 → 37** (+5: `ReviewScreen.test.tsx` ×2,
+`XeroFindings.test.tsx` ×3); new `tests/test_xero_queue_contract.py` (+3: BT1 queue contract, BT2
+Decision-4 honesty, `finding_id` semantics). Full pytest suite on this branch: **2095 passed, 1
+skipped, and 1 EXPECTED-RED** —
+`tests/test_xero_engine_upload.py::test_xero_upload_runs_engine_and_returns_findings`, a pre-existing
+test that asserts the SUPERSEDED `findings` contract; per the append-only-test boundary the builder
+did NOT edit it. Terry authors its amendment as a SEPARATE commit onto this branch; the failure is
+**SHAPE-only** (queue vs findings key-set), finding VALUES unchanged and re-locked by the new BT1 —
+once the amendment lands the suite is fully green. This branch is **UNMERGED**; Build 2 closes NONE
+of the debts below.
+
 Companion files:
 - Reader: `feeders/xero_f5_reader.py` (PR-A — real-FORMAT, SYNTHETIC-data, UNWIRED)
 - Tests: `tests/test_xero_f5_reader.py` (PR-A — 8 tests over the fixture)

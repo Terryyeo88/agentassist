@@ -2833,6 +2833,24 @@ wiring, gated on Lanes A + B); **T2.11 gates customer-facing**. *(C2 landed — 
 
 ---
 
+## §T-build2 — findings-dropped fix + Xero F5 findings into the SHARED central review screen (`api/viewmodel.py` + `api/app.py` + `frontend/src/components/ReviewScreen.tsx` + `XeroUploadPanel.tsx`) (branch `t-build2-xero-central-review`; built ≠ validated — real-Xero-FORMAT findings over SYNTHETIC data, NOT accuracy-validated, NOT a real client file; UNMERGED)
+
+**The defect Build 2 fixes.** PR-B (§T-xero-engine-wire) engine-wired the Xero upload so `POST /review/upload`'s xero_f5 branch computed REAL line-level findings server-side — but the `XeroUploadPanel` frontend rendered **coverage only** and TYPE-ERASED the findings, so a real Xero F5 upload never surfaced them. Build 2 makes them render.
+
+**A1 — findings route into the SHARED central review screen (contract reshape).** The xero_f5 branch response is RESHAPED: PR-B's flat `findings` (7-key detector rows) is REPLACED by `queue: QueueItem[]` — the `findings` key is REMOVED. A new `api/viewmodel.serialize_xero_queue()` reuses the existing `serialize_queue_item` / `check_reference` helpers, so **E2/E3/E4 carry their REAL `CHECK_REGISTRY` `iras_basis` — the SAME citation the SAP path emits, NOT manufactured** — and `finding_id` uses SAP semantics `detect:{code}:{doc_num}`. **This supersedes the PR-B `findings` contract recorded in §T-xero-engine-wire above** (that section's history is left intact as the PR-B record).
+
+**Frontend — shared `<ReviewScreen>` with an INJECTED decision/sign capability.** A new shared `frontend/src/components/ReviewScreen.tsx` extracts the `Queue` + `FindingDetail` pair. Decision/sign is an **injected capability**: the SAP path INJECTS it (behaviour-preserving — the existing SAP review is unchanged), the Xero upload path OMITS it (there is no server-side store to sign an uploaded review against) and shows an honest review-only note *"sign-off for uploads not yet available"* — **no dead controls**.
+
+**B1 — companion-sheet ASK (coverage fact only).** The panel surfaces a supplier-master (companion) sheet ASK when a check is degraded/unavailable. This is a **COVERAGE FACT ONLY** — no IRAS rationale, no functional ingest; **providing/ingesting the sheet is NOT built (deferred, net-new).**
+
+**Dark checks unchanged (T2.11-adjacent line held).** NO_GST_REG (unavailable), DUP_CLAIM/SEQ_GAP (degraded) and the document-pre-pass (unavailable) remain surfaced ONLY in `coverage_status`, **NEVER fabricated into the queue**.
+
+**Acceptance (failing-test-first) + test counts.** Frontend **vitest 32 → 37** (+5: `ReviewScreen.test.tsx` ×2, `XeroFindings.test.tsx` ×3). New `tests/test_xero_queue_contract.py` (**+3** pytest: BT1 queue contract, BT2 Decision-4 honesty, `finding_id` semantics). Full branch pytest suite: **2095 passed, 1 skipped, and 1 EXPECTED-RED** — `tests/test_xero_engine_upload.py::test_xero_upload_runs_engine_and_returns_findings`, a PRE-EXISTING test asserting the SUPERSEDED `findings` contract that the builder must NOT edit under the append-only-test boundary. Terry authors its amendment as a SEPARATE commit onto this branch; the failure is **SHAPE-only** (queue vs findings key-set), finding VALUES unchanged and re-locked by the new BT1 — once the amendment lands the suite is fully green. This branch is **UNMERGED**; the master-total lines elsewhere in this document describe `master`'s actual state and remain accurate.
+
+**Honest status (T2.11).** NO engine/chain change — offline-replay stays byte-identical to the frozen oracle; **F5 box-isolation intact (18 isolation tests pass)**. The Xero findings are real-Xero-**FORMAT** over **SYNTHETIC** data — **CANDIDATES, never verdicts** — NOT a real client file, NOT accuracy-validated (T2.11 unmoved). `validation_status="unvalidated"` + `show_ai_candidates=False` + T2.11 UNCHANGED. Honest-status rung: **offline-replay-validated for the deterministic chain only.** Build 2 closes NONE of the `KNOWN-LIMITATIONS-xero-demo.md` debts. **Built ≠ validated.** See `KNOWN-LIMITATIONS-xero-demo.md` (BUILD 2 status).
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools
