@@ -36,6 +36,8 @@ from fastapi.testclient import TestClient
 from api.app import app
 import engine.review as engine_review
 
+from api.viewmodel import QUEUE_ITEM_KEYS
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # The COMMITTED real-FORMAT Xero IRAS-F5 export fixture (synthetic transactions).
@@ -56,17 +58,6 @@ _FROZEN_EXTRACT_DIR = _REPO_ROOT / "tests" / "fixtures" / "sbodemosg-extract"
 # E1 and the DUP_CLAIM/NO_GST_REG/SEQ_GAP checks are dark on this path — surfaced only in
 # coverage_status, never as findings.
 _EXPECTED_FINDINGS = {("E2", "INV-2003"), ("E3", "INV-2002"), ("E4", "BILL-3002")}
-
-# EXACT per-finding key set (the locked row contract).
-_FINDING_KEYS = {
-    "card_name",
-    "description",
-    "doc_date",
-    "doc_num",
-    "error_code",
-    "recommendation",
-    "severity",
-}
 
 _COVERAGE_LEVELS = {"full", "degraded", "unavailable"}
 
@@ -114,7 +105,7 @@ def test_xero_upload_runs_engine_and_returns_findings(client: TestClient, hermet
     HTTP 200 + EXACTLY 5 top-level keys; source_kind=="xero_f5_upload"; frozen
     validation_status; a non-empty disclaimer that says "unvalidated"; NO ai_candidates in the
     body; the three dark coverage levels (NO_GST_REG unavailable, DUP_CLAIM/SEQ_GAP degraded);
-    and findings reducing to EXACTLY the 3-set (no E1, no DUP_CLAIM/NO_GST_REG/SEQ_GAP).
+    and queue reducing to EXACTLY the 3-set (no E1, no DUP_CLAIM/NO_GST_REG/SEQ_GAP).
     """
     assert _XERO_FIXTURE.is_file(), f"committed Xero fixture missing: {_XERO_FIXTURE}"
 
@@ -130,7 +121,7 @@ def test_xero_upload_runs_engine_and_returns_findings(client: TestClient, hermet
         "validation_status",
         "disclaimer",
         "coverage_status",
-        "findings",
+        "queue",
     }
     assert body["source_kind"] == "xero_f5_upload"
 
@@ -155,13 +146,14 @@ def test_xero_upload_runs_engine_and_returns_findings(client: TestClient, hermet
     assert _coverage_level(rows, "SEQ_GAP") == "degraded"
 
     # findings: a list of dicts each with EXACTLY the 9 locked keys.
-    findings = body["findings"]
-    assert isinstance(findings, list) and findings, "expected a non-empty findings list"
-    for f in findings:
-        assert set(f.keys()) == _FINDING_KEYS, f"finding row keys drifted: {set(f.keys())}"
+    queue = body["queue"]
+    assert isinstance(queue, list) and queue, "expected a non-empty queue"
+    for item in queue:
+        assert set(item.keys()) == set(QUEUE_ITEM_KEYS), f"queue item keys drifted: {set(item.keys())}"
 
-    # The locked projection on the committed fixture.
-    assert {(f["error_code"], f["doc_num"]) for f in findings} == _EXPECTED_FINDINGS
+    # The locked projection on the committed fixture — AUDIT ANCHOR carried over verbatim;
+    # only the READ PATH changes (findings rows → queue items via error_code + doc_num).
+    assert {(item["error_code"], item["doc_num"]) for item in queue} == _EXPECTED_FINDINGS
 
 
 # ── 2. ReviewInputs gains an optional reader field (no-reader callers unaffected) ──
