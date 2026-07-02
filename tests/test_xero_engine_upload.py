@@ -207,10 +207,14 @@ def test_review_threads_reader_into_run_chain(monkeypatch):
 
 # ── 4. ADDITIVE lock: format-routing leaves the synthetic extract path coverage-only ──
 
-def test_synthetic_upload_stays_coverage_only_under_routing(client: TestClient, tmp_path: Path):
-    """A synthetic documents/business_partners/listing .xlsx (NOT a Xero F5 workbook) still
+def test_synthetic_upload_stays_coverage_only_when_engine_disabled(
+    client: TestClient, tmp_path: Path, monkeypatch
+):
+    """With the general-extract engine kill switch OFF, a synthetic (NON-Xero-F5) .xlsx still
     lands on the UNCHANGED ExtractChainReader coverage-only path: EXACTLY the 4-key coverage
-    set, source_kind=="extract_upload", and NO findings key."""
+    set, source_kind=="extract_upload", and NO findings key. (The flag-ON engine path for this
+    same input is locked by tests/test_extract_engine_upload.py.)"""
+    monkeypatch.setenv("AGENTASSIST_EXTRACT_ENGINE", "0")
     assert _FROZEN_EXTRACT_DIR.is_dir(), f"frozen extract fixture dir missing: {_FROZEN_EXTRACT_DIR}"
     out = tmp_path / "synthetic_export.xlsx"
     _synth.export_xlsx(_FROZEN_EXTRACT_DIR, out)

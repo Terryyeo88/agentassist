@@ -73,8 +73,9 @@ def _xlsx_bytes(tmp_path) -> bytes:
 
 # ── 1. coverage-only response shape ──────────────────────────────────────────────────
 
-def test_upload_returns_coverage_only_shape(client: TestClient, tmp_path: Path):
+def test_upload_returns_coverage_only_shape(client: TestClient, tmp_path: Path, monkeypatch):
     """200 + EXACTLY the coverage-only key set, with a well-formed coverage_status list."""
+    monkeypatch.setenv("AGENTASSIST_EXTRACT_ENGINE", "0")
     resp = client.post(
         "/review/upload?filename=export.xlsx", content=_xlsx_bytes(tmp_path)
     )
@@ -111,14 +112,15 @@ def test_upload_returns_coverage_only_shape(client: TestClient, tmp_path: Path):
 
 # ── 2. the engine never runs on upload (deferral pin) ────────────────────────────────
 
-def test_upload_never_runs_the_engine(client: TestClient, tmp_path: Path, monkeypatch):
-    """Pins the deferral: ``POST /review/upload`` is COVERAGE-ONLY. Engine execution is
-    deferred to Collin's feeder→engine wiring — neither ``engine.review.review`` nor
-    ``orchestrator.chain.run_chain`` may be invoked by the upload path. We booby-trap both
-    and prove the upload still returns 200 (so neither was called)."""
+def test_upload_coverage_only_when_engine_disabled(client: TestClient, tmp_path: Path, monkeypatch):
+    """With the general-extract engine kill switch OFF, ``POST /review/upload`` stays
+    COVERAGE-ONLY: neither ``engine.review.review`` nor ``orchestrator.chain.run_chain`` is
+    invoked. Booby-trap both and prove the upload still returns 200 (so neither ran)."""
+
+    monkeypatch.setenv("AGENTASSIST_EXTRACT_ENGINE", "0")
 
     def boom(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
-        raise AssertionError("engine must not run on upload")
+        raise AssertionError("engine must not run when the extract kill switch is off")
 
     monkeypatch.setattr("engine.review.review", boom)
     monkeypatch.setattr("orchestrator.chain.run_chain", boom)
