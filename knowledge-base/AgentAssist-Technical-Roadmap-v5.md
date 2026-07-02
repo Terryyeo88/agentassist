@@ -77,6 +77,38 @@ Revised from v4. v5 records what the diagnostic/fix runs of 2026-06-08 establish
   amends it in a SEPARATE commit; the failure is SHAPE-only, finding VALUES unchanged and re-locked
   by the new BT1). See `AGENTASSIST_TECHNICAL_STATE.md` §T-build2 and `KNOWN-LIMITATIONS-xero-demo.md`
   (BUILD 2 status).
+- **Build 3 — general-extract upload path: coverage-only → UNVALIDATED findings — UNMERGED (branch
+  `t-build3-extract-engine-on`; built ≠ validated).** Changes the CLAIM on the general-extract path:
+  where any non-Xero `.xlsx` (the synthetic documents/business_partners/listing shape) previously
+  stayed **coverage-only** (engine NOT run, 4-key `extract_upload`), Build 3 runs that SAME extract
+  through the **SAME deterministic chain** via `ExtractChainReader` (**NO engine/chain change** — the
+  T5.1 `reader` seam Build 2 already threads) to produce **UNVALIDATED findings**, under a **DEFAULT
+  DEMO client config** (`config/clients/extract_demo.yaml`, a copy of `xero_demo` values — **no new
+  tax rule**). A **GLOBAL kill switch `AGENTASSIST_EXTRACT_ENGINE`, DEFAULT-ON** (env/constant; no
+  global config file) gates it — OFF → the pre-build coverage-only path, byte-identical. The switch is
+  **GLOBAL ONLY**: the anonymous extract upload has no per-client identity, so there is deliberately
+  **NO per-client disable**. Response carries `source_kind:"extract_review"`, `queue: QueueItem[]`
+  (rendered on the SHARED central review screen — reuses Build 2's `<ReviewScreen>`), and a
+  `config_scope:"default_demo"` marker; the frontend renders a **LOUD three-clause caveat**
+  (unvalidated candidates / format proven only against a SYNTHETIC sample, real-client-export
+  GTM-gated / run under a DEFAULT DEMO config that is NOT the uploader's — rate/tax-code-mapping
+  findings not to be relied on until a real config is wired in, while structural/arithmetic checks
+  stand on their own). **Honest-degradation UNCHANGED and already-existing:** the fixed-schema reader
+  cannot infer/alias/guess columns — off-format → degraded `coverage_status` or 422, **NEVER a
+  fabricated finding**. **Moves NO rung toward T2.11** — synthetic-format at best; real-client-export
+  GTM-gated. Frozen flags UNCHANGED (`validation_status="unvalidated"`, `show_ai_candidates=False`);
+  no `ai_candidates`; offline-replay byte-identical; F5 box-isolation intact (18 isolation tests
+  pass). Test counts (Build 3 branch): vitest **37 → 39** (+2: `ExtractReview.test.tsx` FT1/FT2); new
+  `tests/test_extract_engine_upload.py` (+4: BT1 path-on, BT2 global default-ON kill switch, BT3
+  off-format degrades/never-guesses, BT4 demo-config marker); full pytest suite **2097 passed, 1
+  skipped, and 3 EXPECTED-RED** (`tests/test_tsource_selector_upload.py::test_upload_returns_coverage_only_shape`,
+  `::test_upload_never_runs_the_engine` — a deliberate booby-trap, re-expressed not deleted — and
+  `tests/test_xero_engine_upload.py::test_synthetic_upload_stays_coverage_only_under_routing`: PRE-EXISTING
+  append-only tests locking the OLD coverage-only/engine-never-runs contract that DEFAULT-ON supersedes;
+  un-editable under the append-only-test boundary, Terry amends them in a SEPARATE commit; the failures
+  are a BEHAVIOUR CHANGE, not other regressions). Build 3 is the **LAST of Terry's four pivot
+  decisions** — the four-decision batch is **complete on merge**. See `AGENTASSIST_TECHNICAL_STATE.md`
+  §T-build3.
 
 **Validated offline (deterministic chain) — on master:**
 - **T2.12a** — Ground-truth capture + offline-replay gate. Six SBODEMOSG read surfaces (S0–S5) frozen verbatim under `tests/fixtures/sbodemosg-extract/` + same-session `_replay-oracle.compiled.json` + `capture-manifest.json` (per-fixture SHA-256 + `source_function`); EOL pinned (`.gitattributes eol=lf`); hermetic integrity test (capture `63bf32d`/`0084031`). **Offline-replay gate PASSED** (`b61f219`): `run_chain` off the frozen fixtures with SAP unreachable == the oracle byte-for-byte via `canonical_json`, so `rederivation_grade: "same-SAP-state"` is achieved offline for the deterministic path. **Honest:** proves freeze-sufficiency + offline reproducibility ONLY — NOT accuracy (T2.11), NOT the Excel adapter (T2.12); **S4 (reasoning-pass surface) out of scope** (frozen, not replay-validated); test harness, not the product adapter (`orchestrator/` untouched). This is the **validation substrate** — SOP step 2 live-recon → fixture recon, step 5 seed-live/chain-acceptance → offline-replay acceptance (PDF-render retained); **B1 expendable for the deterministic path**. Honest-status ladder: built ≠ hermetic ≠ offline-replay-validated ≠ adapter-round-trip-validated-on-synthetic ≠ real-client-export-validated ≠ accuracy-validated (T2.11). See T2.12a entry.
