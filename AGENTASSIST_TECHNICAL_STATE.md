@@ -2851,6 +2851,26 @@ wiring, gated on Lanes A + B); **T2.11 gates customer-facing**. *(C2 landed — 
 
 ---
 
+## §T-build3 — general-extract upload path: coverage-only → UNVALIDATED findings via the SAME deterministic chain, under a DEFAULT DEMO config (`config/clients/extract_demo.yaml` + `api/app.py` + `api/viewmodel.py` + `frontend/src/components/ExtractReview.tsx`) (branch `t-build3-extract-engine-on`; built ≠ validated — findings are real over a SYNTHETIC-format sample, run under a default demo config that is NOT the uploader's, NOT accuracy-validated, NOT a real client file; UNMERGED)
+
+**The claim Build 3 changes.** Before Build 3, ANY non-Xero `.xlsx` (the synthetic documents/business_partners/listing shape) stayed on the **coverage-only** `ExtractChainReader` path — **engine NOT run**, a 4-key `source_kind:"extract_upload"` response (see §T-source-selector / §T-xero-engine-wire's fall-through). Build 3 runs that SAME extract through the SAME deterministic chain via `ExtractChainReader` to produce **UNVALIDATED findings**. **NO engine/chain change** — the reader is injected into the SAME `run_chain` the SAP path uses (the T5.1 `reader` seam Build 2 already threads); the shift is a CLAIM change on the general-extract path, not a new pipeline.
+
+**Default demo config (`config/clients/extract_demo.yaml`).** The anonymous extract upload carries no client identity, so the chain runs under a DEFAULT DEMO client config — `extract_demo.yaml`, a **copy of `xero_demo` values** (**NO new tax rule** introduced). This config is a stand-in, NOT the uploader's own config; rate / tax-code-mapping-dependent findings are therefore config-provisional (see the caveat below).
+
+**Global kill switch `AGENTASSIST_EXTRACT_ENGINE` — DEFAULT-ON.** A GLOBAL env/constant switch (there is **no global config file**). ON (default) → the new findings path. OFF → the pre-build **coverage-only** path, **byte-identical** to prior behaviour. The switch is **GLOBAL ONLY**: because the anonymous extract upload has **no per-client identity**, there is deliberately **NO per-client disable** — do not read this as per-client control.
+
+**Response contract + shared central screen.** The extract-upload response now carries `source_kind:"extract_review"`, `queue: QueueItem[]` (rendered on the SHARED central review screen — reuses Build 2's `<ReviewScreen>`), and a `config_scope:"default_demo"` marker recording that the run used the default demo config, not the uploader's.
+
+**Frontend — a LOUD three-clause caveat.** `frontend/src/components/ExtractReview.tsx` renders a prominent three-clause caveat: (1) the candidates are **UNVALIDATED**; (2) the format is proven **only against a SYNTHETIC sample** (real-client-export validation is OPEN / GTM-gated); (3) the run used a **DEFAULT DEMO config, NOT the uploader's** — rate / tax-code-mapping-dependent findings should **not be relied on** until a real config is wired in, while **structural / arithmetic checks stand on their own**.
+
+**Honest-degradation UNCHANGED (already-existing).** The fixed-schema `ExtractChainReader` cannot infer / alias / guess columns — an off-format upload yields a **degraded `coverage_status` or a 422**, **NEVER a fabricated finding**. Build 3 does not change this behaviour; it only flips the on-format path from coverage-only to findings.
+
+**Acceptance (failing-test-first) + test counts.** Frontend **vitest 37 → 39** (+2: `ExtractReview.test.tsx` FT1/FT2). New `tests/test_extract_engine_upload.py` (**+4** pytest: BT1 path-on, BT2 global default-ON kill switch, BT3 off-format degrades / never-guesses, BT4 demo-config marker). Full branch pytest suite: **2097 passed, 1 skipped, and 3 EXPECTED-RED**. The 3 reds are PRE-EXISTING append-only tests that lock the OLD coverage-only / engine-never-runs contract that DEFAULT-ON now supersedes — the builder must **NOT** edit them under the append-only-test boundary; **Terry authors their amendment as a SEPARATE commit**; the failures are a **BEHAVIOUR CHANGE, not other regressions**: `tests/test_tsource_selector_upload.py::test_upload_returns_coverage_only_shape`, `::test_upload_never_runs_the_engine` (a deliberate booby-trap — re-expressed, not deleted), and `tests/test_xero_engine_upload.py::test_synthetic_upload_stays_coverage_only_under_routing`. This branch is **UNMERGED**; the master-total lines elsewhere in this document describe `master`'s actual state and remain accurate — **no master-total line is changed for an unmerged branch**.
+
+**Honest status (T2.11).** Moves **NO rung toward T2.11** — synthetic-format at best; real-client-export validation is GTM-gated. The findings are real over a **SYNTHETIC-format** sample, run under a **DEFAULT DEMO config that is NOT the uploader's** — **CANDIDATES, never verdicts**; NOT a real client file, NOT accuracy-validated. **NO engine/chain change** — offline-replay byte-identical to the frozen oracle; **F5 box-isolation intact (18 isolation tests pass)**; no `ai_candidates`. Frozen flags UNCHANGED (`validation_status="unvalidated"`, `show_ai_candidates=False`). **Built ≠ validated.** Build 3 is the **LAST of Terry's four pivot decisions** — the four-decision batch is **complete on merge**.
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools
