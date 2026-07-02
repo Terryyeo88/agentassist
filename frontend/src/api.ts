@@ -101,8 +101,12 @@ export interface UploadCoverageResponse {
   validation_status: string;
   disclaimer: string;
   coverage_status: CoverageStatusRow[];
-  // Present only on the "xero_f5_upload" (engine) branch — the shared central-screen queue.
+  // Present on the engine branches ("xero_f5_upload" and "extract_review") — the shared queue.
   queue?: QueueItem[];
+  // Present only on the general-extract engine branch ("extract_review", BUILD 3): the marker
+  // that the run used a DEFAULT DEMO config (not the uploader's). Drives the LOUD default-config
+  // caveat. Value: "default_demo".
+  config_scope?: string;
 }
 
 // Same-origin in dev: Vite proxies `/api/*` → the uvicorn backend (see vite.config.ts).
