@@ -55,6 +55,7 @@ from api.viewmodel import (
     build_audit_payload,
     build_review_payload,
     f5_summary,
+    serialize_xero_queue,
 )
 # api/ → feeders/ edge (source-selector Xero branch). ``feeders`` is a pure stdlib leaf
 # (openpyxl is lazy on the .xlsx path); it imports NO anthropic/agent/engine/orchestrator,
@@ -109,17 +110,15 @@ UPLOAD_COVERAGE_KEYS: tuple[str, ...] = (
 )
 COVERAGE_ROW_KEYS: tuple[str, ...] = ("check", "level", "reason")
 
-# POST /review/upload Xero-F5 branch (engine path) response contract: the coverage keys PLUS
-# findings — a real-Xero-FORMAT review over an uploaded F5 export, candidates NOT verdicts,
-# validation_status stays "unvalidated" (Inv-5). XERO_UPLOAD_KEYS documents the top-level shape
-# (the source the frontend TS types mirror, as UPLOAD_COVERAGE_KEYS does); FINDING_ROW_KEYS is
-# the engine detect-issue finding row that _xero_f5_review_response projects each finding to.
+# POST /review/upload Xero-F5 branch (engine path) response contract (BUILD 2, A1 — same
+# screen): the coverage keys PLUS `queue` — a real-Xero-FORMAT review over an uploaded F5
+# export projected into the SHARED central-screen QueueItem shape
+# (api.viewmodel.serialize_xero_queue), candidates NOT verdicts, validation_status stays
+# "unvalidated" (Inv-5). XERO_UPLOAD_KEYS documents the top-level shape the frontend TS types
+# mirror (as UPLOAD_COVERAGE_KEYS does). The coverage-era flat `findings` row is superseded by
+# `queue` (the shared screen consumes QueueItem, not a bespoke 7-key row).
 XERO_UPLOAD_KEYS: tuple[str, ...] = (
-    "source_kind", "validation_status", "disclaimer", "coverage_status", "findings",
-)
-FINDING_ROW_KEYS: tuple[str, ...] = (
-    "card_name", "description", "doc_date", "doc_num",
-    "error_code", "recommendation", "severity",
+    "source_kind", "validation_status", "disclaimer", "coverage_status", "queue",
 )
 
 
@@ -226,18 +225,22 @@ def get_review(client: str, period: str) -> dict:
 
 @app.post("/review/upload")
 async def post_review_upload(request: Request, filename: str = "") -> dict:
-    """COVERAGE-ONLY view over an UPLOADED client GST export (source-selector Xero branch).
+    """View over an UPLOADED client GST export (source-selector Xero branch).
 
-    The selector hands this route a single ``.xlsx`` export; it constructs an
-    ``ExtractChainReader`` over the upload and returns that reader's per-check DATA-COVERAGE
-    status (``coverage_status()`` → ``CoverageStatus.as_dict()``). Coverage is a data-presence
-    fact — which canonical fields the export carried — NOT a validated review and NOT a
-    compliance verdict.
+    FORMAT ROUTING (two honest branches, both ``validation_status=unvalidated``):
+      * a real Xero IRAS-F5 export ("Transactions by box number" sheet,
+        ``is_xero_f5_workbook``) goes down the ENGINE path — ``_xero_f5_review_response``
+        threads ``XeroF5ChainReader`` through ``engine.review.review`` (``run_chain``) and
+        returns REAL (but unvalidated) findings as the SHARED central-screen ``queue``
+        (BUILD 2, A1), candidates NOT verdicts;
+      * any other ``.xlsx`` (the synthetic documents/business_partners/listing shape) stays
+        COVERAGE-ONLY — an ``ExtractChainReader`` returns that reader's per-check
+        DATA-COVERAGE status (``coverage_status()`` → ``CoverageStatus.as_dict()``), never
+        running the engine. Coverage is a data-presence fact — which canonical fields the
+        export carried — NOT a validated review and NOT a compliance verdict.
 
-    NEVER runs the engine. There is no ``orchestrator.chain.run_chain`` and no
-    ``engine.review.review`` on this path: producing a real review from an uploaded extract
-    needs the feeder→engine wiring and is a SEPARATE later task (deferred). The response is
-    honestly framed — ``validation_status=unvalidated`` + the demo disclaimer.
+    Both responses are honestly framed — ``validation_status=unvalidated`` + the demo
+    disclaimer; neither asserts a verdict.
 
     Raw-body upload (no multipart dependency): the file BYTES are the request body and
     ``filename`` (query param) carries the name for the ``.xlsx`` suffix gate. The upload
@@ -326,19 +329,18 @@ def _xero_f5_review_response(dest: Path) -> dict:
             detail="Review could not complete over this export (reconciliation halted).",
         )
 
-    # Project each detect issue to exactly the contract finding-row shape so the response stays
-    # contract-stable even if the internal detect-issue dict later gains a field.
-    findings = [
-        {key: issue.get(key) for key in FINDING_ROW_KEYS}
-        for issue in result.compile_output["detect"]["issues"]
-    ]
+    # A1 (same screen): project each detect issue into the SHARED central-screen QueueItem
+    # (reuses serialize_queue_item/check_reference — E2/E3/E4 carry their real registry
+    # iras_basis). The dark checks a Xero export cannot run stay in coverage_status
+    # (degraded/unavailable), NEVER fabricated into this queue.
+    queue = serialize_xero_queue(result.compile_output["detect"]["issues"])
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
     return {
         "source_kind": "xero_f5_upload",
         "validation_status": VALIDATION_STATUS,
         "disclaimer": DISCLAIMER,
         "coverage_status": coverage_status,
-        "findings": findings,
+        "queue": queue,
     }
 
 

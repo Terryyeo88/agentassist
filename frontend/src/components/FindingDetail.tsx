@@ -3,9 +3,13 @@ import type { QueueItem } from "../api";
 
 interface Props {
   item: QueueItem;
-  decision: { action: string; note: string } | undefined;
-  onRecord: (action: string, note: string) => void;
-  onOpenSign: () => void;
+  decision?: { action: string; note: string };
+  // The adjudication capability. When BOTH are provided → decision + sign controls render
+  // (the SAP path). When omitted → the card is review-only and `reviewOnlyNote` is surfaced
+  // instead — never a dead control (no-fake-affordances rule).
+  onRecord?: (action: string, note: string) => void;
+  onOpenSign?: () => void;
+  reviewOnlyNote?: string;
 }
 
 const DECISIONS = ["Accept", "Not an issue", "Mark known"] as const;
@@ -16,8 +20,12 @@ const NOTE_REQUIRED = new Set(["Not an issue", "Mark known"]);
  * (the rule) · suggested action → decision → sign. Trust signals are preserved verbatim:
  * the UNVALIDATED badge, the candidate framing line, the "illustrative citation" caveat on
  * the IRAS basis, and the demoted-but-present note. Nothing here asserts a verdict.
+ *
+ * The decision + sign section is an INJECTED capability (`onRecord`/`onOpenSign`): the SAP
+ * path supplies it; the Xero upload path (no server-side sign store) omits it and the card
+ * shows an honest review-only note. The candidate framing above is identical on both paths.
  */
-export function FindingDetail({ item, decision, onRecord, onOpenSign }: Props) {
+export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnlyNote }: Props) {
   const [action, setAction] = useState<string>(decision?.action ?? "Accept");
   const [note, setNote] = useState<string>(decision?.note ?? "");
   const [err, setErr] = useState<string>("");
@@ -28,7 +36,7 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign }: Props) {
       return;
     }
     setErr("");
-    onRecord(action, note.trim());
+    onRecord?.(action, note.trim());
   }
 
   return (
@@ -66,37 +74,45 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign }: Props) {
         </div>
       )}
 
-      <h4>Your decision</h4>
-      <div className="decide">
-        {DECISIONS.map((d) => (
-          <button
-            key={d}
-            className={action === d ? "selected" : ""}
-            onClick={() => setAction(d)}
-          >
-            {d}
-          </button>
-        ))}
-      </div>
-      {NOTE_REQUIRED.has(action) && (
-        <textarea
-          placeholder={`Record your reasoning (required for “${action}”). Attaches to the finding, not to box values.`}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      )}
-      {err && <div className="callout warn">{err}</div>}
-      <div className="decide">
-        <button onClick={record}>Record decision</button>
-        <button className="primary" onClick={onOpenSign}>
-          Sign working paper
-        </button>
-      </div>
-      {decision && (
-        <div className="recorded">
-          Current decision: <strong>{decision.action}</strong>
-          {decision.note ? ` — ${decision.note}` : ""}
-        </div>
+      {onRecord ? (
+        <>
+          <h4>Your decision</h4>
+          <div className="decide">
+            {DECISIONS.map((d) => (
+              <button
+                key={d}
+                className={action === d ? "selected" : ""}
+                onClick={() => setAction(d)}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+          {NOTE_REQUIRED.has(action) && (
+            <textarea
+              placeholder={`Record your reasoning (required for “${action}”). Attaches to the finding, not to box values.`}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          )}
+          {err && <div className="callout warn">{err}</div>}
+          <div className="decide">
+            <button onClick={record}>Record decision</button>
+            <button className="primary" onClick={onOpenSign}>
+              Sign working paper
+            </button>
+          </div>
+          {decision && (
+            <div className="recorded">
+              Current decision: <strong>{decision.action}</strong>
+              {decision.note ? ` — ${decision.note}` : ""}
+            </div>
+          )}
+        </>
+      ) : (
+        reviewOnlyNote && (
+          <div className="callout warn review-only">{reviewOnlyNote}</div>
+        )
       )}
 
       <details className="tech">
