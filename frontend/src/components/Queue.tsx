@@ -7,7 +7,7 @@ import { FacetFilter } from "./FacetFilter";
  * `visibleIds` is the set of finding_ids the server returned for the current filter (null when
  * no filter is active → show every row). The browser never filters or counts locally.
  */
-interface FacetProps {
+export interface FacetProps {
   available: FacetMap;
   remaining: FacetMap;
   selected: Record<string, string[]>;

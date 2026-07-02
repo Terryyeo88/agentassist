@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchReview, postCommand, type CommandResponse, type Group, type ReviewPayload } from "./api";
 import { TopBar, type View } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
-import { Queue } from "./components/Queue";
-import { FindingDetail } from "./components/FindingDetail";
+import { ReviewScreen } from "./components/ReviewScreen";
 import { AuditTrail } from "./components/AuditTrail";
 import { SignModal } from "./components/SignModal";
 import { RUN_REVIEW_UTTERANCE, asRunReviewData, normalizeFilters, toggleFilter } from "./lib/runReview";
@@ -70,11 +69,6 @@ export function App() {
     // Server facets + banner mode come from a RUN_REVIEW over the frozen artifacts (no tokens).
     runReview(undefined);
   }, []);
-
-  const selected = useMemo(
-    () => review?.queue.find((it) => it.finding_id === selectedId) ?? null,
-    [review, selectedId]
-  );
 
   const runData = asRunReviewData(reviewRun);
   const selectedFilters = runData ? normalizeFilters(runData.applied_filters) : {};
@@ -195,27 +189,20 @@ export function App() {
 
         {view === "findings" && (
           <main className="view findings-view">
-            <Queue
-              items={review.queue}
-              decided={decided}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
+            <ReviewScreen
+              queue={review.queue}
               selectedId={selectedId}
               onSelect={setSelectedId}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
               facets={facetProps}
+              adjudication={{
+                decided,
+                onRecord: (id, action, note) =>
+                  setDecided((d) => ({ ...d, [id]: { action, note } })),
+                onOpenSign: () => setSignOpen(true),
+              }}
             />
-            {selected ? (
-              <FindingDetail
-                item={selected}
-                decision={decided[selected.finding_id]}
-                onRecord={(action, note) =>
-                  setDecided((d) => ({ ...d, [selected.finding_id]: { action, note } }))
-                }
-                onOpenSign={() => setSignOpen(true)}
-              />
-            ) : (
-              <div className="panel detail">Select a finding from the queue.</div>
-            )}
           </main>
         )}
 
