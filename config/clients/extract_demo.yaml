@@ -1,0 +1,49 @@
+# =============================================================================
+# STATUS: PROPOSED / DEMO — NOT AUTHORED.
+# =============================================================================
+# BUILD 3 default/demo client config for the general-extract engine path. Anonymous
+# .xlsx extract uploads (POST /review/upload, non-Xero format) run the engine UNDER THIS
+# CONFIG — it is NOT the uploader's own tax settings. The results surface labels this
+# explicitly (source_kind="extract_review", config_scope="default_demo") and carries a
+# LOUD three-clause caveat: findings are unvalidated candidates, on a synthetically-proven
+# format, computed under this default config — rate/mapping-dependent findings should not be
+# relied on until a real client config is wired in.
+#
+# REUSE, NO NEW TAX RULE: every tax value below is COPIED VERBATIM from xero_demo.yaml
+# (applicable_gst_rate, tax_code_mappings). This build asserts NO new tax semantics; the
+# citation deferrals (DEBT-1) carry over unchanged. Only the identity (client_id/name) and
+# the source_system label differ. MUST NOT be treated as gate-clean / authored.
+# =============================================================================
+
+client_id: extract_demo                    # Must match the filename stem exactly.
+client_name: "Default demo configuration (not the uploader's)"
+gst_registration_number: ""                # Synthetic demo — no real GST reg number.
+applicable_gst_rate: 0.09                  # Copied from xero_demo (9% demo posture).
+
+source_system: extract                     # != "sap_b1" -> file-import client. Suppresses the
+                                           # SAP-default tax-code remap AND makes the sap_b1
+                                           # connection block optional (DEBT-9): a generic
+                                           # extract has no SAP, so no block is declared.
+
+# No sap_b1 block: file-import client (source_system != "sap_b1") — the SAP connection block
+# is optional at load (DEBT-9). No SAP is ever contacted on the extract path.
+
+period_defaults:
+  fiscal_year_start_month: 1
+
+custom_vat_groups: {}
+
+# Copied VERBATIM from xero_demo.yaml — same five demo categories, same canonical VatGroup
+# targets, same DEBT-1 citation deferral. No new mapping is introduced by this build.
+tax_code_mappings:
+  "STANDARD-RATED SUPPLIES": SR            # cite DEFERRED — Annex E SR row unconfirmed, see DEBT-1
+  "STANDARD-RATED PURCHASES": TX           # cite DEFERRED — Annex E TX row unconfirmed, see DEBT-1
+  "SR-NOGST (0%) [TEST]": SR               # cite DEFERRED — Annex E SR row unconfirmed, see DEBT-1
+  "ZR-BROKEN (9%) [TEST]": ZR              # cite DEFERRED — Annex E ZR row unconfirmed, see DEBT-1
+  "SI-STALE (8%) [TEST]": TX               # cite DEFERRED — Annex E TX row unconfirmed, see DEBT-1
+
+completeness_threshold: 0.10
+
+report:
+  reviewer_name: ""
+  firm_name: ""

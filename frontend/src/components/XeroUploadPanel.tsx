@@ -42,6 +42,11 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // to enable the checks a Xero export cannot run. Coverage FACT only — no IRAS rationale.
   const degraded = (coverage?.coverage_status ?? []).filter((r) => r.level !== "full");
   const findings = coverage?.queue ?? [];
+  // BUILD 3: the general-extract engine path ran under a DEFAULT DEMO config, not the uploader's.
+  // The LOUD three-clause caveat below is MANDATORY on this path (the honesty line) and is SCOPED
+  // to it — the Xero path (xero_f5_upload) must never show the default-config clause.
+  const isExtractReview =
+    coverage?.source_kind === "extract_review" || coverage?.config_scope === "default_demo";
 
   return (
     <div className="xero-upload">
@@ -62,6 +67,25 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
 
       {busy && <div className="loading">Reading export…</div>}
       {err && <div className="errorbox">{err}</div>}
+
+      {isExtractReview && (
+        <section className="extract-caveat callout warn" aria-label="Demo review caveat">
+          <strong>Demo review — read before relying on anything below.</strong>
+          <ol className="extract-caveat-clauses">
+            <li>Findings are <strong>unvalidated candidates</strong> for human review — not a verdict.</li>
+            <li>
+              Computed on an export format <strong>proven only against a synthetic sample</strong>;
+              real-client-export validation is open (GTM-gated).
+            </li>
+            <li>
+              This run used a <strong>default demo configuration, not your organisation's tax
+              settings</strong>. Any finding that depends on GST <strong>rate or tax-code mapping</strong>
+              is computed under the demo's settings and <strong>should not be relied on</strong> until
+              your real config is wired in. The structural/arithmetic checks stand on their own.
+            </li>
+          </ol>
+        </section>
+      )}
 
       {findings.length > 0 && (
         <section className="xero-findings findings-view" aria-label="Review findings">
