@@ -81,9 +81,14 @@ export interface SignResponse {
 }
 
 /*
- * Source-selector Xero branch (tsource-selector). The coverage-only upload contract —
- * mirrors api/app.py's UPLOAD_COVERAGE_KEYS / COVERAGE_ROW_KEYS (single source of truth).
- * Coverage is data-presence, never a validated review.
+ * Source-selector Xero branch. Two honest response shapes from POST /review/upload, keyed by
+ * `source_kind` (mirrors api/app.py's UPLOAD_COVERAGE_KEYS / XERO_UPLOAD_KEYS / COVERAGE_ROW_KEYS,
+ * the single source of truth):
+ *   - "extract_upload"  → COVERAGE-ONLY (no `queue`); the engine is not run.
+ *   - "xero_f5_upload"  → the engine IS run; `queue` carries the real (but UNVALIDATED)
+ *                          findings projected into the SHARED central-screen QueueItem shape
+ *                          (BUILD 2, A1). Coverage is data-presence; findings are candidates,
+ *                          never a validated review or a compliance verdict.
  */
 export interface CoverageStatusRow {
   check: string;
@@ -96,6 +101,8 @@ export interface UploadCoverageResponse {
   validation_status: string;
   disclaimer: string;
   coverage_status: CoverageStatusRow[];
+  // Present only on the "xero_f5_upload" (engine) branch — the shared central-screen queue.
+  queue?: QueueItem[];
 }
 
 // Same-origin in dev: Vite proxies `/api/*` → the uvicorn backend (see vite.config.ts).
@@ -227,11 +234,12 @@ export type CommandResponse =
     };
 
 /**
- * uploadExtract — POST a client .xlsx GST export to the COVERAGE-ONLY upload route (the
- * source-selector Xero branch). Raw-body upload (no multipart): the File is the request body
- * and its name rides as the `?filename=` query param for the server's `.xlsx` suffix gate.
- * Returns the per-check data-coverage preview. The engine is never run server-side — this
- * never hits GET /review or POST /command, so it cannot run the B1 review.
+ * uploadExtract — POST a client .xlsx GST export to the source-selector Xero upload route.
+ * Raw-body upload (no multipart): the File is the request body and its name rides as the
+ * `?filename=` query param for the server's `.xlsx` suffix gate. The server FORMAT-ROUTES:
+ * a real Xero IRAS-F5 export runs the engine and returns `queue` (real, UNVALIDATED findings
+ * in the shared central-screen shape); any other .xlsx stays coverage-only (no `queue`).
+ * Never hits GET /review or POST /command — it never touches the frozen B1 review (box-isolation).
  */
 export async function uploadExtract(file: File): Promise<UploadCoverageResponse> {
   const resp = await fetch(`${BASE}/review/upload?filename=${encodeURIComponent(file.name)}`, {

@@ -197,6 +197,38 @@ def serialize_queue_item(item: dict) -> dict[str, Any]:
     }
 
 
+def serialize_xero_queue(issues: list[dict]) -> list[dict[str, Any]]:
+    """Project engine detect-issues from an uploaded Xero F5 export into the SHARED
+    ``QueueItem`` rows the central review screen consumes (BUILD 2, A1 — same screen).
+
+    REUSES ``serialize_queue_item`` / ``check_reference`` — so the Xero E-checks (E2/E3/E4)
+    resolve to their REAL ``CHECK_REGISTRY`` ``iras_basis`` (the SAME citation the SAP path
+    shows for the same check), never manufactured. The Xero-only enrichments the agent-loop
+    dossier builder would add (``candidate_framing_text``, ``completeness``, decision-ledger
+    memory) are ABSENT here and render gracefully as ""/empty/"—" — nothing is invented.
+
+    ``finding_id`` uses the SAME semantics as the SAP path (``agent/dossier.py``):
+    ``detect:{error_code}:{doc_num}``. A same-(code, doc_num) collision collides IDENTICALLY
+    on both paths — a pre-existing property, deliberately NOT diverged on the Xero side.
+
+    Surfaces, never asserts: every row carries ``validation_status="unvalidated"``; no verdict,
+    no auto-correction, no write. The dark checks a Xero export cannot run are surfaced in
+    ``coverage_status`` (degraded/unavailable), NEVER fabricated into this queue.
+    """
+    items: list[dict[str, Any]] = []
+    for issue in issues:
+        code = issue.get("error_code")
+        item = {
+            "finding_id": f"detect:{code}:{issue.get('doc_num')}",
+            "check_id": code,
+            "finding_type": "deterministic",
+            # flatten_finding_card picks the payload bearing description/error_code (the issue).
+            "evidence": {"detect_issue": issue},
+        }
+        items.append(serialize_queue_item(item))
+    return items
+
+
 def build_review_payload(artifacts: DemoArtifacts) -> dict[str, Any]:
     """Assemble GET /review: client + period + F5 summary + the serialised queue.
 
