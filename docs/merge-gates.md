@@ -122,6 +122,7 @@ default path is scripted + token-free. The boundary stays at `orchestrator/` (un
 `api/`. No new CI grep is added.
 
 **Source-selector update (`POST /review/upload` landed — the `api/` → `feeders/` edge, 2026-06-29):**
+_(SUPERSEDED: Build 2 PR #84 / Build 3 PR #85 wired the engine over uploaded exports — this route's coverage-only, engine-never-runs state was the 2026-06-29 slice; retained here as history.)_
 the new coverage-only upload route adds the **only** new import edge for `api/`: `api/app.py` imports
 `feeders.extract_reader.ExtractChainReader` to build a COVERAGE-ONLY (data-presence) view over an
 uploaded `.xlsx` export. The existing `api/` rules are intact — `api/` still imports **no**

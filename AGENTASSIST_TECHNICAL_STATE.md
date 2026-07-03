@@ -2783,7 +2783,7 @@ wiring, gated on Lanes A + B); **T2.11 gates customer-facing**. *(C2 landed — 
 
 ---
 
-## §T-source-selector — source selector + coverage-only Xero upload (`frontend/src/Root.tsx` + `POST /review/upload`) (branch `tsource-selector`; D35; built ≠ validated — Xero branch COVERAGE-ONLY, engine execution over an uploaded extract DEFERRED)
+## §T-source-selector — source selector + coverage-only Xero upload (`frontend/src/Root.tsx` + `POST /review/upload`) (branch `tsource-selector`; D35; built ≠ validated — Xero branch COVERAGE-ONLY, engine execution over an uploaded extract DEFERRED) _(superseded — the engine now runs over uploaded exports; see §T-build2 / §T-build3. This section records the 2026-06-29 coverage-only slice as history.)_
 
 **No feeder is assumed at boot.** Previously the review UI booted straight into the frozen SBODEMOSG oracle (the GET `/review` path). The source selector makes the input source an EXPLICIT user choice: a new top-level `frontend/src/Root.tsx` renders a `SourceSelector` empty-state chooser (`frontend/src/components/SourceSelector.tsx`) and mounts no review surface until the user picks a source — the B1 oracle is no longer shown first. **`App.tsx` is UNCHANGED** — the empty state is realized by gating the EXISTING `<App/>` mount behind `Root` (so the existing `App` mount-time tests are preserved, not weakened), never by editing `App`.
 
@@ -3655,7 +3655,7 @@ distinct, weaker-than-the-next claim):
 > built ≠ hermetic ≠ offline-replay-validated ≠ adapter-round-trip-validated-on-synthetic ≠
 > real-client-export-validated ≠ accuracy-validated (T2.11)
 
-The Excel/CSV adapter (**T2.12**) is a **separate future layer**: its acceptance is a
+The Excel/CSV adapter (**T2.12**) is **BUILT & merged** (slice A, PR #54 — see the §T2.12 section below): its acceptance is a
 round-trip — `adapter(synthetic-export) == frozen fixtures` — and it carries a
 **format-assumption gap** (the synthetic export is our guess at the client's column shape)
 that closes only when a **real client export** is obtained. That gap is **GTM-gated, not
