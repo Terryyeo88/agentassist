@@ -23,6 +23,7 @@ and token-free.
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import tempfile
@@ -68,6 +69,8 @@ from feeders.xero_f5_reader import (
 )
 from ui.artifacts import VALIDATION_STATUS, DemoArtifacts, load_demo_artifacts
 from ui.sign import DEFAULT_OUTPUT_DIR, sign_working_paper
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(
     title="AgentAssist review surface (T6.1/T6.2 demo seam)",
@@ -283,28 +286,55 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
     try:
         dest = tmp_dir / f"upload{suffix}"
         dest.write_bytes(body)
+
+        # --- PARSE BOUNDARY (Option A positional split) --------------------------------
+        # ONLY reading/parsing the UNTRUSTED upload lives inside this try. A failure while
+        # detecting the format or CONSTRUCTING a reader over the file (bad zip, missing
+        # sheet, non-numeric cell, off-format) IS the client's file being unreadable → an
+        # honest 422. FORMAT ROUTING: a real Xero IRAS-F5 export ("Transactions by box
+        # number" sheet) uses the Xero reader; any other .xlsx (the synthetic documents/
+        # business_partners/listing shape) uses ExtractChainReader. is_xero_f5_workbook
+        # self-guards (an unreadable upload → False), so the only raisers here are the
+        # reader constructors + the Xero period parse.
         try:
-            # FORMAT ROUTING: a real Xero IRAS-F5 export ("Transactions by box number" sheet)
-            # goes down the engine path and returns REAL (but unvalidated) findings; any other
-            # .xlsx (the synthetic documents/business_partners/listing shape) stays on the
-            # UNCHANGED ExtractChainReader coverage-only path — byte-identical to before.
-            if is_xero_f5_workbook(dest):
-                return _xero_f5_review_response(dest)
-            # BUILD 3: the general-extract engine path is ON by default (global kill switch).
-            # Enabled → a non-Xero .xlsx runs the SAME chain via ExtractChainReader under the
-            # DEMO config and returns findings (extract_review). OFF → the pre-build coverage-only
-            # ExtractChainReader path, byte-identical to before.
+            is_xero = is_xero_f5_workbook(dest)
+            if is_xero:
+                reader = XeroF5ChainReader(dest)
+                xero_period = parse_review_period(dest)
+            else:
+                reader = ExtractChainReader(dest)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            # A parse failure on an UNTRUSTED upload (bad zip, missing sheet, bad cell, …)
+            # is a 422 client-input error — never a 500, and never our internal bug.
+            raise HTTPException(
+                status_code=422, detail=f"Could not read export: {exc}"
+            ) from exc
+
+        # --- ENGINE EXECUTION (below the parse boundary) -------------------------------
+        # run_chain / review / serialize / compile-access / coverage_status() derivation, over
+        # an ALREADY-PARSED file. A failure here is OUR bug, not the user's file → an honest
+        # 500, NEVER a mislabeled 422 "Could not read export". BUILD 3: the general-extract
+        # engine path is ON by default (global kill switch); OFF → the coverage-only path,
+        # byte-identical to before. The helpers' deliberate reconciliation-halt
+        # HTTPException(422)s re-raise unchanged (they are a client-input signal, not our bug).
+        try:
+            if is_xero:
+                return _xero_f5_review_response(reader, xero_period)
             if _extract_engine_enabled():
-                return _extract_review_response(dest)
-            reader = ExtractChainReader(dest)
+                return _extract_review_response(reader)
             coverage_status = [status.as_dict() for status in reader.coverage_status()]
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001
-            # Any parse failure on an UNTRUSTED upload (bad zip, missing sheet, …) is a
-            # 422 client-input error — never a 500.
+            log.exception("engine-internal failure on POST /review/upload")
             raise HTTPException(
-                status_code=422, detail=f"Could not read export: {exc}"
+                status_code=500,
+                detail=(
+                    "Internal error while processing this export — an application error, "
+                    "not a problem with your uploaded file."
+                ),
             ) from exc
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -317,8 +347,12 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
     }
 
 
-def _xero_f5_review_response(dest: Path) -> dict:
+def _xero_f5_review_response(reader, period: dict) -> dict:
     """Run the real (UNVALIDATED) engine review over an uploaded Xero IRAS-F5 export.
+
+    ``reader`` (``XeroF5ChainReader``) and ``period`` are constructed at the PARSE BOUNDARY in
+    ``post_review_upload`` and passed in, so this function is pure ENGINE EXECUTION — any failure
+    here is our internal bug over an already-parsed file (→ honest 500), never a mislabeled 422.
 
     Threads PR-A's XeroF5ChainReader through engine.review.review(): the deterministic chain
     (run_chain) surfaces the line-level E-check findings (E2/E3/E4 on the demo fixture); the
@@ -334,9 +368,6 @@ def _xero_f5_review_response(dest: Path) -> dict:
     SAP_PASSWORD env vars even though NO SAP call is made on this path (XeroF5ChainReader
     short-circuits every read). Making sap_b1 optional for non-SAP clients is deferred (PR-D).
     """
-    reader = XeroF5ChainReader(dest)
-    period = parse_review_period(dest)
-
     # Lazy imports keep api/ anthropic-free AT MODULE IMPORT (Inv-1): engine.review pulls
     # reasoning.reg2627, whose anthropic import is itself lazy — so importing api.app loads
     # neither; they resolve only when this endpoint actually runs.
@@ -391,9 +422,13 @@ def _derive_extract_period(reader) -> dict:
     return {"start": "1900-01-01", "end": "2999-12-31"}
 
 
-def _extract_review_response(dest: Path) -> dict:
+def _extract_review_response(reader) -> dict:
     """Run the real (UNVALIDATED) engine review over an uploaded GENERAL extract, under a
     DEMO/DEFAULT client config (BUILD 3 — general-extract path ON; global kill switch).
+
+    ``reader`` (``ExtractChainReader``) is constructed at the PARSE BOUNDARY in
+    ``post_review_upload`` and passed in, so this function is pure ENGINE EXECUTION — any failure
+    here is our internal bug over an already-parsed file (→ honest 500), never a mislabeled 422.
 
     Threads ``ExtractChainReader`` through ``engine.review.review()`` EXACTLY as the Xero branch
     does — NO chain/engine change. Findings are projected into the SHARED central-screen QueueItem
@@ -407,8 +442,6 @@ def _extract_review_response(dest: Path) -> dict:
     (Inv-5); no AI candidates; accuracy NOT validated (T2.11 unmoved). Synthetic-format at best;
     real-client-export validation stays GTM-gated.
     """
-    reader = ExtractChainReader(dest)
-
     # Lazy imports keep api/ anthropic-free AT MODULE IMPORT (Inv-1) — same posture as the Xero branch.
     from config.loader import load_client_config
     from engine.review import ReviewInputs, review
