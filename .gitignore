@@ -40,3 +40,5 @@ exploration-notes/t1.6-tool-outputs/*.json
 
 # Claude Code per-project memory (local only, not for version control)
 memory/
+
+!knowledge-base/etaxguide_gst_invoicenow_requirement.pdf
