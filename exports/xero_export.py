@@ -33,18 +33,31 @@ from pathlib import Path
 
 from exports.xero_crosswalk import to_annex_e
 
-# --- Xero import template column specs (header row 1, exact order) ----------
-# Required (*) columns per the Xero Invoices / Bills / Contacts import templates.
-# AccountCode is present-but-blank (client fills it in Xero). Description is a
-# required column on Invoices and an optional-but-populated column on Bills.
+# --- Xero import template column specs (header row 1, EXACT order) ----------
+# Xero import requires the FULL template column set, in Xero's exact order, with
+# unused columns present-but-blank. These are the complete ordered headers of the
+# real Xero Invoices / Bills templates; the SAP-derived values (see ``_SOURCED``)
+# land in their named positions and every other column is emitted "".
+# AccountCode is present-but-blank by ruling (the client assigns a Xero CoA code).
 INVOICE_COLUMNS = [
-    "ContactName", "InvoiceNumber", "InvoiceDate", "DueDate",
-    "Description", "Quantity", "UnitAmount", "AccountCode", "TaxType",
+    "ContactName", "EmailAddress", "POAddressLine1", "POAddressLine2",
+    "POAddressLine3", "POAddressLine4", "POCity", "PORegion", "POPostalCode",
+    "POCountry", "InvoiceNumber", "Reference", "InvoiceDate", "DueDate", "Total",
+    "InventoryItemCode", "Description", "Quantity", "UnitAmount", "Discount",
+    "AccountCode", "TaxType", "TaxAmount", "TrackingName1", "TrackingOption1",
+    "TrackingName2", "TrackingOption2", "Currency", "BrandingTheme",
 ]
 BILL_COLUMNS = [
-    "ContactName", "InvoiceNumber", "InvoiceDate", "DueDate",
-    "Description", "Quantity", "UnitAmount", "AccountCode", "TaxType",
+    "ContactName", "EmailAddress", "POAddressLine1", "POAddressLine2",
+    "POAddressLine3", "POAddressLine4", "POCity", "PORegion", "POPostalCode",
+    "POCountry", "InvoiceNumber", "InvoiceDate", "DueDate", "Total",
+    "InventoryItemCode", "Description", "Quantity", "UnitAmount", "AccountCode",
+    "TaxType", "TaxAmount", "TrackingName1", "TrackingOption1", "TrackingName2",
+    "TrackingOption2", "Currency",
 ]
+# The Xero Contacts import template is 73 columns; whether Xero accepts a
+# single-ContactName import is an OPEN confirm for Terry — left at 1 column here,
+# not guessed. See operational-backlog.md #16.
 CONTACT_COLUMNS = ["ContactName"]
 
 # Entity → raw capture filename (mirrors the ChainReader entity routing).
@@ -112,27 +125,37 @@ def line_qty_unit(line: dict) -> dict:
     return {"Quantity": _num(qty), "UnitAmount": _num(line.get("UnitPrice"))}
 
 
+# SAP-derived Xero columns (populated from the capture). Every OTHER template
+# column is emitted as an empty string — present-but-blank, no data invented.
+_SOURCED_COLUMNS = frozenset({
+    "ContactName", "InvoiceNumber", "InvoiceDate", "DueDate",
+    "Description", "Quantity", "UnitAmount", "TaxType",
+})
+
+
 def _doc_line_rows(doc: dict, columns: list) -> list:
-    """One Xero row per SAP document line (rows share the header fields)."""
+    """One Xero row per SAP document line, projected onto the full template.
+
+    SAP-derived values land under their named columns; every non-sourced template
+    column defaults to "" (present-but-blank). AccountCode is deliberately blank by
+    ruling (client assigns a Xero chart-of-accounts code on import).
+    """
     rows = []
-    contact = doc.get("CardName", "")
-    number = str(doc.get("DocNum", ""))
-    inv_date = xero_date(doc.get("DocDate", ""))
-    due_date = xero_date(doc.get("DocDueDate", ""))
+    header_fields = {
+        "ContactName": doc.get("CardName", ""),
+        "InvoiceNumber": str(doc.get("DocNum", "")),
+        "InvoiceDate": xero_date(doc.get("DocDate", "")),
+        "DueDate": xero_date(doc.get("DocDueDate", "")),
+    }
     for line in doc.get("DocumentLines", []):
         qu = line_qty_unit(line)
-        row = {
-            "ContactName": contact,
-            "InvoiceNumber": number,
-            "InvoiceDate": inv_date,
-            "DueDate": due_date,
-            "Description": line.get("ItemDescription", "") or "",
-            "Quantity": qu["Quantity"],
-            "UnitAmount": qu["UnitAmount"],
-            "AccountCode": "",  # BLANK by ruling — client assigns in Xero.
-            "TaxType": to_annex_e(line.get("VatGroup", "")),
-        }
-        rows.append({col: row[col] for col in columns})
+        derived = dict(header_fields)
+        derived["Description"] = line.get("ItemDescription", "") or ""
+        derived["Quantity"] = qu["Quantity"]
+        derived["UnitAmount"] = qu["UnitAmount"]
+        derived["TaxType"] = to_annex_e(line.get("VatGroup", ""))
+        # AccountCode stays "" (BLANK by ruling); all non-sourced columns "" too.
+        rows.append({col: derived.get(col, "") for col in columns})
     return rows
 
 
