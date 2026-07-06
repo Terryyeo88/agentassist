@@ -133,17 +133,44 @@ _SOURCED_COLUMNS = frozenset({
 })
 
 
-def _doc_line_rows(doc: dict, columns: list) -> list:
+# Companion fallback-provenance file (Option A). Records every Bill whose Xero
+# InvoiceNumber fell back to the internal DocNum because the supplier reference
+# (NumAtCard) was absent. Bookkeeping only — NOT a tax-semantics claim.
+FALLBACK_COLUMNS = ["DocNum", "ContactName", "Reason"]
+_FALLBACK_REASON = "NumAtCard absent — used internal DocNum"
+
+
+def resolve_bill_invoice_number(doc: dict) -> tuple:
+    """Bill InvoiceNumber = supplier ref (NumAtCard) if non-empty, else DocNum.
+
+    Returns ``(number, is_fallback)`` — ``is_fallback`` is True when NumAtCard was
+    absent/blank and the internal DocNum was substituted (a recorded fallback).
+    """
+    supplier_ref = (doc.get("NumAtCard") or "").strip()
+    if supplier_ref:
+        return supplier_ref, False
+    return str(doc.get("DocNum", "")), True
+
+
+def _doc_line_rows(doc: dict, columns: list, prefer_supplier_ref: bool = False) -> list:
     """One Xero row per SAP document line, projected onto the full template.
 
     SAP-derived values land under their named columns; every non-sourced template
     column defaults to "" (present-but-blank). AccountCode is deliberately blank by
     ruling (client assigns a Xero chart-of-accounts code on import).
+
+    When ``prefer_supplier_ref`` (the BILL path only), InvoiceNumber prefers the
+    supplier reference (NumAtCard) and falls back to DocNum; sales invoices leave it
+    False and keep DocNum.
     """
     rows = []
+    if prefer_supplier_ref:
+        invoice_number = resolve_bill_invoice_number(doc)[0]
+    else:
+        invoice_number = str(doc.get("DocNum", ""))
     header_fields = {
         "ContactName": doc.get("CardName", ""),
-        "InvoiceNumber": str(doc.get("DocNum", "")),
+        "InvoiceNumber": invoice_number,
         "InvoiceDate": xero_date(doc.get("DocDate", "")),
         "DueDate": xero_date(doc.get("DocDueDate", "")),
     }
@@ -172,11 +199,29 @@ def build_invoice_rows(docs: list) -> list:
 
 
 def build_bill_rows(docs: list) -> list:
-    """Purchase invoices → Xero Bills rows."""
+    """Purchase invoices → Xero Bills rows (InvoiceNumber prefers NumAtCard else DocNum)."""
     rows = []
     for doc in docs:
-        rows.extend(_doc_line_rows(doc, BILL_COLUMNS))
+        rows.extend(_doc_line_rows(doc, BILL_COLUMNS, prefer_supplier_ref=True))
     return rows
+
+
+def collect_bill_fallbacks(docs: list) -> list:
+    """One provenance record per Bill whose InvoiceNumber fell back to DocNum.
+
+    A bill is recorded iff its supplier reference (NumAtCard) was absent/blank, so the
+    internal DocNum was substituted. Order follows the document order (deterministic).
+    """
+    fallbacks = []
+    for doc in docs:
+        _number, is_fallback = resolve_bill_invoice_number(doc)
+        if is_fallback:
+            fallbacks.append({
+                "DocNum": str(doc.get("DocNum", "")),
+                "ContactName": doc.get("CardName", ""),
+                "Reason": _FALLBACK_REASON,
+            })
+    return fallbacks
 
 
 def build_contact_rows(*doc_lists: list) -> list:
@@ -225,9 +270,15 @@ def export_all(capture_dir, out_dir) -> dict:
     invoice_rows = build_invoice_rows(sales)
     bill_rows = build_bill_rows(purchases)
     contact_rows = build_contact_rows(sales, purchases)
+    # Companion provenance file: bills whose InvoiceNumber fell back to DocNum
+    # (supplier NumAtCard absent). Header always written; zero rows if none.
+    bill_fallbacks = collect_bill_fallbacks(purchases)
 
     return {
         "invoices": _write_csv(out / "invoices.csv", INVOICE_COLUMNS, invoice_rows),
         "bills": _write_csv(out / "bills.csv", BILL_COLUMNS, bill_rows),
         "contacts": _write_csv(out / "contacts.csv", CONTACT_COLUMNS, contact_rows),
+        "bills_fallbacks": _write_csv(
+            out / "bills.fallbacks.csv", FALLBACK_COLUMNS, bill_fallbacks
+        ),
     }
