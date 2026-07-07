@@ -851,7 +851,7 @@ On `GateFailure`: gate message + `exc.checked` printed to stderr; exit non-zero;
 
 ### Re-derivability boundary
 
-`rederivation_grade: "same-SAP-state"` in provenance. Re-running the deterministic chain against the same SAP data state reproduces `compile-output.json` byte-for-byte. **Offline replay from frozen fixtures is now achieved for the deterministic chain** (T2.12a, commit `b61f219`): `run_chain` off the frozen `tests/fixtures/sbodemosg-extract/` surfaces with SAP physically unreachable reproduces the same-session oracle byte-for-byte via `canonical_json`, so the `same-SAP-state` re-derivation gate holds offline for the deterministic path — see the §T2.12a section. Caveats: this proves freeze-sufficiency + offline reproducibility **only**; it is **not** accuracy-validation (T2.11), and it is a **test harness, not the product** Excel/CSV source adapter (T2.12, still future — see Appendix C #16).
+`rederivation_grade: "same-SAP-state"` in provenance. Re-running the deterministic chain against the same SAP data state reproduces `compile-output.json` byte-for-byte. **Offline replay from frozen fixtures is now achieved for the deterministic chain** (T2.12a, commit `b61f219`): `run_chain` off the frozen `tests/fixtures/sbodemosg-extract/` surfaces with SAP physically unreachable reproduces the same-session oracle byte-for-byte via `canonical_json`, so the `same-SAP-state` re-derivation gate holds offline for the deterministic path — see the §T2.12a section. Caveats: this proves freeze-sufficiency + offline reproducibility **only**; it is **not** accuracy-validation (T2.11), and it is a **test harness, not the product** Excel/CSV source adapter (T2.12 slice A — **BUILT & merged**, PR #54; synthetic-format-validated, real-client-export validation still GTM-gated — see Appendix C #16).
 
 ### Secrets policy
 
@@ -4285,8 +4285,9 @@ strategic or engineering conversation.
     `exploration-notes/t1.6-tool-outputs/` was removed in P3 — `audit/` is now the canonical
     sink. **Offline-replay CAPABILITY now demonstrated (T2.12a, commit `b61f219`, 2026-06-16):**
     full offline replay from frozen fixtures reproduces the deterministic chain's
-    `compile-output` byte-for-byte with SAP unreachable (see §T2.12a). The remaining future
-    work is the **product** Excel/CSV source adapter (T2.12) — not the replay capability;
+    `compile-output` byte-for-byte with SAP unreachable (see §T2.12a). The product Excel/CSV source adapter (T2.12 slice A) is
+    **BUILT & merged** (PR #54/`42ae31f`) — distinct from the offline-replay capability
+    (T2.12a); synthetic-format-validated, with real-client-export validation still GTM-gated.
     `rederivation_grade: "same-SAP-state"` is now reproducible offline for the deterministic
     path via the frozen `sbodemosg-extract` ground truth.
 
