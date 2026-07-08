@@ -45,6 +45,22 @@ Run this per-feature loop. The arrows are the order; each subagent is invoked by
 by auto-delegation from its description). Subagents run **inside your own session** — they are not
 separate terminals.
 
+**Step 0 — base-freshness guard (run first, before creating the worktree/branch).** Guards
+against the stale-local-master trap (starting work on a base already behind `origin/master`,
+which caused three merge-status mislabels + one rebase conflict). Run:
+
+```
+python scripts/preflight_base_check.py
+```
+
+It `git fetch`es `origin master` (updates the remote-tracking ref only — no merge, no checkout,
+no local mutation) and checks `git merge-base --is-ancestor origin/master HEAD`: **PASS** (exit 0)
+if HEAD contains `origin/master`, **REFUSE** (non-zero) if the base is behind — telling you to run
+`git pull origin master`. It **refuses only**: it never auto-pulls, auto-rebases, or auto-checks-out
+anything. If `origin` is unreachable (offline) it prints an honest `UNVERIFIED` notice and exits 0
+(warn-and-allow) rather than bricking offline work. Note: this catches a base that is stale **at
+start**; a base that goes stale **mid-build** is a separate, still-open gap (not covered here).
+
 ```
 recon-explorer        → read-only Phase-1 recon: map files, data flow, constraints, risks
    ↓
