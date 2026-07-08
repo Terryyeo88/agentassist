@@ -58,8 +58,10 @@ no local mutation) and checks `git merge-base --is-ancestor origin/master HEAD`:
 if HEAD contains `origin/master`, **REFUSE** (non-zero) if the base is behind — telling you to run
 `git pull origin master`. It **refuses only**: it never auto-pulls, auto-rebases, or auto-checks-out
 anything. If `origin` is unreachable (offline) it prints an honest `UNVERIFIED` notice and exits 0
-(warn-and-allow) rather than bricking offline work. Note: this catches a base that is stale **at
-start**; a base that goes stale **mid-build** is a separate, still-open gap (not covered here).
+(warn-and-allow) rather than bricking offline work. This is the default `--context=preflight`
+(the no-flag behaviour is unchanged). Note: it catches a base that is stale **at start**; for a base
+that goes stale **mid-build** (master advances while you work), run the companion **pre-PR-open**
+check below (`--context=prepr`).
 
 ```
 recon-explorer        → read-only Phase-1 recon: map files, data flow, constraints, risks
@@ -81,6 +83,20 @@ comprehension-explainer → plain-English walkthrough of the diff, read at merge
 
 `invariant-auditor` reads the ground truth from disk (recon notes / `git diff`), not the
 builder's summary. Treat its FLAGs as real.
+
+**Pre-PR-open — mid-flight staleness check (run right before `gh pr create`).** Master may have
+advanced while you worked (this forced the PR #92 rebase). Run:
+
+```
+python scripts/preflight_base_check.py --context=prepr
+```
+
+Same freshness primitive as step-0, mid-flight remediation: **PASS** (exit 0) if master has not
+advanced past your branch tip (safe to open the PR), **REBASE NEEDED** (non-zero) if it has —
+telling you to `git rebase origin/master` first (rebase, not a merge-style pull, keeps the branch a
+clean linear diff) and reporting how many commits master advanced. Offline → `UNVERIFIED`, exits 0
+(warn-and-allow). Like step-0 it **tells only** — it never auto-rebases, auto-pulls, or mutates
+anything, and it is advisory (no hook: skipping it doesn't block you).
 
 ---
 
