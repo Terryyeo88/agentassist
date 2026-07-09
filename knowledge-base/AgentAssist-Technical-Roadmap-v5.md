@@ -109,6 +109,36 @@ Revised from v4. v5 records what the diagnostic/fix runs of 2026-06-08 establish
   are a BEHAVIOUR CHANGE, not other regressions). Build 3 is the **LAST of Terry's four pivot
   decisions** — the four-decision batch is **COMPLETE (all four shipped; Build 3 merged via PR #85)**. See `AGENTASSIST_TECHNICAL_STATE.md`
   §T-build3.
+- **Xero SALES-INVOICE inbound feeder — built ≠ validated (branch `t-xero-sales-feeder`; UNMERGED).**
+  A SECOND inbound Xero lane alongside the F5 reader: `feeders/xero_sales_reader.py`
+  (`XeroSalesInvoiceChainReader`) + an `is_xero_sales_invoice_workbook` router detector parse a flat,
+  one-row-per-invoice-line Xero **sales-invoice** export (CSV or `.xlsx`), group by `InvoiceNumber`
+  into canonical sales-invoice documents (multi-line invoice → one doc, ordered lines, synthesized
+  `line_index`), and thread through the SAME deterministic engine chain via a new `POST /review/upload`
+  branch (`source_kind:"xero_sales_upload"`, `config_scope:"xero_sales_demo"`) checked AFTER the F5
+  detector (F5 keeps precedence) and BEFORE the `ExtractChainReader` fallback. Absent surfaces
+  (supplier master, listing, credit notes, purchase side, source PDFs) degrade honestly via the
+  EXISTING `derive_coverage_statuses` seam (NO_GST_REG unavailable, DUP_CLAIM/SEQ_GAP degraded);
+  `DocNum` carries the non-numeric `InvoiceNumber` string (XeroF5 treatment). The `tax_code_mappings`
+  are **Terry-authored against IRAS Annex E** (`knowledge-base/etaxguide_gst_invoicenow_requirement.pdf`,
+  Annex E) — provenance DISTINCT from the F5 demo's DEBT-1 deferral (that stays deferred). Per Terry's
+  **Option 3**: the **19** accepted rows (canonical VatGroup target already in
+  `config/loader.py` `_STANDARD_VAT_GROUPS`) ship now; **13** rows whose target is not yet canonical
+  (TXCA, SRCA-S, IM-N33, IM-ESS, IM-RE, SROVR-LVG, SRLVG, TX-ESS, SROVR-RS, TXRC-N33, TXRC-ESS,
+  TXRC-RE, TXRC-TS) are **PARKED as comments** pending **T2.21** vocabulary resumption (codes +
+  their F5 box routing) — a Xero line carrying one fails LOUD (`ValueError`) until then (sales-side
+  exposure: SRCA-S, SROVR-LVG, SRLVG, SROVR-RS). NEW loader mechanism: optional `out_of_scope_codes`
+  key (uppercased, validated disjoint from `tax_code_mappings`) — an out-of-scope TaxType line is
+  ACCEPTED-but-set-aside and its count/reason surfaces VISIBLY (`out_of_scope` field), never silent.
+  **Honest rung (T2.11 UNMOVED):** built → hermetically-tested → real-Xero-FORMAT parsing over
+  SYNTHETIC content — **NOT real-client-export-validated, NOT accuracy-validated**; frozen flags
+  UNCHANGED (`validation_status="unvalidated"`, `show_ai_candidates=False`); offline-replay
+  byte-identical (no chain change); `feeders/` stays a leaf. Test counts (branch): full pytest suite
+  **2170 passed, 1 skipped** (+13: `tests/test_xero_sales_feeder.py` ×10, `tests/test_xero_sales_upload.py`
+  ×1, `tests/test_xero_sales_loader_config.py` ×2). Open items (TX-ESS-vs-TX-E33 rename, the
+  face-rate-0 E-check coverage gap, real-vocabulary pinning) are tracked in
+  `KNOWN-LIMITATIONS-xero-demo.md` (XS-1/-2/-3/-4) and `exploration-notes/operational-backlog.md`
+  item #18. See `AGENTASSIST_TECHNICAL_STATE.md` §T-xero-sales-feeder.
 
 **Validated offline (deterministic chain) — on master:**
 - **T2.12a** — Ground-truth capture + offline-replay gate. Six SBODEMOSG read surfaces (S0–S5) frozen verbatim under `tests/fixtures/sbodemosg-extract/` + same-session `_replay-oracle.compiled.json` + `capture-manifest.json` (per-fixture SHA-256 + `source_function`); EOL pinned (`.gitattributes eol=lf`); hermetic integrity test (capture `63bf32d`/`0084031`). **Offline-replay gate PASSED** (`b61f219`): `run_chain` off the frozen fixtures with SAP unreachable == the oracle byte-for-byte via `canonical_json`, so `rederivation_grade: "same-SAP-state"` is achieved offline for the deterministic path. **Honest:** proves freeze-sufficiency + offline reproducibility ONLY — NOT accuracy (T2.11), NOT the Excel adapter (T2.12); **S4 (reasoning-pass surface) out of scope** (frozen, not replay-validated); test harness, not the product adapter (`orchestrator/` untouched). This is the **validation substrate** — SOP step 2 live-recon → fixture recon, step 5 seed-live/chain-acceptance → offline-replay acceptance (PDF-render retained); **B1 expendable for the deterministic path**. Honest-status ladder: built ≠ hermetic ≠ offline-replay-validated ≠ adapter-round-trip-validated-on-synthetic ≠ real-client-export-validated ≠ accuracy-validated (T2.11). See T2.12a entry.
