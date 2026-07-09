@@ -1,0 +1,106 @@
+# =============================================================================
+# STATUS: DEMO — Terry-AUTHORED mapping (IRAS Annex E). NOT real-client-validated.
+# =============================================================================
+# Inbound Xero SALES-INVOICE feeder (xero_sales) demo client config. Pairs with the
+# feeder feeders/xero_sales_reader.py and the synthetic fixture:
+#   tests/fixtures/xero-sales-export/AgentAssist_Xero_SalesInvoices_2026-04-01_to_2026-06-30.xlsx
+# Synthetic data in the Xero sales-invoice export format — no PII, SGD only.
+#
+# PROVENANCE (differs from xero_demo.yaml's DEBT-1 deferral): the tax_code_mappings
+# below are TERRY-AUTHORED against IRAS Annex E
+#   (knowledge-base/etaxguide_gst_invoicenow_requirement.pdf, Annex E).
+# This is the FIRST slice: only the 19 mapping rows whose canonical VatGroup target is
+# already in config/loader.py _STANDARD_VAT_GROUPS load here. 13 further Terry-mapped
+# codes are PARKED (see the block at the bottom) pending T2.21 vocabulary resumption
+# (adding the codes to _STANDARD_VAT_GROUPS + their F5 box routing) — Terry's timeline.
+#
+# HONEST RUNG (T2.11): real-Xero-FORMAT parsing over SYNTHETIC content. NOT real-client
+# validated (the exact real column-header set / TaxType vocabulary still need pinning
+# against a genuine export); NOT accuracy-validated.
+#
+# AUDIT-TRAIL NOTE: the IRAS Annex E "Rate" column records the document-FACE rate, not
+# the accounted rate. Rates are NOT configured here (applicable_gst_rate is the single
+# client rate); this note is provenance only.
+# =============================================================================
+
+client_id: xero_sales_demo                 # Must match the filename stem exactly.
+client_name: "Xero Sales Demo Pte Ltd"
+gst_registration_number: ""                # Synthetic demo — no real GST reg number.
+applicable_gst_rate: 0.09                  # Fixture is 9% data.
+
+source_system: xero_sales                  # != "sap_b1" -> file-import client. Suppresses the
+                                           # SAP-default tax-code remap AND makes the sap_b1
+                                           # connection block optional (DEBT-9): a Xero client
+                                           # has no SAP, so no block is declared.
+
+# No sap_b1 block: file-import (Xero) client — source_system != "sap_b1" makes the SAP
+# connection block optional at load (DEBT-9). No SAP is ever contacted on this path.
+
+period_defaults:
+  fiscal_year_start_month: 1
+
+custom_vat_groups: {}
+
+# TERRY-AUTHORED (IRAS Annex E) Xero TaxType -> canonical VatGroup. Keys UPPER (the loader
+# uppercases on load; runtime match is .strip().upper()). Values validated against
+# config/loader.py _STANDARD_VAT_GROUPS. These are the 19 rows whose target is already
+# canonical; the other 13 are PARKED (bottom of file).
+tax_code_mappings:
+  "DEEMED SUPPLIES": DS
+  "DISALLOWED EXPENSES": BL
+  "EXEMPT PURCHASES": EP
+  "IMPORTS UNDER A SPECIAL SCHEME": ME
+  "IMPORTS UNDER IGDS (INPUT TAX CLAIM)": IGDS
+  "IMPORTS UNDER IGDS (NO INPUT TAX CLAIM)": IGDS
+  "IMPORTS: TAXABLE SUPPLIES": IM
+  "NON-REGULATION 33 EXEMPT SUPPLIES": ESN33
+  "OUT OF SCOPE PURCHASES": OP
+  "OUT OF SCOPE SUPPLIES": OS
+  "PARTIALLY EXEMPT TRADERS NON-REGULATION 33 EXEMPT": TX-N33
+  "PARTIALLY EXEMPT TRADERS RESIDUAL INPUT TAX": TX-RE
+  "PARTIALLY EXEMPT TRADERS STANDARD-RATED PURCHASES": TX
+  "PURCHASES FROM NON-GST REGISTERED SUPPLIERS": NR
+  "REGULATION 33 EXEMPT SUPPLIES": ES33
+  "STANDARD-RATED PURCHASES": TX
+  "STANDARD-RATED SUPPLIES": SR
+  "ZERO-RATED PURCHASES": ZP
+  "ZERO-RATED SUPPLIES": ZR
+
+# ACCEPTED-but-set-aside Xero TaxType strings (Terry's footnote): a line carrying one of these
+# is accepted, EXCLUDED from GST categorisation, and its count/reason surfaces visibly
+# (feeders/xero_sales_reader.py out_of_scope_summary). Validated disjoint from tax_code_mappings.
+out_of_scope_codes:
+  - "Bad Debt Recovery"
+  - "Bad Debt Relief"
+  - "Tourist Refund Claim"
+  - "No Tax"
+
+# -----------------------------------------------------------------------------
+# PARKED — pending T2.21 vocabulary resumption (Terry). These 13 Terry-authored rows map to
+# canonical VatGroup codes NOT YET in config/loader.py _STANDARD_VAT_GROUPS, so they cannot load
+# until the code set (+ their F5 box routing) is authored. Kept here as an audit trail ONLY —
+# they are COMMENTS, never loaded. A Xero sales line carrying any of these fails LOUD in the
+# reader (unmapped TaxType) until T2.21 resumes — the documented, accepted behaviour.
+#
+# OPEN (Terry): TX-ESS below is a POSSIBLE RENAME of the existing TX-E33 — unresolved.
+#
+#   "Customer Accounting Purchases": TXCA
+#   "Customer Accounting Supplies by supplier": SRCA-S
+#   "Imports: non-regulation 33 exempt supplies": IM-N33
+#   "Imports: regulation 33 exempt supplies": IM-ESS
+#   "Imports: taxable & exempt supplies": IM-RE
+#   "LVG - electronic marketplace/redeliverer": SROVR-LVG
+#   "LVG - own supply": SRLVG
+#   "Partially Exempt Traders Regulation 33 Exempt": TX-ESS   # possible rename of TX-E33 (open)
+#   "Remote services - electronic marketplace": SROVR-RS
+#   "Reverse charge: NonRegulation33 exempt supply": TXRC-N33
+#   "Reverse charge: Regulation 33 exempt supply": TXRC-ESS
+#   "Reverse charge: taxable & exempt supply": TXRC-RE
+#   "Reverse charge: taxable supply @ 9%": TXRC-TS
+# -----------------------------------------------------------------------------
+
+completeness_threshold: 0.10
+
+report:
+  reviewer_name: ""
+  firm_name: ""

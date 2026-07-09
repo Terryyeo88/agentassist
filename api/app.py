@@ -67,6 +67,10 @@ from feeders.xero_f5_reader import (
     is_xero_f5_workbook,
     parse_review_period,
 )
+from feeders.xero_sales_reader import (
+    XeroSalesInvoiceChainReader,
+    is_xero_sales_invoice_workbook,
+)
 from ui.artifacts import VALIDATION_STATUS, DemoArtifacts, load_demo_artifacts
 from ui.sign import DEFAULT_OUTPUT_DIR, sign_working_paper
 
@@ -134,6 +138,17 @@ XERO_UPLOAD_KEYS: tuple[str, ...] = (
 EXTRACT_REVIEW_KEYS: tuple[str, ...] = (
     "source_kind", "validation_status", "disclaimer", "coverage_status", "queue", "config_scope",
 )
+
+# POST /review/upload INBOUND XERO SALES-INVOICE branch (xero_sales, option-3 slice) response
+# contract: the extract-review keys PLUS `out_of_scope` — the visible out-of-scope-lines note
+# (count/by_code/reason) for lines carrying an accepted-but-set-aside TaxType (e.g. "No Tax").
+# Run through the SAME chain via XeroSalesInvoiceChainReader under the Terry-authored
+# `xero_sales_demo` config; `config_scope="xero_sales_demo"`. source_kind is "xero_sales_upload".
+XERO_SALES_REVIEW_KEYS: tuple[str, ...] = (
+    "source_kind", "validation_status", "disclaimer", "coverage_status", "queue",
+    "config_scope", "out_of_scope",
+)
+OUT_OF_SCOPE_KEYS: tuple[str, ...] = ("count", "by_code", "reason")
 
 # Global kill switch (BUILD 3) — DEFAULT ON. Disable globally, without a code change, by setting
 # AGENTASSIST_EXTRACT_ENGINE to a falsey token (0/off/false/no). GLOBAL ONLY: an anonymous extract
@@ -298,9 +313,19 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
         # reader constructors + the Xero period parse.
         try:
             is_xero = is_xero_f5_workbook(dest)
+            # xero_sales is checked AFTER F5 (F5 keeps precedence) and BEFORE the Extract
+            # fallback — a flat sales-invoice sheet is neither the F5 box-number sheet nor the
+            # three-sheet extract shape, so without this branch it would hit ExtractChainReader
+            # and hard-fail on the missing documents/business_partners/listing sheets.
+            is_xero_sales = (not is_xero) and is_xero_sales_invoice_workbook(dest)
             if is_xero:
                 reader = XeroF5ChainReader(dest)
                 xero_period = parse_review_period(dest)
+            elif is_xero_sales:
+                # A TaxType the client neither maps nor marks out-of-scope makes the reader raise
+                # ValueError — that is the USER'S FILE carrying an unmapped/parked code, an honest
+                # 422 at the parse boundary (the committed config is tested to load clean).
+                reader = _build_xero_sales_reader(dest)
             else:
                 reader = ExtractChainReader(dest)
         except HTTPException:
@@ -322,6 +347,8 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
         try:
             if is_xero:
                 return _xero_f5_review_response(reader, xero_period)
+            if is_xero_sales:
+                return _xero_sales_review_response(reader)
             if _extract_engine_enabled():
                 return _extract_review_response(reader)
             coverage_status = [status.as_dict() for status in reader.coverage_status()]
@@ -466,6 +493,73 @@ def _extract_review_response(reader) -> dict:
         "coverage_status": coverage_status,
         "queue": queue,
         "config_scope": "default_demo",
+    }
+
+
+def _build_xero_sales_reader(source):
+    """Construct the inbound Xero sales-invoice reader over an uploaded export.
+
+    The TaxType -> VatGroup mapping + out_of_scope_codes are read from the Terry-authored
+    ``xero_sales_demo`` config (IRAS Annex E). The reader holds NO table of its own — the config
+    is the authority. A TaxType the client neither maps nor marks out-of-scope makes the reader
+    raise ValueError; at the parse boundary that is the client's file carrying an unmapped/parked
+    code → an honest 422 (the committed config is tested to load clean, so a config-load failure
+    is not the expected raiser here).
+    """
+    from config.loader import load_client_config
+
+    cfg = load_client_config("xero_sales_demo", check_connectivity=False)
+    return XeroSalesInvoiceChainReader(
+        source,
+        tax_code_mappings=cfg.effective_tax_code_mappings,
+        out_of_scope_codes=cfg.out_of_scope_codes,
+    )
+
+
+def _xero_sales_review_response(reader) -> dict:
+    """Run the real (UNVALIDATED) engine review over an uploaded inbound Xero SALES-INVOICE export.
+
+    ``reader`` (``XeroSalesInvoiceChainReader``) is constructed at the PARSE BOUNDARY in
+    ``post_review_upload`` and passed in, so this function is pure ENGINE EXECUTION — any failure
+    here is our internal bug over an already-parsed file (→ honest 500), never a mislabeled 422.
+
+    Threads the reader through ``engine.review.review()`` EXACTLY as the Xero-F5 / general-extract
+    branches do — NO chain/engine change. Findings project into the SHARED central-screen QueueItem
+    shape (``serialize_xero_queue``); the surfaces a sales-only export lacks (supplier master,
+    listing, credit notes, purchase side, source PDFs) degrade honestly in ``coverage_status``
+    (NO_GST_REG unavailable, DUP_CLAIM/SEQ_GAP degraded), never fabricated. The out-of-scope-lines
+    note is surfaced VISIBLY in ``out_of_scope`` (count/by_code/reason).
+
+    HONEST STATUS: real-Xero-FORMAT findings over (here) SYNTHETIC data — CANDIDATES, never
+    verdicts. validation_status stays "unvalidated" (Inv-5); no AI candidates; the mapping is
+    Terry-authored (IRAS Annex E); accuracy NOT validated (T2.11 unmoved). ``config_scope`` marks
+    that the review ran under the ``xero_sales_demo`` config (13 further Xero codes are PARKED).
+    """
+    # Lazy imports keep api/ anthropic-free AT MODULE IMPORT (Inv-1) — same posture as the other branches.
+    from config.loader import load_client_config
+    from engine.review import ReviewInputs, review
+
+    cfg = load_client_config("xero_sales_demo", check_connectivity=False)
+    period = _derive_extract_period(reader)  # a sales export carries no "for the period …" line
+    inputs = ReviewInputs(line_source=lambda: [], provider=None, reader=reader)
+    result = review(cfg, period, inputs)
+    if result.status != "completed" or result.compile_output is None:
+        # A reconciliation halt on an untrusted upload is a client-input error, never a 500.
+        raise HTTPException(
+            status_code=422,
+            detail="Review could not complete over this export (reconciliation halted).",
+        )
+
+    queue = serialize_xero_queue(result.compile_output["detect"]["issues"])
+    coverage_status = [status.as_dict() for status in reader.coverage_status()]
+    return {
+        "source_kind": "xero_sales_upload",
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": DISCLAIMER,
+        "coverage_status": coverage_status,
+        "queue": queue,
+        "config_scope": "xero_sales_demo",
+        "out_of_scope": reader.out_of_scope_summary(),
     }
 
 

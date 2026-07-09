@@ -170,6 +170,11 @@ class ClientConfig:
     source_system: str = "sap_b1"
     # Source tax code (uppercase) -> canonical VatGroup, as declared in the YAML.
     tax_code_mappings: dict = field(default_factory=dict)
+    # Source tax codes (uppercase) that are ACCEPTED but set aside from GST categorisation —
+    # never mapped to a VatGroup (e.g. Xero "No Tax"). Used by the xero_sales inbound feeder to
+    # keep an out-of-scope line visible-but-uncategorised. Optional; empty for every other client.
+    # Validated disjoint from tax_code_mappings keys (a code is EITHER mapped OR out-of-scope).
+    out_of_scope_codes: frozenset = field(default_factory=frozenset)
     # GST scheme-status flags (T2.18) — flat, scheme-LEVEL participation facts,
     # all default OFF. These are distinct from per-VatGroup-code treatment (T2.2).
     # This task adds NO check logic; downstream D+ checks (3E.1, ME/MC reverse
@@ -229,6 +234,8 @@ def load_client_config(
      10. Validate GST scheme-status flags (T2.18) — actively_makes_exempt_supplies,
          participates_in_mes, participates_in_igds, reverse_charge_applicable must
          each be boolean; absent/null defaults to False.
+     11. Validate out_of_scope_codes (xero_sales feeder) — optional list of tax-code
+         strings, uppercased and required DISJOINT from tax_code_mappings keys.
 
     Args:
         client_id:          Filename stem in config/clients/ (e.g. "sbodemosg").
@@ -456,6 +463,28 @@ def load_client_config(
             )
         scheme_flags[_flag] = _val
 
+    # --- Step 11: out_of_scope_codes (xero_sales inbound feeder; T2.12-Xero option-3) ---
+
+    # Optional list of source tax-code strings that are ACCEPTED but set aside from GST
+    # categorisation (never mapped to a VatGroup). Uppercased like tax_code_mappings keys so the
+    # runtime lookup (.strip().upper()) is case-insensitive, and validated DISJOINT from the
+    # mapping keys — a code is EITHER mapped to a VatGroup OR out-of-scope, never both. `or []`
+    # handles the key being absent or explicitly null.
+    raw_oos = raw.get("out_of_scope_codes") or []
+    if not isinstance(raw_oos, list):
+        raise ConfigError(
+            f"out_of_scope_codes in '{client_id}.yaml' must be a list of tax-code strings, "
+            f"got: {raw_oos!r}"
+        )
+    out_of_scope_codes: frozenset = frozenset(str(c).strip().upper() for c in raw_oos)
+    overlap = sorted(out_of_scope_codes & set(tax_code_mappings))
+    if overlap:
+        raise ConfigError(
+            f"out_of_scope_codes in '{client_id}.yaml' overlap tax_code_mappings key(s): "
+            f"{overlap}.\n"
+            f"  A tax code is EITHER mapped to a VatGroup OR out-of-scope, never both."
+        )
+
     return ClientConfig(
         client_id=raw["client_id"],
         client_name=raw["client_name"],
@@ -474,6 +503,7 @@ def load_client_config(
         show_ai_candidates=show_ai,
         source_system=source_system,
         tax_code_mappings=tax_code_mappings,
+        out_of_scope_codes=out_of_scope_codes,
         # Scheme-status flags (T2.18); keys match the kwarg names exactly.
         **scheme_flags,
     )
