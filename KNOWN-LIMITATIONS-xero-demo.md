@@ -89,11 +89,40 @@ did NOT edit it. Terry authors its amendment as a SEPARATE commit onto this bran
 once the amendment lands the suite is fully green. This branch is **UNMERGED**; Build 2 closes NONE
 of the debts below.
 
+**XERO-SALES INBOUND status (branch `t-xero-sales-feeder`, built ≠ validated, UNMERGED).** A NEW,
+SEPARATE inbound path — an INBOUND Xero **sales-invoice** feeder — now EXISTS alongside the F5
+reader: `feeders/xero_sales_reader.py` (`XeroSalesInvoiceChainReader`) parses a flat,
+one-row-per-invoice-line Xero sales-invoice export (CSV or `.xlsx`), groups by `InvoiceNumber` into
+canonical sales-invoice documents (multi-line invoice → one doc, ordered lines, synthesized
+`line_index`), and threads through the SAME engine chain via a new `POST /review/upload` branch
+(`source_kind:"xero_sales_upload"`, `config_scope:"xero_sales_demo"`) checked AFTER the F5 detector
+(`is_xero_f5_workbook` keeps precedence) and BEFORE the `ExtractChainReader` fallback, via the new
+`is_xero_sales_invoice_workbook` router detector. Absent surfaces (supplier master, listing, credit
+notes, purchase side, source PDFs) degrade honestly through the EXISTING `derive_coverage_statuses`
+seam — **NO_GST_REG unavailable, DUP_CLAIM/SEQ_GAP degraded** — mirroring `xero_f5_reader.py`;
+`DocNum` carries the non-numeric `InvoiceNumber` string (XeroF5 treatment). Its `tax_code_mappings`
+are **TERRY-AUTHORED against IRAS Annex E** (`knowledge-base/etaxguide_gst_invoicenow_requirement.pdf`,
+Annex E) — provenance **DISTINCT** from the F5 demo's DEBT-1 deferral (that stays deferred).
+Verified by `tests/test_xero_sales_feeder.py` (10), `tests/test_xero_sales_upload.py` (1),
+`tests/test_xero_sales_loader_config.py` (2) over the committed synthetic fixture
+`tests/fixtures/xero-sales-export/` (+ helper `tests/synth_xero_sales_export.py`); full suite
+**2170 passed, 1 skipped** (+13). **HONEST RUNG (T2.11 UNMOVED):** built → hermetically-tested →
+real-Xero-FORMAT parsing over SYNTHETIC content — **NOT real-client-export-validated, NOT
+accuracy-validated**; frozen flags UNCHANGED (`validation_status="unvalidated"`,
+`show_ai_candidates=False`); offline-replay byte-identical (no chain change). This branch is
+**UNMERGED**; it closes NONE of the debts below and carries its own new debt (XS-1/-2/-3 below).
+
 Companion files:
 - Reader: `feeders/xero_f5_reader.py` (PR-A — real-FORMAT, SYNTHETIC-data, UNWIRED)
 - Tests: `tests/test_xero_f5_reader.py` (PR-A — 8 tests over the fixture)
 - Config: `config/clients/xero_demo.yaml` (PROPOSED/DEMO, deferred citations)
 - Fixture: `tests/fixtures/xero-f5-export/AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx`
+- Inbound sales reader: `feeders/xero_sales_reader.py` (`XeroSalesInvoiceChainReader` +
+  `is_xero_sales_invoice_workbook`; real-FORMAT over SYNTHETIC data, engine-wired, UNMERGED)
+- Sales config: `config/clients/xero_sales_demo.yaml` (Terry-authored IRAS Annex E — 19 rows
+  loaded, 13 PARKED as comments; `out_of_scope_codes` ×4)
+- Sales tests: `tests/test_xero_sales_feeder.py` (10), `tests/test_xero_sales_upload.py` (1),
+  `tests/test_xero_sales_loader_config.py` (2); fixture `tests/fixtures/xero-sales-export/`
 
 Ground truth for the line/file references below is re-recon commit `294490e`;
 re-verify before acting on any line number.
@@ -242,3 +271,42 @@ where any value other than `"sap_b1"` suppresses the SAP SO/SI defaults.
 *RESOLVED (`8daf757`):* the docstring is corrected and `source_system` is now formally
 LOAD-BEARING — it drives `effective_tax_code_mappings` AND (as of DEBT-9) gates the `sap_b1`
 block/creds requirement. This debt is now CLOSED.
+
+---
+
+## Xero-SALES inbound debt items (branch `t-xero-sales-feeder`, UNMERGED)
+
+These are DISTINCT from the F5 DEBT-1..10 items above — the inbound sales-invoice feeder
+(`feeders/xero_sales_reader.py` + `config/clients/xero_sales_demo.yaml`) carries its own debt.
+Cross-ref `exploration-notes/operational-backlog.md` item #18 and
+`AGENTASSIST_TECHNICAL_STATE.md` §T-xero-sales-feeder.
+
+### XS-1 — 13 Terry-mapped Xero sales TaxTypes PARKED pending T2.21 vocabulary resumption
+Terry ruled **Option 3**: ship the **19** accepted `tax_code_mappings` rows now (canonical VatGroup
+target already in `config/loader.py` `_STANDARD_VAT_GROUPS`), and **PARK 13** rows whose target is
+NOT yet a canonical code — TXCA, SRCA-S, IM-N33, IM-ESS, IM-RE, SROVR-LVG, SRLVG, TX-ESS, SROVR-RS,
+TXRC-N33, TXRC-ESS, TXRC-RE, TXRC-TS — pending **T2.21** (adding the codes to `_STANDARD_VAT_GROUPS`
++ their F5 box routing; Terry's timeline). The parked 13 live as **COMMENTS** in
+`config/clients/xero_sales_demo.yaml` (never loaded); a Xero sales line carrying one **fails LOUD**
+(`ValueError`) at the parse boundary until T2.21 resumes — the documented, accepted behaviour.
+**Sales-side exposure:** SRCA-S, SROVR-LVG, SRLVG, SROVR-RS lines fail loud until then. **Owner:
+Terry.** This is a PARK, not a bug — the mapping is Terry-authored (IRAS Annex E), NOT DEBT-1's
+deferral.
+
+### XS-2 — TX-ESS possible rename of the existing TX-E33 (Terry open question)
+`"Partially Exempt Traders Regulation 33 Exempt": TX-ESS` (parked, XS-1) is a **POSSIBLE RENAME** of
+the already-canonical `TX-E33`. Unresolved — recorded as Terry's open question, to be reconciled
+when T2.21 authors the parked codes. Not resolved here.
+
+### XS-3 — E-check coverage-gap finding (report-only, for Terry)
+The face-rate-0 code families — reverse-charge `TXRC-*` and import `IM*`/`IGDS`/`ME` — sit **OUTSIDE
+every E-check's `vg` set** (`_STANDARD_RATE_SALES={SR,DS}`, E4 only `{SR,TX}`). Consequence on a
+`TaxAmount=0` line: they produce **NO false positives**, but they also get **NO E-check coverage at
+all** — **uncovered, NOT validated-and-passed**. This is a report-only finding surfaced for Terry, not
+a code change; do not read absence-of-flag on these families as a pass. **Owner: Terry.**
+
+### XS-4 — real-Xero vocabulary / column-header pinning still PENDING
+The feeder parses the real Xero sales-invoice EXPORT FORMAT over SYNTHETIC content only. The exact
+real column-header set / TaxType vocabulary have **NOT** been pinned against a genuine client export
+(same GTM gate as the inbound F5 DEBT-3). Until then: demo only, real-Xero-FORMAT over SYNTHETIC
+data, NOT real-client-export-validated and NOT accuracy-validated.
