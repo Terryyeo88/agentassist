@@ -1,0 +1,6 @@
+ContactName,InvoiceNumber,InvoiceDate,DueDate,Description,Quantity,UnitAmount,AccountCode,TaxType,TaxAmount,LineAmount,Currency,Total
+Acme Pte Ltd,INV-2001,2026-04-05,,Consulting services,1,10000,200,Standard-Rated Supplies,900,10000,SGD,21800
+Acme Pte Ltd,INV-2001,2026-04-05,,Support retainer,1,10000,200,Standard-Rated Supplies,900,10000,SGD,21800
+Borealis Pte Ltd,INV-2002,2026-04-10,,Export goods,1,5000,201,Zero-Rated Supplies,0,5000,SGD,5000
+Cresco Pte Ltd,INV-2003,2026-05-01,,Advisory,1,3000,200,Standard-Rated Supplies,270,3000,SGD,3370
+Cresco Pte Ltd,INV-2003,2026-05-01,,Out-of-scope disbursement,1,100,260,No Tax,0,100,SGD,3370
