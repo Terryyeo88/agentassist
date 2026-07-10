@@ -239,11 +239,17 @@ def review(
     # --- Phase 3: Source-document cross-reference pass (optional) ---
 
     doc_candidates: list | None = None
+    doc_legibility_rows: list | None = None
     if inputs.provider is not None:
         from documents.doc_pass import run_documents_pass  # noqa: PLC0415
         si_lines = inputs.line_source()
+        # T2.14: collect "manual review required" rows for illegible documents;
+        # they surface on the ungated coverage section, not the gated candidate
+        # stream. run_documents_pass skips reconcile for an illegible document.
+        doc_legibility_rows = []
         doc_candidates = run_documents_pass(
-            si_lines, inputs.provider, period["start"], period["end"]
+            si_lines, inputs.provider, period["start"], period["end"],
+            legibility_rows=doc_legibility_rows,
         )
 
     # --- Phase 4: Annual analytical review pass (optional, non-gating) ---
@@ -272,6 +278,7 @@ def review(
         judgment_artefact=reasoning_artefact,
         document_candidates=doc_candidates,
         analytical_review_data=analytical_review_data,
+        document_legibility_rows=doc_legibility_rows,
     )
     render_pdf(model, pdf_path)
 
