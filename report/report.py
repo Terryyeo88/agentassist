@@ -143,6 +143,7 @@ def build_report(
     judgment_artefact: dict | None = None,
     document_candidates: list | None = None,
     analytical_review_data: dict | None = None,
+    document_legibility_rows: list | None = None,
 ) -> ReportModel:
     """Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
@@ -171,6 +172,11 @@ def build_report(
                            run_documents_pass().  None means the documents pass did
                            not run and the unified section notes "not examined".
                            Defaults to None so existing callers are unaffected.
+        document_legibility_rows: Optional list of coverage-style rows (T2.14) for
+                           documents routed to "manual review required" by the
+                           legibility gate. Appended to the ungated Deterministic
+                           Check Coverage section so a reviewer sees them even when
+                           show_ai_candidates is False. Defaults to None (no rows).
 
     Returns:
         ReportModel: A fully populated model ready to be passed to render_pdf().
@@ -201,6 +207,17 @@ def build_report(
         analytical_review_data,
         show=(analytical_review_data is not None),
     )
+
+    # T2.14: the deterministic-check coverage section (2B/2C) is the ungated
+    # surface. Append any document-legibility "manual review required" rows here
+    # so they render even when show_ai_candidates is False. Reads a COPY of
+    # compile_output's rows (build_check_coverage_section) and adds engine-level
+    # legibility rows — compile_output / the offline-replay oracle is untouched.
+    coverage_sec = build_check_coverage_section(compile_output)
+    if document_legibility_rows:
+        coverage_sec = CheckCoverageSection(
+            rows=[*coverage_sec.rows, *document_legibility_rows]
+        )
 
     return ReportModel(
         cover=build_cover_section(
@@ -237,6 +254,6 @@ def build_report(
         # T2.16: analytical review section; show=False when pass did not run.
         analytical_review=analytical_sec,
         # T2.12-2C: dedicated deterministic-check data-coverage section (2B's
-        # check_coverage); empty/no-op when the reader exposed no coverage seam.
-        check_coverage=build_check_coverage_section(compile_output),
+        # check_coverage), plus any T2.14 document-legibility manual-review rows.
+        check_coverage=coverage_sec,
     )
