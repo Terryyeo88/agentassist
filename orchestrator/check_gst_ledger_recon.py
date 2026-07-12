@@ -128,3 +128,67 @@ def run_ledger_recon_checks(ledger_lines, declared_boxes, tolerance: float = _TO
     if abs(in_div) > tolerance:
         findings.append(_make_finding("input", input_gst, declared_input, in_div))
     return findings
+
+
+# ---------------------------------------------------------------------------
+# Signal B (T2.24 PR-2) — postings that DROPPED from the F5 report.
+# ---------------------------------------------------------------------------
+
+# The Xero GST control account. A raw-GL journal that posts GST straight here with NO tax code
+# lands in the F5 workbook's "Transactions not included" section and hits no box, while staying
+# in the 820 ledger. Signal B surfaces exactly that. (Which account is the GST control account
+# is currently the Xero SG default; config-driven selection is a later slice.)
+_GST_CONTROL_ACCOUNT = "820 - GST"
+
+
+def _make_not_included_finding(row: dict, amount: float) -> dict:
+    """Build one Signal-B CANDIDATE for a GST posting that dropped from the F5 report."""
+    account = row.get("account")
+    reference = (row.get("reference") or "").strip()
+    desc_text = (row.get("description") or "").strip()
+    who = reference or desc_text or "the posting"
+    description = (
+        f"A GST amount of {amount} was posted to the control account ({account}) on {who} "
+        f"({desc_text}) with no tax code, so it appears in the F5 report's "
+        f"'Transactions not included' section and lands in no box while remaining in the 820 "
+        f"ledger. If a reviewer adjudicates this as GST that should have been declared, net GST "
+        f"payable would change by {amount}. This is an internal-consistency observation between "
+        f"the 820 ledger and the F5 report, not a verdict that the posting is correct."
+    )
+    return {
+        "check_id": "GST_LEDGER_RECON",
+        "finding_type": "not_included_gst_drop",
+        "account": account,
+        "reference": reference,
+        "amount": amount,
+        "description": description,
+        "recommendation": (
+            "Candidate for reviewer adjudication. Reconcile this 820 control-account posting "
+            "against the F5 return — confirm whether the GST should have been declared in a box."
+        ),
+    }
+
+
+def run_not_included_checks(not_included_rows, tolerance: float = _TOLERANCE) -> list:
+    """Signal B: surface GST posted to the 820 control account that DROPPED from the F5 report.
+
+    Args:
+        not_included_rows: dicts from feeders.xero_f5_reader.parse_not_included — each carries
+                           {account, reference, description, tax_rate, gross, net, tax}.
+        tolerance:         magnitude floor (shared NON-REGULATORY tuning parameter).
+
+    Filters rows whose ``account`` is the GST control account (820) with a non-zero amount read
+    from ``net`` (the Tax column is 0 for a raw-GL drop). Emits one CANDIDATE per matching row.
+    Interprets no tax code, asserts no verdict, mutates nothing. Internal-consistency observation
+    (ledger vs report), NOT a truth check. Returns list[dict].
+    """
+    findings: list = []
+    for row in not_included_rows:
+        account = (row.get("account") or "").strip()
+        if account != _GST_CONTROL_ACCOUNT:
+            continue
+        amount = round(abs(float(row.get("net") or 0.0)), 2)
+        if amount <= tolerance:
+            continue
+        findings.append(_make_not_included_finding(row, amount))
+    return findings

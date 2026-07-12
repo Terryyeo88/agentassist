@@ -2907,6 +2907,26 @@ wiring, gated on Lanes A + B); **T2.11 gates customer-facing**. *(C2 landed — 
 
 ---
 
+## §T2.24 PR-2 — `parse_declared_return` retires the caller-supplied ceiling + `parse_not_included` / Signal B raw-GL drop surface + CLI end-to-end (`feeders/xero_f5_reader.py` + `orchestrator/check_gst_ledger_recon.py` + `orchestrator/chain.py` + `run_agent.py`) (built ≠ validated — real-FORMAT over SYNTHETIC content, hermetic; NOT real-client-export-validated, NOT accuracy-validated)
+
+**What landed.** Two new product parsers on `feeders/xero_f5_reader.py`, a new Signal-B check, its optional additive chain seam, and a CLI end-to-end path. PR-1's ceiling — *"declared boxes are caller-supplied"* — is **retired**: the same Box 6 (720.0) / Box 7 (1271.3) values that PR-1's test scaffold hard-built now come from the **product parser**.
+
+**New parsers (ADDITIVE — reader byte-identical).** `feeders/xero_f5_reader.py :: parse_declared_return(source) -> {"output_tax", "input_tax"}` reads the declared **Box 6 (720.0)** / **Box 7 (1271.3)** VALUES off the F5 workbook's **'Return' sheet** by structural label scan. `feeders/xero_f5_reader.py :: parse_not_included(source) -> list[dict]` reads the **'Transactions not included'** section (Account column included). Both are **strictly ADDITIVE**: `_load_transactions` and `XeroF5ChainReader` are **byte-identical** — proven by the existing reader count-pins (3/7 over `xero-f5-export`) still passing unchanged.
+
+**Signal B.** `orchestrator/check_gst_ledger_recon.py :: run_not_included_checks` filters `Account == "820 - GST"` with a **non-zero amount** (read from the **net** column, NOT the zero **Tax** column) and surfaces a CANDIDATE (`finding_type "not_included_gst_drop"`). It **interprets no tax code** — a raw-GL drop surface, not a treatment verdict.
+
+**Chain seam (OPTIONAL ADDITIVE).** `orchestrator/chain.py` attaches Signal B via an **optional additive** key `gst_ledger["not_included"]` into a **NEW SIBLING** result key `result["not_included_findings"]`. The `{lines, declared_boxes}` seam contract is **UNCHANGED** and PR-1's `ledger_recon_findings` is **byte-shape untouched**. Same **findings-never-gates** + **BOX-ISOLATION** snapshot as Signal A. The **no-ledger path adds zero keys** (offline-replay oracle byte-identical, no re-freeze).
+
+**CLI end-to-end.** `run_agent.py :: build_gst_ledger_input(gst_ledger_path, xero_f5_path, period)` + new CLI flags `--gst-ledger` / `--xero-f5`. **`--period` stays authoritative:** the F5 workbook's own period is validated against `--period` and raises `ValueError` on mismatch (the file period is never trusted). The ledger recon now runs **END-TO-END on a real Xero export via the CLI**.
+
+**Findings on the fixture.** Signal A still surfaces the two divergences (output **270.00 / INV-2003**, input **6.30 / MJ-RAWGL**) but now with `parse_declared_return`'s boxes (not hand-built). Signal B surfaces one dropped-posting finding (**820 - GST, #14, 6.30**) in the separate `not_included_findings` key.
+
+**Unchanged.** No `CHECK_REGISTRY` entry (option 1 stands). `validation_status="unvalidated"` / `show_ai_candidates=False` FROZEN. T2.11 unmoved.
+
+**Honest status.** Built + real-FORMAT-validated over SYNTHETIC content, hermetic. parse_declared_return retires the caller-supplied ceiling: the ledger recon now runs END-TO-END on a real Xero export via the CLI (run_agent.py --gst-ledger / --xero-f5). Signal B added (raw-GL drop surface from the F5 workbook). NOT yet surfaced in the report or the upload endpoint — that is PR-3. Does NOT reach real-client-export-validated or accuracy-validated. Internal-consistency check, NOT a truth check. T2.11 unmoved.
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools
