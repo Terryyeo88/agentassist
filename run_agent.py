@@ -46,6 +46,40 @@ from orchestrator.check_declared_f5 import load_declared_f5        # noqa: E402
 from reasoning.sap_lines import fetch_si_purchase_lines            # noqa: E402
 
 
+def build_gst_ledger_input(gst_ledger_path, xero_f5_path, period) -> dict:
+    """Assemble the T2.24 gst_ledger side-input from a Xero ledger + F5 workbook.
+
+    The F5 workbook (``xero_f5_path``) supplies the DECLARED boxes (Return sheet) AND the
+    Signal-B "Transactions not included" rows; the Account-Transactions export
+    (``gst_ledger_path``) supplies the 820 control-account lines. Returns the
+    ``{"lines", "declared_boxes", "not_included"}`` dict the ``gst_ledger`` seam consumes
+    (``declared_boxes`` = ``{"output_tax", "input_tax"}``).
+
+    ``--period`` is authoritative: this validates the F5 workbook's OWN period line against
+    ``period`` and raises ValueError on mismatch — the file's self-reported period is never
+    trusted to silently redefine the run window.
+    """
+    from feeders.xero_f5_reader import (  # noqa: PLC0415 — lazy; keeps run_agent import light
+        parse_declared_return,
+        parse_not_included,
+        parse_review_period,
+    )
+    from feeders.xero_ledger_reader import load_gst_ledger  # noqa: PLC0415
+
+    file_period = parse_review_period(xero_f5_path)
+    if (file_period.get("start") != period["start"]
+            or file_period.get("end") != period["end"]):
+        raise ValueError(
+            f"Xero F5 workbook period {file_period!r} does not match --period {period!r} "
+            "(--period is authoritative; the workbook's own period is not trusted)"
+        )
+    return {
+        "lines": load_gst_ledger(gst_ledger_path),
+        "declared_boxes": parse_declared_return(xero_f5_path),
+        "not_included": parse_not_included(xero_f5_path),
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="run_agent",
@@ -84,6 +118,23 @@ def _build_parser() -> argparse.ArgumentParser:
             "Run the annual analytical review pass (T2.16): compute the FY TP/TS "
             "ratio across four quarterly SAP reads and surface a candidate when the "
             "ratio exceeds the IRAS 1.2 threshold."
+        ),
+    )
+    p.add_argument(
+        "--gst-ledger", default=None, metavar="FILE",
+        help=(
+            "Path to a Xero GST control-account (820) 'Account Transactions' .xlsx export. "
+            "With --xero-f5, runs the T2.24 ledger<->declared-return internal-consistency "
+            "reconciliation (Signal A) + the not-included raw-GL drop surface (Signal B). "
+            "Requires --xero-f5 (the declared boxes are read from it)."
+        ),
+    )
+    p.add_argument(
+        "--xero-f5", default=None, metavar="FILE",
+        help=(
+            "Path to the Xero IRAS-F5 .xlsx workbook (the 'Return' sheet supplies declared "
+            "Box 6/7; the 'Transactions not included' section supplies Signal B). Its own "
+            "period line is validated against --period (which stays authoritative)."
         ),
     )
     return p
@@ -141,6 +192,26 @@ def main(*, provider=None) -> None:
             print(f"DECLARED-F5 ERROR: {exc}", file=sys.stderr)
             sys.exit(1)
 
+    # --- GST control-ledger recon input (optional, T2.24) ---
+
+    gst_ledger = None
+    if args.gst_ledger is not None:
+        if args.xero_f5 is None:
+            print(
+                "GST-LEDGER ERROR: --gst-ledger requires --xero-f5 (declared boxes are read "
+                "from the F5 workbook's Return sheet).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        try:
+            gst_ledger = build_gst_ledger_input(
+                Path(args.gst_ledger), Path(args.xero_f5), period
+            )
+            print(f"  GST ledger recon : {args.gst_ledger} + {args.xero_f5}")
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"GST-LEDGER ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
+
     # --- Build inputs and call review() ---
 
     line_source = functools.partial(fetch_si_purchase_lines, period["start"], period["end"])
@@ -149,6 +220,7 @@ def main(*, provider=None) -> None:
         provider=provider,
         declared_f5=declared_f5,
         analytical_review=args.analytical_review,
+        gst_ledger=gst_ledger,
     )
 
     print(f"Running chain for period {period['start']} → {period['end']} ...")

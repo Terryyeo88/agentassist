@@ -55,7 +55,7 @@ from config.loader import ClientConfig  # noqa: E402
 
 from .exceptions import GateFailure  # noqa: E402
 from .check_declared_f5 import run_declared_f5_checks  # noqa: E402
-from .check_gst_ledger_recon import run_ledger_recon_checks  # noqa: E402
+from .check_gst_ledger_recon import run_ledger_recon_checks, run_not_included_checks  # noqa: E402
 from .check_listing import detect_seq_gaps, detect_dup_claims  # noqa: E402
 from .gates import (  # noqa: E402
     gate_1_record_count,
@@ -343,7 +343,26 @@ def run_chain(
                     "level": "unavailable",
                     "reason": f"ledger recon failed to run: {exc}",
                 }
-        # BOX-ISOLATION assertion: the recon is read-only over the boxes.
+
+        # T2.24 PR-2 Signal B: a raw-GL GST posting to the 820 control account that DROPPED
+        # from the F5 report (the workbook's "Transactions not included" surface). Rides in an
+        # OPTIONAL additive key gst_ledger["not_included"] — the {lines, declared_boxes} contract
+        # is unchanged, and an absent key adds NO not_included_findings (byte-identical to PR-1).
+        # Same findings-never-gates posture and same box-isolation snapshot as Signal A; a NEW
+        # sibling result key so PR-1's ledger_recon_findings is byte-shape untouched.
+        not_included = gst_ledger.get("not_included")
+        if not_included is not None:
+            try:
+                result["not_included_findings"] = run_not_included_checks(not_included)
+            except Exception as exc:
+                log.warning(f"not-included check could not run (non-fatal, -> unavailable): {exc}")
+                result["not_included_findings"] = None
+                result["not_included_status"] = {
+                    "level": "unavailable",
+                    "reason": f"not-included check failed to run: {exc}",
+                }
+
+        # BOX-ISOLATION assertion: both ledger side-inputs are read-only over the boxes.
         if result["calculate"]["boxes"] != _boxes_before_ledger:
             raise RuntimeError(
                 "BOX-ISOLATION VIOLATION: ledger recon corrupted F5 box values"
