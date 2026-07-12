@@ -212,6 +212,10 @@ NOT_EXAMINED_ITEMS: list[str] = [
     "Annual analytical review (TP/TS ratio and period-over-period box fluctuations "
     "not performed — supply --analytical-review flag to enable "
     "ASK Steps 1.3a and 1.3d checks)",
+
+    "GST control-account ledger reconciliation (Xero 820 control-account postings "
+    "not reconciled against the declared F5 return; supply the control-account "
+    "'Account Transactions' export and the F5 workbook to enable — ASK Step 1.3e)",
 ]
 
 

@@ -50,6 +50,7 @@ from report.sections import (
     F5BoxSection,
     FindingsSection,
     JudgmentSection,
+    LedgerReconSection,
     ListingFindingsSection,
     NotExaminedSection,
     ScopeSection,
@@ -64,6 +65,7 @@ from report.sections import (
     build_f5_box_section,
     build_findings_section,
     build_judgment_section,
+    build_ledger_recon_section,
     build_not_examined_section,
     build_scope_section,
     build_signature_section,
@@ -133,6 +135,9 @@ class ReportModel:
     # check_coverage). None in legacy callers; empty (show=False) when the chain
     # reader exposed no coverage seam — renderer is a no-op in both cases.
     check_coverage: CheckCoverageSection | None = None
+    # T2.24 PR-3: GST control-ledger reconciliation (Signal A + B). None in legacy
+    # callers / runs with no gst_ledger; renderer is empty-when-empty in both cases.
+    ledger_recon: LedgerReconSection | None = None
 
 
 def build_report(
@@ -219,6 +224,11 @@ def build_report(
             rows=[*coverage_sec.rows, *document_legibility_rows]
         )
 
+    # T2.24 PR-3: build the GST control-ledger reconciliation section once so the same
+    # object drives both the rendered section AND build_not_examined_section suppression
+    # (present the "not reconciled" line only when no gst_ledger was supplied).
+    ledger_recon_sec = build_ledger_recon_section(compile_output)
+
     return ReportModel(
         cover=build_cover_section(
             compile_output, client_config, generated_at=generated_at
@@ -233,6 +243,7 @@ def build_report(
             declared_f5_findings=df5_findings,
             listing_section=listing_sec,
             analytical_review_section=analytical_sec,
+            ledger_recon_section=ledger_recon_sec,
         ),
         signature=build_signature_section(client_config),
         generated_at=generated_at,
@@ -256,4 +267,6 @@ def build_report(
         # T2.12-2C: dedicated deterministic-check data-coverage section (2B's
         # check_coverage), plus any T2.14 document-legibility manual-review rows.
         check_coverage=coverage_sec,
+        # T2.24 PR-3: GST control-ledger reconciliation (Signal A + B); empty-when-empty.
+        ledger_recon=ledger_recon_sec,
     )

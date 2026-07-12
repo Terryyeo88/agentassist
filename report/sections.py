@@ -360,6 +360,32 @@ class ListingFindingsSection:
 
 
 @dataclass
+class LedgerReconSection:
+    """Data for the T2.24 "GST Control-Ledger Reconciliation" section (PR-3 render).
+
+    Two independent sub-signals, each carrying its own three-state execution status
+    (mirrors ListingFindingsSection — examined / unavailable / not_examined — NOT the
+    simpler declared-F5 present-or-not model):
+
+      * recon (Signal A): ledger-derived GST vs the RETURN's declared boxes — per-side
+        divergence dicts.
+      * drop (Signal B): GST posted to the 820 control account that dropped from the F5
+        report ("Transactions not included") — dropped-posting dicts.
+
+    Each finding dict already carries a candidate-framed ``description`` + ``recommendation``
+    (built by orchestrator.check_gst_ledger_recon); this section formats them and asserts
+    nothing. ``None`` findings + an ``unavailable`` status means the check could not run.
+    """
+
+    recon_findings: list[dict]
+    recon_status: str = "not_examined"
+    recon_reason: str = ""
+    drop_findings: list[dict] = field(default_factory=list)
+    drop_status: str = "not_examined"
+    drop_reason: str = ""
+
+
+@dataclass
 class CheckCoverageSection:
     """Data for the T2.12-2C dedicated "Deterministic Check Coverage" section.
 
@@ -453,6 +479,11 @@ _LISTING_UNAVAILABLE_ITEM = (
     "Invoice listing completeness checks (sequence gap detection and duplicate "
     "input-tax claims) could not run: {reason}"
 )
+
+# T2.24 PR-3: prefix uniquely identifying the 820 control-ledger reconciliation line
+# in NOT_EXAMINED_ITEMS. Suppressed when the recon was PERFORMED (a gst_ledger was
+# supplied → status examined or unavailable); kept when never run (not_examined).
+_LEDGER_RECON_NE_PREFIX = "GST control-account ledger reconciliation"
 
 
 # ── Builder functions ─────────────────────────────────────────────────────────
@@ -805,6 +836,51 @@ def render_listing_findings_section(
     )
 
 
+def _derive_recon_state(
+    compile_output: dict[str, Any], findings_key: str, status_key: str
+) -> tuple[str, str, list[dict]]:
+    """Derive (status, reason, findings) for one T2.24 sub-signal, read-only.
+
+    Mirrors render_listing_findings_section's three-state derivation and keeps
+    ``None`` (could-not-run) / ``[]`` (examined-clean) / absent-key (never-run) distinct:
+      * chain status ``level == "unavailable"``      → ("unavailable", reason, [])
+      * findings key present and not None (a list)    → ("examined", "", findings)
+      * else (key absent, or None with no status)     → ("not_examined", "", [])
+    """
+    chain_status: dict = compile_output.get(status_key) or {}
+    if chain_status.get("level") == "unavailable":
+        return "unavailable", str(chain_status.get("reason") or ""), []
+    findings = compile_output.get(findings_key)
+    if findings is not None:
+        return "examined", "", list(findings)
+    return "not_examined", "", []
+
+
+def build_ledger_recon_section(compile_output: dict[str, Any]) -> "LedgerReconSection":
+    """Build the T2.24 GST Control-Ledger Reconciliation section from chain output.
+
+    PURE / read-only over ``compile_output`` (reads ``ledger_recon_findings`` /
+    ``ledger_recon_status`` for Signal A and ``not_included_findings`` /
+    ``not_included_status`` for Signal B). Derives each sub-signal's execution state
+    independently — a run can have Signal A examined while Signal B was never supplied.
+    Emits nothing itself; the renderer decides what (if anything) to show.
+    """
+    recon_status, recon_reason, recon_findings = _derive_recon_state(
+        compile_output, "ledger_recon_findings", "ledger_recon_status"
+    )
+    drop_status, drop_reason, drop_findings = _derive_recon_state(
+        compile_output, "not_included_findings", "not_included_status"
+    )
+    return LedgerReconSection(
+        recon_findings=recon_findings,
+        recon_status=recon_status,
+        recon_reason=recon_reason,
+        drop_findings=drop_findings,
+        drop_status=drop_status,
+        drop_reason=drop_reason,
+    )
+
+
 def build_check_coverage_section(
     compile_output: dict[str, Any],
 ) -> "CheckCoverageSection":
@@ -890,6 +966,7 @@ def build_not_examined_section(
     declared_f5_findings: list[dict] | None = None,
     listing_section: "ListingFindingsSection | None" = None,
     analytical_review_section: "AnalyticalReviewSection | None" = None,
+    ledger_recon_section: "LedgerReconSection | None" = None,
 ) -> NotExaminedSection:
     """Build Section 6 — coverage boundary from constants plus run-specific additions.
 
@@ -969,6 +1046,16 @@ def build_not_examined_section(
             # Replace them with a DISTINCT could-not-run caveat (not the static never-run
             # line), so a reviewer never reads a thrown pass as a never-run one.
             items.append(_LISTING_UNAVAILABLE_ITEM.format(reason=listing_section.reason))
+
+    # T2.24 PR-3: the 820 control-ledger reconciliation not-examined line is driven by
+    # whether the recon was PERFORMED (a gst_ledger was supplied). recon_status
+    # "examined"/"unavailable" → it ran (findings shown in the ledger-recon section, or an
+    # honest caveat there), so drop the static "not reconciled" line. "not_examined" (no
+    # gst_ledger supplied) → keep the static line (the historical, honest default).
+    if ledger_recon_section is not None and ledger_recon_section.recon_status in (
+        "examined", "unavailable"
+    ):
+        items = [i for i in items if not i.startswith(_LEDGER_RECON_NE_PREFIX)]
 
     # Surface any deduplicated anomalies (unknown VatGroups).
     # .get() with default guards against older chain runs that lack this key.
