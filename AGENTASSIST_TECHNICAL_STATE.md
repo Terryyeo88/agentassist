@@ -2891,6 +2891,22 @@ wiring, gated on Lanes A + B); **T2.11 gates customer-facing**. *(C2 landed — 
 
 ---
 
+## §T2.24 PR-1 — Control-ledger ↔ F5-declared-return INTERNAL-CONSISTENCY recon ("Signal A") + optional `gst_ledger` side-input seam (`orchestrator/chain.py` + `orchestrator/check_gst_ledger_recon.py` + `feeders/xero_ledger_reader.py`) (merged #99; built ≠ validated — real-FORMAT over SYNTHETIC content, hermetic; NOT real-client-export-validated, NOT accuracy-validated)
+
+**What landed.** An OPTIONAL `gst_ledger` side-input seam threaded through `run_chain` (`orchestrator/chain.py:85` `gst_ledger: dict | None = None`), **mirroring the declared_f5 seam**. When a ledger is supplied, a post-gate-5 attachment block (`chain.py:313–350`) runs a **ledger-vs-declared-return INTERNAL-CONSISTENCY** reconciliation — **"Signal A"** — and attaches `ledger_recon_findings` / `ledger_recon_status`. **Findings-never-gates:** the recon surfaces candidates and does NOT recompute or move any F5 box or gate result. **BOX-ISOLATION is asserted at runtime** (`chain.py:346–350`, `raise RuntimeError("BOX-ISOLATION VIOLATION: ledger recon corrupted F5 box values")`) **AND pinned by test** (`test_box_isolation_snapshot`). The **no-ledger path is byte-identical to the offline-replay oracle** — it adds NEITHER `ledger_recon_findings` NOR `ledger_recon_status`, so there is **no re-freeze**.
+
+**New mechanisms.** A new side-input loader `feeders/xero_ledger_reader.py :: load_gst_ledger` — this is a **SIDE-INPUT LOADER, explicitly NOT a ChainReader** (it does not implement or widen the Protocol; `openpyxl` lazy). The check itself is a pure function in `orchestrator/check_gst_ledger_recon.py` (module docstring: *"This is an internal-consistency check, not a truth check."*). There is **NO `CHECK_REGISTRY` entry** (option 1): `GST_LEDGER_RECON` is absent from `agent/registry.py` and `REAL_CHECK_IDS`, so its `iras_basis` renders **"—"** via the `ui/artifacts.py :: check_reference` fallback.
+
+**Findings on the committed real-FORMAT fixture (synthetic content).** Output divergence **270.00** — **INV-2003** (270 GST posted to the 820 control account but routed to **Box 2 zero-rated**, absent from declared **Box 6**). Input divergence **6.30** — **MJ-RAWGL #14** (a raw-GL manual journal with no tax code, which **drops from the F5 report**). **MJ-CODED #13** and **CN-0002** reconcile (no finding); **BILL-3006/3007 reconcile on THIS check** — the Reg 26/27 blocked-input adjudication is a **SEPARATE reasoning-layer concern, NOT asserted clean here**.
+
+**Tolerance.** `_TOLERANCE=0.01` is labelled a **NON-REGULATORY TUNING PARAMETER**.
+
+**Deferred to their own later slices.** **Signal B** — the F5 workbook's *"Transactions not included"* 820-line surface — and **`parse_declared_return`** — reading the declared boxes off the Xero **Return** sheet — are **DEFERRED**. In PR-1 the declared boxes are **caller-supplied**.
+
+**Honest status.** Built + real-FORMAT-validated over SYNTHETIC content, hermetic. Declared boxes are caller-supplied in PR-1; reading them from the Xero Return sheet (parse_declared_return) is deferred, so this check is NOT yet runnable end-to-end on a bare Xero upload. Does NOT reach real-client-export-validated or accuracy-validated. Internal-consistency check, NOT a truth check — a consistently-wrong tax code is invisible to it. T2.11 unmoved.
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools
