@@ -120,7 +120,7 @@ AGENTASSIST_TECHNICAL_STATE.md Appendix C (item numbers below).
    - **Scope:** review/confirm-deployment; document only, build nothing yet.
 
 10. **Manual-journal Xero-F5 behaviour — capture + freeze before building T2.24.**
-   - The "a manual journal drops out of the SG Xero F5 report" behaviour is a platform-behaviour claim demonstrated once by Avinash.
+   - A manual journal posted as a raw GL line to the GST control account (820) with NO tax code DROPS OUT of the Xero F5 report (it lands in a 'Transactions not included' section and hits no box) while remaining in the 820 ledger; a correctly TAX-CODED manual journal is NOT dropped (it appears in Box 5/7). Refuted-and-corrected: the earlier unqualified 'a manual journal drops out' framing is inaccurate — it is specifically the raw-GL, no-tax-code journal that drops. This platform-behaviour distinction was demonstrated once by Avinash.
    - Capture it from a **real Xero export** and **freeze as a fixture** before the **T2.24** control-ledger ↔ F5-report reconciliation check is built (cross-ref roadmap T2.24 / ASK cell 1.3e).
    - **Scope:** prerequisite; verify-before-encode (NR-in-Box-5 precedent).
 
