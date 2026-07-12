@@ -117,6 +117,11 @@ class ReviewInputs:
                           run_chain so an uploaded client export drives the
                           deterministic chain.  Default None — the live-SAP path is
                           byte-identical (run_chain's _reader_kw collapses to {}).
+        gst_ledger:       Optional GST control-ledger side-input (T2.24) —
+                          {"lines": [...], "declared_boxes": {"output_tax", "input_tax"}}.
+                          When supplied, forwarded into run_chain, which runs the
+                          ledger<->declared-return internal-consistency reconciliation
+                          (a CANDIDATE surface, never a gate). Default None — byte-identical.
     """
     line_source: Callable[[], list[dict]]
     provider: "DocumentProvider | None" = None
@@ -126,6 +131,7 @@ class ReviewInputs:
     # qualified like chain.py's run_chain. Default None keeps every existing no-reader
     # construction (run_agent.py, ui/engine_seam.py) byte-identical.
     reader: "sap_b1_server.ChainReader | None" = None
+    gst_ledger: dict | None = None
 
 
 @dataclass
@@ -209,7 +215,8 @@ def review(
 
     try:
         compile_output, gate_results = run_chain(
-            client_config, period, declared_f5=inputs.declared_f5, reader=inputs.reader
+            client_config, period, declared_f5=inputs.declared_f5, reader=inputs.reader,
+            gst_ledger=inputs.gst_ledger,
         )
     except GateFailure as exc:
         return ReviewResult(
