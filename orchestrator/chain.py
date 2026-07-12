@@ -55,6 +55,7 @@ from config.loader import ClientConfig  # noqa: E402
 
 from .exceptions import GateFailure  # noqa: E402
 from .check_declared_f5 import run_declared_f5_checks  # noqa: E402
+from .check_gst_ledger_recon import run_ledger_recon_checks  # noqa: E402
 from .check_listing import detect_seq_gaps, detect_dup_claims  # noqa: E402
 from .gates import (  # noqa: E402
     gate_1_record_count,
@@ -81,6 +82,7 @@ def run_chain(
     period: Period,
     declared_f5: dict | None = None,
     reader: "sap_b1_server.ChainReader | None" = None,
+    gst_ledger: dict | None = None,
 ) -> tuple[dict, dict]:
     """Run the full six-step deterministic chain for a client and period.
 
@@ -103,6 +105,14 @@ def run_chain(
         declared_f5:   Optional validated declared-F5 dict from
                        check_declared_f5.load_declared_f5().  When None,
                        declared_f5_findings in the returned CompileOutput is [].
+        gst_ledger:    Optional GST control-ledger side-input (T2.24) —
+                       {"lines": [...], "declared_boxes": {"output_tax", "input_tax"}}.
+                       When supplied, an internal-consistency reconciliation of the
+                       ledger-derived GST against the RETURN's declared boxes runs after
+                       the listing checks and its result appears in
+                       compile_output["ledger_recon_findings"] (a CANDIDATE list, never a
+                       gate). When None, NEITHER "ledger_recon_findings" nor
+                       "ledger_recon_status" is added — the no-ledger path is byte-identical.
         reader:        Optional ChainReader (T2.23 chain source seam) supplying
                        the five raw-read surfaces (S0/S1/S2/S3/S5). When None,
                        the default SAP-backed reader is used and behaviour is
@@ -299,6 +309,45 @@ def run_chain(
         raise RuntimeError(
             "BOX-ISOLATION VIOLATION: listing checks corrupted F5 box values"
         )
+
+    # T2.24: GST control-ledger <-> declared-F5 internal-consistency reconciliation —
+    # FINDINGS, never a gate. Mirrors the T2.9 declared_f5 conditional: it runs ONLY when a
+    # gst_ledger side-input is supplied, and on the None path adds NEITHER result key, so the
+    # offline-replay oracle stays byte-identical (verified by test_t224_chain_seam). It
+    # compares LEDGER-derived GST against the RETURN's DECLARED boxes (caller-supplied in
+    # gst_ledger["declared_boxes"]), NEVER the engine's computed boxes — comparing computed
+    # boxes to the return is a tautology (both derive from the same tax-code assignments).
+    if gst_ledger is not None:
+        _boxes_before_ledger = dict(result["calculate"]["boxes"])
+        declared_boxes = (gst_ledger.get("declared_boxes") or {})
+        if not declared_boxes:
+            # Cannot run without the return's declared boxes; do NOT fall back to computed
+            # boxes (that is the tautology). Surface as "unavailable" (cannot-run), non-empty
+            # reason — the same honesty the T2.10 listing-status seam uses.
+            result["ledger_recon_findings"] = None
+            result["ledger_recon_status"] = {
+                "level": "unavailable",
+                "reason": "declared return boxes not supplied",
+            }
+        else:
+            try:
+                result["ledger_recon_findings"] = run_ledger_recon_checks(
+                    gst_ledger.get("lines") or [], declared_boxes
+                )
+            except Exception as exc:
+                # A thrown recon is a could-not-run signal, never a chain halt (findings
+                # never gate). None (not []) so a failed run never reads as zero findings.
+                log.warning(f"ledger recon could not run (non-fatal, -> unavailable): {exc}")
+                result["ledger_recon_findings"] = None
+                result["ledger_recon_status"] = {
+                    "level": "unavailable",
+                    "reason": f"ledger recon failed to run: {exc}",
+                }
+        # BOX-ISOLATION assertion: the recon is read-only over the boxes.
+        if result["calculate"]["boxes"] != _boxes_before_ledger:
+            raise RuntimeError(
+                "BOX-ISOLATION VIOLATION: ledger recon corrupted F5 box values"
+            )
 
     # T2.12 slice 2B: surface per-check DATA-COVERAGE status when the injected reader
     # declares one (the extract-feeder path). Emission only — never asserts a verdict.
