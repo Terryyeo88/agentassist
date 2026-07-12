@@ -73,15 +73,18 @@ TRANSACTIONS_SHEET = "Transactions by box number"
 
 # Real-export header column labels (row 5). Located structurally via _HEADER_MARKERS.
 _COL_DATE = "Date"
+_COL_ACCOUNT = "Account"
 _COL_REFERENCE = "Reference"
 _COL_CONTACT = "Contact"
+_COL_DESCRIPTION = "Description"
 _COL_TAX_RATE = "Tax rate"
 _COL_SOURCE_CURRENCY = "Source currency"
 _COL_GROSS = "Gross"
 _COL_NET = "Net"
 _COL_TAX = "Tax"
 # Two markers whose joint presence identifies the header row (so the 4-row title block is
-# skipped structurally, not by a hard-coded offset).
+# skipped structurally, not by a hard-coded offset). _COL_ACCOUNT / _COL_DESCRIPTION are read
+# only by the T2.24 parse_not_included path (the value-box loader ignores them).
 _HEADER_MARKERS = (_COL_DATE, _COL_TAX_RATE)
 
 # Box-section classification. VALUE boxes carry "total value of"; restatement (tax) boxes
@@ -473,3 +476,124 @@ def parse_review_period(source) -> dict:
     raise ValueError(
         f"Xero export missing a 'For the period … to …' line on sheet {TRANSACTIONS_SHEET!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# T2.24 PR-2 — ADDITIVE readers over the F5 workbook (declared boxes + the
+# "Transactions not included" drop surface). These do NOT touch _load_transactions
+# or XeroF5ChainReader — the value-box path stays byte-identical. openpyxl lazy.
+# ---------------------------------------------------------------------------
+
+# The 'Return' sheet lays out one box per row: col A = "Box N", col C = value.
+RETURN_SHEET = "Return"
+# Declared boxes T2.24 reconciles the 820 ledger against — keyed to the gst_ledger
+# ["declared_boxes"] seam contract (output_tax = Box 6, input_tax = Box 7).
+_DECLARED_BOX_LABELS = {"Box 6": "output_tax", "Box 7": "input_tax"}
+_RETURN_VALUE_COL = 2  # col C
+
+# The section header (col A) for postings Xero EXCLUDES from every F5 box.
+NOT_INCLUDED_HEADER = "Transactions not included"
+
+
+def parse_declared_return(source) -> dict:
+    """Read the DECLARED F5 Box 6 (output tax) / Box 7 (input tax) VALUES off the 'Return' sheet.
+
+    Returns ``{"output_tax": <Box 6>, "input_tax": <Box 7>}`` — the EXACT key shape the T2.24
+    ``gst_ledger["declared_boxes"]`` seam consumes, so it drops in with no mapping shim. Located
+    by structural label scan (col A == "Box N", value in col C); NO fixed header offset. Reads
+    VALUES only — classifies nothing and encodes no tax rule. Raises ValueError if the 'Return'
+    sheet or either box row is absent / non-numeric (an honest client-input failure, never a
+    silent partial dict).
+    """
+    path = Path(source)
+    from openpyxl import load_workbook  # lazy
+
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        if RETURN_SHEET not in wb.sheetnames:
+            raise ValueError(
+                f"Xero F5 workbook missing sheet {RETURN_SHEET!r}; cannot read declared boxes"
+            )
+        ws = wb[RETURN_SHEET]
+        found: dict = {}
+        for raw in ws.iter_rows(values_only=True):
+            label = schema.ser(raw[0] if raw else None).strip()
+            key = _DECLARED_BOX_LABELS.get(label)
+            if key is None:
+                continue
+            cell = raw[_RETURN_VALUE_COL] if len(raw) > _RETURN_VALUE_COL else None
+            value = schema.to_float(schema.ser(cell) or None)
+            if value is None:
+                raise ValueError(
+                    f"{label!r} on the {RETURN_SHEET!r} sheet carries no numeric value (got {cell!r})"
+                )
+            found[key] = value
+    finally:
+        wb.close()
+
+    missing = [label for label, key in _DECLARED_BOX_LABELS.items() if key not in found]
+    if missing:
+        raise ValueError(
+            f"{RETURN_SHEET!r} sheet missing required declared-box row(s): {missing}"
+        )
+    return found
+
+
+def parse_not_included(source) -> list:
+    """Read the 'Transactions not included' section of the 'Transactions by box number' sheet.
+
+    Returns one dict per row — ``{account, reference, description, tax_rate, gross, net, tax}``.
+    These are the postings Xero EXCLUDES from every F5 box (e.g. a raw-GL manual journal posted
+    to the GST control account with no tax code). The value-box loader (``_load_transactions``)
+    skips this section entirely; this reader is ADDITIVE and reads the ``Account`` column that
+    loop ignores. Reads values only — interprets no tax code. Raises ValueError if the sheet or
+    the not-included section header is absent.
+    """
+    path = Path(source)
+    if path.suffix.lower() != ".xlsx":
+        raise ValueError(f"unsupported Xero export source {path!r}: expected a .xlsx workbook")
+    from openpyxl import load_workbook  # lazy
+
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        if TRANSACTIONS_SHEET not in wb.sheetnames:
+            raise ValueError(f"Xero F5 workbook missing sheet {TRANSACTIONS_SHEET!r}")
+        ws = wb[TRANSACTIONS_SHEET]
+        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+    finally:
+        wb.close()
+
+    col = _locate_header(rows)  # reuse the value-box sheet's structural header locate
+
+    # Find the "Transactions not included" section header (a col-A label with no tax rate).
+    start = None
+    for idx in range(col["_header_row_index"] + 1, len(rows)):
+        cells = [schema.ser(c) for c in rows[idx]]
+        if _cell(cells, col.get(_COL_DATE)).strip() == NOT_INCLUDED_HEADER:
+            start = idx + 1
+            break
+    if start is None:
+        raise ValueError(
+            f"Xero F5 workbook has no {NOT_INCLUDED_HEADER!r} section on sheet {TRANSACTIONS_SHEET!r}"
+        )
+
+    out: list = []
+    for raw in rows[start:]:
+        cells = [schema.ser(c) for c in raw]
+        if not any(c.strip() for c in cells):
+            continue  # blank spacer row
+        first = _cell(cells, col.get(_COL_DATE)).strip()
+        if first == "Total":
+            continue  # subtotal row
+        if _is_box_header(first):
+            break  # a following box/section header ends the not-included section
+        out.append({
+            "account": _cell(cells, col.get(_COL_ACCOUNT)).strip(),
+            "reference": _cell(cells, col.get(_COL_REFERENCE)).strip(),
+            "description": _cell(cells, col.get(_COL_DESCRIPTION)).strip(),
+            "tax_rate": _cell(cells, col.get(_COL_TAX_RATE)).strip(),
+            "gross": schema.to_float(_cell(cells, col.get(_COL_GROSS)) or None) or 0.0,
+            "net": schema.to_float(_cell(cells, col.get(_COL_NET)) or None) or 0.0,
+            "tax": schema.to_float(_cell(cells, col.get(_COL_TAX)) or None) or 0.0,
+        })
+    return out
