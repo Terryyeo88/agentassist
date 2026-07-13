@@ -239,16 +239,26 @@ export type CommandResponse =
 
 /**
  * uploadExtract — POST a client .xlsx GST export to the source-selector Xero upload route.
- * Raw-body upload (no multipart): the File is the request body and its name rides as the
- * `?filename=` query param for the server's `.xlsx` suffix gate. The server FORMAT-ROUTES:
+ * Multipart upload: the required primary `file` + an OPTIONAL `ledger` (the Xero 820
+ * account-transactions export). The multipart filename drives the server's `.xlsx` gate.
+ * The server FORMAT-ROUTES:
  * a real Xero IRAS-F5 export runs the engine and returns `queue` (real, UNVALIDATED findings
  * in the shared central-screen shape); any other .xlsx stays coverage-only (no `queue`).
  * Never hits GET /review or POST /command — it never touches the frozen B1 review (box-isolation).
  */
-export async function uploadExtract(file: File): Promise<UploadCoverageResponse> {
-  const resp = await fetch(`${BASE}/review/upload?filename=${encodeURIComponent(file.name)}`, {
+export async function uploadExtract(
+  file: File,
+  ledger?: File | null,
+): Promise<UploadCoverageResponse> {
+  // Multipart: the required primary `file` + an OPTIONAL `ledger` (the Xero 820
+  // account-transactions export). The server runs the ledger↔declared-return
+  // reconciliation only when a ledger is attached AND the primary is a Xero F5 export.
+  const form = new FormData();
+  form.append("file", file);
+  if (ledger) form.append("ledger", ledger);
+  const resp = await fetch(`${BASE}/review/upload`, {
     method: "POST",
-    body: file,
+    body: form,
   });
   if (!resp.ok) {
     const detail = await resp.json().catch(() => ({}));
