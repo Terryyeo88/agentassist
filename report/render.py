@@ -108,8 +108,13 @@ _HEADER_BG = colors.HexColor("#2C3E50")   # dark blue-grey — table header back
 _STRIPE    = colors.HexColor("#F0F3F4")   # very light grey — alternating row fill
 _GRID_LINE = colors.HexColor("#BDC3C7")   # light grey — table cell borders
 _FOOTER_FG = colors.HexColor("#7F8C8D")   # medium grey — footer text
-# Severity badge colours: red/amber/green matching traffic-light convention
+# Severity badge colours: red/amber/green matching traffic-light convention.
+# Retained for backward-compat (_sev_cell); severity is no longer rendered in the
+# findings table (report redesign, Change 4) but the palette/helper stay defined.
 _SEV_HEX   = {"HIGH": "#C0392B", "MEDIUM": "#E67E22", "LOW": "#27AE60"}
+# F5 four-number summary highlight (Change 2) — light blue-grey, distinct from
+# the deterministic table stripe.
+_SUMMARY_BG = colors.HexColor("#EAF2F8")
 
 # ── Box labels (display order matches the F5 form) ────────────────────────────
 
@@ -258,6 +263,103 @@ def _desc_cell(description: str | None, recommendation: str | None) -> list[Para
     if recommendation:
         result.append(Paragraph(f"Recommendation: {recommendation}", _CELL_REC))
     return result
+
+
+# ── Report-redesign presentation helpers (Avinash feedback) ───────────────────
+# All four helpers below are PURE and read-only. They shape how existing model
+# data is DISPLAYED; none recomputes an F5 box value, changes enrich keying, or
+# touches the show_ai_candidates gate. See CLAUDE.md Invariants 2-4.
+
+def _category_code_label(appendix1_category: str | None, error_code: str) -> str:
+    """Human-first finding label: IRAS Appendix-1 wording, raw code as a tag.
+
+    Change 1 (codes -> labels). The finding's ``appendix1_category`` (already
+    computed in report.enrich from IRAS ASK Appendix 1) is the primary label; the
+    internal ``error_code`` is kept as a small parenthetical for auditor
+    traceability — e.g. "Wrong classification of supplies made (E1)".
+
+    Args:
+        appendix1_category: IRAS ASK wording for the finding; "—" when absent.
+        error_code:         Internal routing code (E1, E2, NO_GST_REG, …).
+
+    Returns:
+        str: "<wording> (<code>)".
+    """
+    wording = appendix1_category or "—"
+    return f"{wording} ({error_code})"
+
+
+# F5 four-number summary: (box key, display label). Order is the F5 reading a
+# reviewer scans first — supplies, purchases, output tax, input tax.
+_F5_SUMMARY_LABELS: list[tuple[str, str]] = [
+    ("box_1_standard_rated_sales", "Standard-rated supplies (Box 1)"),
+    ("box_5_taxable_purchases",    "Taxable purchases (Box 5)"),
+    ("box_6_output_tax",           "Output tax due (Box 6)"),
+    ("box_7_input_tax",            "Input tax claimed (Box 7)"),
+]
+
+
+def _f5_summary_pairs(boxes: dict) -> list[tuple[str, float]]:
+    """Return the four headline F5 figures read VERBATIM from ``boxes``.
+
+    Change 2 (four-number summary). No arithmetic, no rounding, no recompute —
+    each value is ``boxes[key]`` exactly as the deterministic calculate step
+    produced it (BOX-ISOLATION / Invariant 3+4). Read-only: never mutates boxes.
+
+    Args:
+        boxes: ``compile_output["calculate"]["boxes"]`` (or model.f5_boxes.boxes).
+
+    Returns:
+        list[tuple[str, float]]: Four (label, value) pairs in F5 reading order.
+    """
+    return [(label, boxes[key]) for key, label in _F5_SUMMARY_LABELS]
+
+
+def _display_amount(f) -> float:
+    """Dollar impact used to order findings for DISPLAY (largest first).
+
+    Change 4 (severity removed -> sort by amount). Prefers per-line ``line_total``;
+    falls back to the manifest ``doc_total`` (e.g. NO_GST_REG has no per-line
+    classify data); ``-inf`` when neither exists so unknown-amount rows sort last.
+    Presentation only — the model-level severity sort in
+    report.sections.build_findings_section is unchanged.
+    """
+    if f.line_total is not None:
+        return f.line_total
+    if f.doc_total is not None:
+        return f.doc_total
+    return float("-inf")
+
+
+def _findings_display_order(findings: list) -> list:
+    """Return findings sorted by dollar impact descending (render-only re-sort)."""
+    return sorted(findings, key=_display_amount, reverse=True)
+
+
+def _group_nogstreg_by_supplier(findings: list) -> list[tuple[str, list]]:
+    """Group NO_GST_REG findings by supplier (card_name) for DISPLAY only.
+
+    Change 3 (supplier grouping). Every per-document finding is preserved — this
+    only buckets existing findings under one subheading per supplier; it never
+    collapses or dedupes findings and never touches enrich keying or
+    ``total_findings``. Suppliers are ordered by total exposure descending, and
+    each supplier's documents by amount descending, so the largest sit first.
+
+    Args:
+        findings: NO_GST_REG EnrichedFindings (already filtered by the caller).
+
+    Returns:
+        list[tuple[str, list]]: (supplier, [findings]) preserving every row.
+    """
+    buckets: dict[str, list] = {}
+    for f in findings:
+        buckets.setdefault(f.card_name or "—", []).append(f)
+    ordered: list[tuple[str, list]] = []
+    for supplier, fs in buckets.items():
+        ordered.append((supplier, _findings_display_order(fs)))
+    # Largest-exposure supplier first (sum of display amounts).
+    ordered.sort(key=lambda kv: sum(_display_amount(f) for f in kv[1]), reverse=True)
+    return ordered
 
 # ── Numbered canvas (Page X of Y footer) ─────────────────────────────────────
 
@@ -638,7 +740,23 @@ def _f5_boxes(m: ReportModel, story: list) -> None:
         "SGD. Computed from SAP B1 invoice and credit note lines by calculate_f5_return.",
         _SMLX,
     ))
+
+    # Change 2 (Avinash): foreground the four headline figures a reviewer scans
+    # first, read verbatim from the computed boxes (no arithmetic — BOX-ISOLATION).
+    story.append(Spacer(1, 0.15 * cm))
+    story.append(Paragraph("Key figures", _H3))
+    summary_rows = [
+        [_p(label, _CELLB), _p(_sgd(value))]
+        for label, value in _f5_summary_pairs(m.f5_boxes.boxes)
+    ]
+    summary_style = _base_table_style()
+    summary_style.add("BACKGROUND", (0, 0), (-1, -1), _SUMMARY_BG)
+    summary_style.add("BOX", (0, 0), (-1, -1), 0.75, _HEADER_BG)
+    summary_tbl = Table(summary_rows, colWidths=[10.0 * cm, 7.0 * cm], style=summary_style)
+    story.append(summary_tbl)
+
     story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph("Full box breakdown", _H3))
     hdr = [_p(h, _CELLB) for h in ["Box", "SGD Value", "VatGroups in period"]]
     rows = [
         [
@@ -652,17 +770,51 @@ def _f5_boxes(m: ReportModel, story: list) -> None:
     story.append(_table([7.5*cm, 3.5*cm, 6.0*cm], hdr, rows))
 
 
+# Section 3 column geometry (report redesign, Change 1+4). Severity column
+# removed; a wide "IRAS ASK category" column carries the human-readable label.
+# Widths sum to 17.0 cm = _UW.
+_FIND_COLS = [1.3*cm, 1.7*cm, 2.5*cm, 0.9*cm, 2.0*cm, 4.0*cm, 4.6*cm]
+_FIND_HDR_LABELS = ["Doc #", "Date", "Counterparty", "VG", "Amount",
+                    "IRAS ASK category (code)", "Description"]
+# NO_GST_REG per-supplier sub-table: supplier is the subheading and the IRAS
+# category is a one-line subsection note, so neither is repeated per row.
+_NGR_COLS = [1.6*cm, 2.2*cm, 1.2*cm, 2.5*cm, 9.5*cm]
+_NGR_HDR_LABELS = ["Doc #", "Date", "VG", "Amount", "Description"]
+
+
+def _amount_str(f) -> str:
+    """Amount cell text: line_total, else doc_total (tagged), else em-dash."""
+    if f.line_total is not None:
+        return _sgd(f.line_total)
+    if f.doc_total is not None:
+        return _sgd(f.doc_total) + " (doc total)"
+    return "—"
+
+
+def _find_row(f) -> list:
+    """Main Section-3 table row (no severity; IRAS category as primary label)."""
+    return [
+        _p(str(f.doc_num) if f.doc_num is not None else "—"),
+        _p(f.doc_date or "—"),
+        _p(f.card_name or "—"),
+        _p(f.vat_group or "—"),
+        _p(_amount_str(f)),
+        _p(_category_code_label(f.appendix1_category, f.error_code)),
+        _desc_cell(f.description, f.recommendation),
+    ]
+
+
 def _findings(m: ReportModel, story: list) -> None:
     """Append Section 3 — Findings grouped by ASK template.
 
-    Each template group is wrapped in KeepTogether so its heading is never
-    orphaned at the bottom of a page without at least the start of its table.
-
-    Amount column fallback order (most to least precise):
-      1. line_total  — sum of classify line totals (most precise; covers E1–E4)
-      2. doc_total   — full document total from the manifest (approximate;
-                       used for NO_GST_REG where no per-line classify data exists)
-      3. "—"         — neither is available
+    Report redesign (Avinash feedback):
+      * Change 1 — each finding's IRAS ASK Appendix-1 wording is the primary
+        label; the raw error_code is a small "(CODE)" tag.
+      * Change 3 — NO_GST_REG (unregistered-supplier) findings render grouped
+        under one subheading per supplier; every per-document row is preserved.
+      * Change 4 — no severity badge/column; rows are ordered by dollar impact
+        (largest first). The model-level severity sort is unchanged; this is a
+        render-only re-sort via _findings_display_order.
 
     Args:
         m:     The ReportModel containing grouped findings.
@@ -671,48 +823,51 @@ def _findings(m: ReportModel, story: list) -> None:
     story.append(Paragraph("3.  Findings by IRAS ASK Template", _H2))
     story.append(Paragraph(
         f"Total: {m.findings.total_findings} finding(s). "
-        "Sorted HIGH &gt; MEDIUM &gt; LOW, then by document number within each severity.",
+        "Sorted by dollar impact, largest first.",
         _SMLX,
     ))
 
-    # Column widths: Code column is 2.0 cm — wide enough for NO_GST_REG at 8 pt Helvetica.
-    # Widths sum to 17.0 cm = _UW.
-    f_cols = [1.5*cm, 1.4*cm, 2.0*cm, 3.0*cm, 1.2*cm, 1.8*cm, 2.0*cm, 4.1*cm]
-    f_hdr  = [_p(h, _CELLB) for h in
-              ["Severity", "Doc #", "Date", "Counterparty", "VG", "Amount", "Code", "Description"]]
+    f_hdr = [_p(h, _CELLB) for h in _FIND_HDR_LABELS]
+    ngr_hdr = [_p(h, _CELLB) for h in _NGR_HDR_LABELS]
 
     for grp in m.findings.groups:
         if not grp.findings:
             continue
-        f_rows = []
-        for f in grp.findings:
-            # Amount: use doc_total (labelled in header as "Amount") when line_total
-            # is unavailable (e.g. NO_GST_REG has no per-line classify data).
-            if f.line_total is not None:
-                amount = _sgd(f.line_total)
-            elif f.doc_total is not None:
-                amount = _sgd(f.doc_total) + " (doc total)"
-            else:
-                amount = "—"
-            f_rows.append([
-                _sev_cell(f.severity),
-                _p(str(f.doc_num) if f.doc_num is not None else "—"),
-                _p(f.doc_date or "—"),
-                _p(f.card_name or "—"),
-                _p(f.vat_group or "—"),
-                _p(amount),
-                # _CELL_CODE: splitLongWords=0 keeps "NO_GST_REG" on a single line
-                Paragraph(f.error_code, _CELL_CODE),
-                _desc_cell(f.description, f.recommendation),
-            ])
+        # Split unregistered-supplier findings out for per-supplier grouping.
+        others = [f for f in grp.findings if f.error_code != "NO_GST_REG"]
+        nogst = [f for f in grp.findings if f.error_code == "NO_GST_REG"]
 
-        # KeepTogether: template heading stays with the start of its table
-        group_block = [
-            Spacer(1, 0.35 * cm),
-            Paragraph(grp.template_ref["label"], _H3),
-            _table(f_cols, f_hdr, f_rows),
-        ]
-        story.append(KeepTogether(group_block))
+        # Template heading kept with the first table so it is never orphaned.
+        head_block = [Spacer(1, 0.35 * cm), Paragraph(grp.template_ref["label"], _H3)]
+        if others:
+            rows = [_find_row(f) for f in _findings_display_order(others)]
+            head_block.append(_table(_FIND_COLS, f_hdr, rows))
+        story.append(KeepTogether(head_block))
+
+        if nogst:
+            # One IRAS category applies to every NO_GST_REG row — state it once.
+            note = _category_code_label(nogst[0].appendix1_category, "NO_GST_REG")
+            story.append(Spacer(1, 0.15 * cm))
+            story.append(Paragraph(
+                f"Purchases from non-GST-registered suppliers — {note}, grouped by supplier:",
+                _SMALL,
+            ))
+            for supplier, fs in _group_nogstreg_by_supplier(nogst):
+                sup_rows = [
+                    [
+                        _p(str(f.doc_num) if f.doc_num is not None else "—"),
+                        _p(f.doc_date or "—"),
+                        _p(f.vat_group or "—"),
+                        _p(_amount_str(f)),
+                        _desc_cell(f.description, f.recommendation),
+                    ]
+                    for f in _findings_display_order(fs)
+                ]
+                sup_block = [
+                    Paragraph(f"{supplier} ({len(fs)} document(s))", _H3),
+                    _table(_NGR_COLS, ngr_hdr, sup_rows),
+                ]
+                story.append(KeepTogether(sup_block))
 
 
 def _cross_findings(m: ReportModel, story: list) -> None:
@@ -738,16 +893,20 @@ def _cross_findings(m: ReportModel, story: list) -> None:
         _BODY,
     ))
     story.append(Spacer(1, 0.2 * cm))
-    cols = [2.0*cm, 4.0*cm, 5.0*cm, _UW - 11.0*cm]
-    hdr = [_p(h, _CELLB) for h in ["Doc #", "Error codes", "Counterparty", "Appendix 1 categories"]]
+    # Change 1 (Avinash): show the IRAS ASK wording as the primary label with the
+    # raw code as a "(CODE)" tag, replacing the bare "Error codes" column.
+    cols = [2.0*cm, 4.0*cm, _UW - 6.0*cm]
+    hdr = [_p(h, _CELLB) for h in ["Doc #", "Counterparty", "IRAS ASK categories (code)"]]
     rows = [
         [
             _p(str(e.doc_num)),
-            _p(", ".join(e.error_codes)),
             _p(e.findings[0].card_name if e.findings else "—"),
-            # dict.fromkeys preserves insertion order and silently deduplicates;
-            # multiple findings can share the same Appendix 1 category string.
-            _p("; ".join(dict.fromkeys(f.appendix1_category for f in e.findings))),
+            # dict.fromkeys preserves insertion order and silently deduplicates
+            # identical "wording (code)" labels across a document's findings.
+            _p("; ".join(dict.fromkeys(
+                _category_code_label(f.appendix1_category, f.error_code)
+                for f in e.findings
+            ))),
         ]
         for e in m.cross_findings.multi_error_docs
     ]
