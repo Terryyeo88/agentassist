@@ -2968,6 +2968,24 @@ wiring, gated on Lanes A + B); **T2.11 gates customer-facing**. *(C2 landed — 
 
 ---
 
+## §T2.27 — Reg 26/27 reasoning pass generalized into a skill-parameterized shell (`reasoning/reasoning_pass.py` + `reasoning/reg2627.py` + `reasoning/fixture_schema.py` + `audit_bundle/seal.py` + `report/report.py` + `report/render.py`) (MECHANISM/seam generalization; built ≠ validated — the second reasoning stream is exercised only by a TEST-ONLY stub; NO new tax semantics, NO second real skill, NO live/accuracy validation)
+
+**What landed.** The Reg 26/27 reasoning pass is now a **skill-parameterized shell**. A NEW `reasoning/reasoning_pass.py` holds a frozen `SkillSpec` dataclass plus the generic engine `run_reasoning_pass(spec, period, *, line_source, llm_call, model_id)`, a generic `validate_candidate(spec, raw)`, and a KB loader whose `kb_path`/`kb_hash` are parameterized on `spec.kb_slice_name` / `spec.kb_dir`. `reasoning/reg2627.py` becomes `REG2627_SPEC` + a thin `run_reg2627_pass` wrapper that delegates to `run_reasoning_pass(REG2627_SPEC, …)`. The reg2627 artefact is **byte-identical** to the pre-branch pass (modulo the generated `generated_at` timestamp); a characterization test proves it. The sole lazy `anthropic` SDK import stays confined to `reasoning/reg2627.py` (the default `llm_call` bound onto `REG2627_SPEC.default_llm_call`) — the generic shell imports no `anthropic`, no `orchestrator/`, no `audit_bundle/`, no SAP client.
+
+**Fixture-schema helpers.** A NEW `reasoning/fixture_schema.py` adds `fixture_skill_id(fixture)` — reads `_meta.skill_id`, **falling back to `"reg2627"`** when absent — and `label_fields_blank(line)`, a generic blank-label helper.
+
+**Forward seams (default None → byte-identical).** `audit_bundle/seal.py` gains an OPTIONAL `extra_reasoning_artefacts={skill_id: artefact}` that seals each extra stream to `steps/<skill_id>-candidates.json`; reg2627 keeps its existing `steps/judgment-candidates.json`. `report/report.py` + `report/render.py` gain an OPTIONAL `extra_judgment_artefacts` that routes each extra stream through the **SAME** gated `build_ai_candidates_section(show=show_ai_candidates)` into `ReportModel.extra_candidates`; the renderer draws each subsection **only when `show=True`**. All three params default `None` and are **no-ops / byte-identical** when unset. `build_report` / `seal_bundle` are the forward seam — **`engine/review.py` still runs only `run_reg2627_pass` and does NOT pass either extra-stream param**, so the live pipeline is unchanged/byte-identical.
+
+**Test-only proof of the seam.** A NEW TEST-ONLY stub `SkillSpec` + fixtures under `tests/fixtures/reasoning-shell/` (`stubskill-fixture-v1.json`, `stubskill.md`) exercise the generic engine, the seal seam, and the render seam. **No KB slice was added under `knowledge-base/slices/`; NO tax semantics were authored; NO second real skill was added.** The second reasoning stream is exercised ONLY by this stub.
+
+**Honest status.** This is a **MECHANISM/seam generalization, NOT a new validated skill.** The generalized shell is exercised over reg2627 (byte-identical) and a TEST-ONLY stub — nothing new is validated, nothing is live-run, and `validation_status="unvalidated"` / `show_ai_candidates=False` are FROZEN. The generalization unblocks ANY second Group-A reasoning skill **mechanically** (write a `SkillSpec`, wire the extra-stream params), but the intended second skill — **OS-vs-ZR (outside-scope vs zero-rated)** — remains STOP-FLAGGED from Phase-1 recon: no place-of-supply / nexus field exists on current line data, so the first-skill choice must be revisited before any second skill is authored. T2.11 remains the binding constraint and is unmoved.
+
+**STOP-REPORTED to Terry (append-only-test boundary, human-authored separately).** Two changes touch locked test assets and were NOT made here: (1) stamping `_meta.skill_id="reg2627"` into the existing `tests/fixtures/reg2627-*.json` + `tests/fixtures/SCHEMA-reg2627-v1.md`; (2) generalizing the locked blank-label test `tests/test_t2_13_fixture_schema.py`. Until (1) lands, `fixture_skill_id()`'s `"reg2627"` fallback is what keeps the existing fixtures resolving.
+
+**Test count.** +33 new tests across three new files — `tests/test_reasoning_shell_generalize.py`, `tests/test_reasoning_shell_fixture_skill_id.py`, `tests/test_reasoning_shell_seal_render.py`. Full suite on the branch: **2279 passed, 1 skipped** (+33 over master's **2246 passed, 1 skipped** after rebasing onto the D40 report-redesign, PR #103).
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools

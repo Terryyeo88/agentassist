@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,6 +58,44 @@ log = logging.getLogger(__name__)
 
 # Module-level so tests can redirect via monkeypatch without changing function signature.
 _AUDIT_ROOT = Path(__file__).resolve().parent.parent / "audit"
+
+# T2.27: a second (or Nth) reasoning stream seals to steps/<skill_id>-candidates.json.
+# skill_id must be filename-safe and must not collide with reg2627's fixed key
+# (steps/judgment-candidates.json), which is reserved for the reasoning_artefact
+# parameter.
+_SAFE_SKILL_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+def _extra_candidates_filename(skill_id: str) -> str:
+    """Return steps/<skill_id>-candidates.json filename, validating skill_id.
+
+    Raises ValueError on an unsafe skill_id (path traversal, bad characters) or
+    one that would collide with reg2627's reserved judgment-candidates.json key.
+    """
+    if not isinstance(skill_id, str) or not _SAFE_SKILL_ID.match(skill_id):
+        raise ValueError(f"unsafe skill_id for bundle key: {skill_id!r}")
+    stem = f"{skill_id}-candidates"
+    if stem == "judgment-candidates":
+        raise ValueError(
+            "skill_id 'judgment' collides with the reserved reg2627 bundle key "
+            "steps/judgment-candidates.json"
+        )
+    return stem + ".json"
+
+
+def _reasoning_llm_meta(artefact: dict) -> dict:
+    """Build the per-artefact manifest llm metadata block for a reasoning artefact."""
+    prov = artefact.get("provenance", {})
+    return {
+        # Default in_run_path=True: if a reasoning artefact exists, an LLM was in
+        # the run path by definition.
+        "in_run_path": bool(prov.get("in_run_path", True)),
+        # str() coercions ensure None values become "" rather than causing a JSON
+        # serialisation error in canonical_json.
+        "model_id": str(prov.get("model_id", "")),
+        "prompt_version": str(prov.get("prompt_version", "")),
+        "kb_slice_hash": str(prov.get("kb_slice_hash", "")),
+    }
 
 
 def _write_canonical(path: Path, data) -> None:
@@ -130,6 +169,7 @@ def seal_bundle(
     reasoning_artefact: dict | None = None,
     declared_f5: dict | None = None,
     agent_ledger=None,
+    extra_reasoning_artefacts: "dict[str, dict] | None" = None,
 ) -> Path:
     """Write a sealed, tamper-evident audit bundle and return the bundle directory.
 
@@ -185,6 +225,15 @@ def seal_bundle(
                              as steps/agent-ledger.json and included in the manifest
                              hash.  Typed as object to avoid importing agent/ into
                              audit_bundle/ at module level.
+        extra_reasoning_artefacts: Optional {skill_id: artefact} mapping for a
+                             SECOND (or Nth) reasoning stream (T2.27).  Each is
+                             written to steps/<skill_id>-candidates.json and hashed
+                             in the manifest with its own llm-provenance block.
+                             reg2627 continues to use reasoning_artefact →
+                             steps/judgment-candidates.json (byte-identical); a
+                             skill_id that would collide with that key, or is not
+                             filename-safe, raises ValueError.  Default None keeps
+                             every existing bundle byte-identical.
 
     Returns:
         Path: Absolute path to the sealed bundle directory
@@ -195,6 +244,16 @@ def seal_bundle(
                  or written.  Read-only marking failures are logged but do not
                  raise.
     """
+    # --- 0. Validate second-stream skill_ids up front (before any write) ---
+
+    # Resolve each extra skill_id to its bundle filename now so an unsafe or
+    # colliding id raises before the bundle directory is created — no partial
+    # bundle is left behind.
+    extra_files: dict[str, str] = {
+        skill_id: _extra_candidates_filename(skill_id)
+        for skill_id in (extra_reasoning_artefacts or {})
+    }
+
     # --- a. run_ts and bundle directory ---
 
     # Convert to UTC before formatting so the directory name is timezone-agnostic
@@ -233,6 +292,16 @@ def seal_bundle(
         _write_canonical(
             bundle_dir / "steps" / "judgment-candidates.json",
             reasoning_artefact,
+        )
+
+    # --- b2b. Optional second/Nth reasoning streams (T2.27) ---
+
+    # Each extra reasoning stream seals to its own steps/<skill_id>-candidates.json
+    # key (validated in step 0), never overwriting reg2627's judgment-candidates.json.
+    for skill_id, filename in extra_files.items():
+        _write_canonical(
+            bundle_dir / "steps" / filename,
+            extra_reasoning_artefacts[skill_id],
         )
 
     # --- b3. Optional declared-F5 immutable input (T2.9) ---
@@ -293,29 +362,23 @@ def seal_bundle(
     # when present so the tamper-evidence chain covers permission decisions.
     if agent_ledger is not None:
         artefact_paths.append(bundle_dir / "steps" / "agent-ledger.json")
-    # Build per-artefact llm metadata for the reasoning artefact entry only.
+    # Build per-artefact llm metadata for reasoning artefacts only.
     # Deterministic artefacts carry no llm key (absence ≡ false).
-    artefact_llm_meta: dict | None = None
+    llm_meta: dict = {}
     if reasoning_artefact is not None:
         artefact_paths.append(bundle_dir / "steps" / "judgment-candidates.json")
-        # provenance may be absent when the reasoning pass errored before
-        # recording it; fall back to {} so all .get() calls below use defaults.
-        ra_prov = reasoning_artefact.get("provenance", {})
-        artefact_llm_meta = {
-            "steps/judgment-candidates.json": {
-                # Default in_run_path=True: if a reasoning artefact exists,
-                # an LLM was in the run path by definition.
-                "in_run_path": bool(ra_prov.get("in_run_path", True)),
-                # str() coercions ensure None values become "" rather than
-                # causing a JSON serialisation error in canonical_json.
-                "model_id": str(ra_prov.get("model_id", "")),
-                "prompt_version": str(ra_prov.get("prompt_version", "")),
-                "kb_slice_hash": str(ra_prov.get("kb_slice_hash", "")),
-            }
-        }
+        llm_meta["steps/judgment-candidates.json"] = _reasoning_llm_meta(reasoning_artefact)
+    # T2.27: each extra reasoning stream is hashed and carries its own llm block.
+    for skill_id, filename in extra_files.items():
+        artefact_paths.append(bundle_dir / "steps" / filename)
+        llm_meta[f"steps/{filename}"] = _reasoning_llm_meta(
+            extra_reasoning_artefacts[skill_id]
+        )
+    # Pass None (not an empty dict) when there are no reasoning artefacts, so a
+    # fully deterministic bundle is byte-identical to the pre-T2.27 manifest.
     manifest = build_manifest(
         engagement, provenance, artefact_paths, bundle_dir,
-        artefact_llm_meta=artefact_llm_meta,
+        artefact_llm_meta=llm_meta or None,
     )
     # Write manifest directly (not via _write_canonical) — bundle_dir already
     # exists, and writing it last makes the "covers all others" intent explicit.
