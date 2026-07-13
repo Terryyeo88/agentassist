@@ -1090,6 +1090,74 @@ def _unified_candidates_subsection(m: ReportModel, story: list) -> None:
         story.append(Paragraph(uc.disclaimer, _SMLX_AI))
 
 
+def _extra_candidates_subsections(m: ReportModel, story: list) -> None:
+    """Render second/Nth reasoning streams (T2.27) within Section 5.
+
+    Iterates model.extra_candidates (a {skill_id: AICandidatesSection} mapping)
+    and renders each stream through the same gated layout as the reg2627
+    AI-candidates subsection.  A stream is drawn ONLY when its section.show is
+    True, so the show_ai_candidates freeze gate covers every reasoning stream
+    identically.
+
+    No-op — the story list is left unchanged — when model.extra_candidates is
+    None/empty (every existing reg2627-only run), keeping those PDFs byte-identical.
+
+    Args:
+        m:     The ReportModel; extra_candidates may be None for legacy callers.
+        story: Mutable story list; flowables are appended in place.
+    """
+    extras = getattr(m, "extra_candidates", None)
+    if not extras:
+        return
+
+    # Deterministic order so the rendered PDF is stable across runs.
+    for skill_id in sorted(extras):
+        sec = extras[skill_id]
+        if sec is None or not sec.show:
+            continue
+
+        story.append(Spacer(1, 0.4 * cm))
+        story.append(HRFlowable(width=_UW, thickness=0.5, color=_AI_GRID))
+        story.append(Paragraph(
+            f"AI-surfaced candidates (unvalidated) — {skill_id}",
+            _H3_AI,
+        ))
+
+        if sec.status == "errored":
+            story.append(Paragraph("AI candidate pass did not complete.", _BODY))
+            continue
+
+        if sec.status == "ok" and sec.candidate_count == 0:
+            story.append(Paragraph("No AI-surfaced candidates.", _BODY))
+        else:
+            ai_cols = [1.8*cm, 1.8*cm, 2.0*cm, 2.8*cm, 2.8*cm, 2.0*cm, 4.0*cm]
+            ai_hdr = [_p(h, _CELLB) for h in
+                      ["Doc #", "Line", "Date", "Counterparty", "Category",
+                       "Confidence", "Reviewer prompt"]]
+            ai_rows = [
+                [
+                    _p(str(c.doc_num), _CELL_AI),
+                    _p(str(c.line_index), _CELL_AI),
+                    _p(c.doc_date, _CELL_AI),
+                    _p(c.card_name, _CELL_AI),
+                    _p(c.suspected_category.replace("_", " "), _CELL_AI),
+                    _p(c.confidence, _CELL_AI),
+                    _p(c.phrasing, _CELL_AI),
+                ]
+                for c in sec.candidates
+            ]
+            story.append(Table(
+                [ai_hdr] + ai_rows,
+                colWidths=ai_cols,
+                style=_ai_table_style(),
+                repeatRows=1,
+            ))
+
+        if sec.disclaimer:
+            story.append(Spacer(1, 0.15 * cm))
+            story.append(Paragraph(sec.disclaimer, _SMLX_AI))
+
+
 def _judgment(m: ReportModel, story: list) -> None:
     """Append Section 5 — Judgment items requiring reviewer decision.
 
@@ -1118,6 +1186,8 @@ def _judgment(m: ReportModel, story: list) -> None:
             _SMALL,
         ))
     _unified_candidates_subsection(m, story)
+    # T2.27: second/Nth reasoning streams, gated identically to reg2627.
+    _extra_candidates_subsections(m, story)
 
 
 def _analytical_review(m: ReportModel, story: list) -> None:
