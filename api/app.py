@@ -31,7 +31,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -56,8 +56,13 @@ from api.viewmodel import (
     build_audit_payload,
     build_review_payload,
     f5_summary,
+    serialize_ledger_recon_queue,
     serialize_xero_queue,
 )
+# Shared with the CLI (run_agent) — assembles the T2.24 gst_ledger side-input from the
+# uploaded Xero F5 workbook + optional 820 account-transactions export. Calls only feeder
+# leaves (no anthropic/engine drag); the web layer must NOT import run_agent (the CLI).
+from gst_ledger_input import build_gst_ledger_input
 # api/ → feeders/ edge (source-selector Xero branch). ``feeders`` is a pure stdlib leaf
 # (openpyxl is lazy on the .xlsx path); it imports NO anthropic/agent/engine/orchestrator,
 # so this edge keeps api/ anthropic-free and engine-free (pinned by the import-scan tests).
@@ -263,7 +268,10 @@ def get_review(client: str, period: str) -> dict:
 
 
 @app.post("/review/upload")
-async def post_review_upload(request: Request, filename: str = "") -> dict:
+async def post_review_upload(
+    file: UploadFile = File(...),
+    ledger: Optional[UploadFile] = File(None),
+) -> dict:
     """View over an UPLOADED client GST export (source-selector Xero branch).
 
     FORMAT ROUTING (two honest branches, both ``validation_status=unvalidated``):
@@ -281,26 +289,45 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
     Both responses are honestly framed — ``validation_status=unvalidated`` + the demo
     disclaimer; neither asserts a verdict.
 
-    Raw-body upload (no multipart dependency): the file BYTES are the request body and
-    ``filename`` (query param) carries the name for the ``.xlsx`` suffix gate. The upload
-    lands ONLY on a private system-temp dir (never the repo / committed fixtures) and is
-    deleted right after the read, so no client data enters the diff. Any unreadable/garbage
-    upload is a client-input error (422), never a 500.
+    MULTIPART upload: a REQUIRED primary ``file`` (the GST export) + an OPTIONAL ``ledger``
+    (the Xero 820 account-transactions export, T2.24). The multipart filename carries the
+    name for the ``.xlsx`` suffix gate. When a ledger is supplied AND the primary routes to
+    the Xero F5 handler, the ledger↔declared-return reconciliation runs (fork b: F5 path
+    only); every other path IGNORES a supplied ledger. Omitting the ledger is a clean no-op.
+
+    Both files land ONLY on a private system-temp dir (never the repo / committed fixtures)
+    and are deleted right after the read, so no client data enters the diff. Any
+    unreadable/garbage upload — primary OR ledger — is a client-input error (422), never a 500.
     """
-    suffix = Path(filename).suffix.lower()
-    if suffix != ".xlsx":
+    primary_name = file.filename or ""
+    if Path(primary_name).suffix.lower() != ".xlsx":
         raise HTTPException(
             status_code=422,
-            detail="Upload a single .xlsx GST export workbook (pass ?filename=<name>.xlsx).",
+            detail="Upload a single .xlsx GST export workbook as the 'file' part.",
         )
-    body = await request.body()
+    body = await file.read()
     if not body:
         raise HTTPException(status_code=422, detail="Empty upload.")
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="aa-extract-upload-"))
     try:
-        dest = tmp_dir / f"upload{suffix}"
+        dest = tmp_dir / "upload.xlsx"
         dest.write_bytes(body)
+
+        # Optional ledger (T2.24). Suffix-gated like the primary; the BYTES are written to
+        # temp here, but the ledger is only PARSED in the Xero F5 branch below (fork b) —
+        # every other path ignores it. A present-but-empty part is treated as "no ledger".
+        ledger_dest: Optional[Path] = None
+        if ledger is not None and (ledger.filename or "").strip():
+            if Path(ledger.filename).suffix.lower() != ".xlsx":
+                raise HTTPException(
+                    status_code=422,
+                    detail="The optional ledger must be a .xlsx account-transactions export.",
+                )
+            ledger_body = await ledger.read()
+            if ledger_body:
+                ledger_dest = tmp_dir / "ledger.xlsx"
+                ledger_dest.write_bytes(ledger_body)
 
         # --- PARSE BOUNDARY (Option A positional split) --------------------------------
         # ONLY reading/parsing the UNTRUSTED upload lives inside this try. A failure while
@@ -310,7 +337,8 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
         # number" sheet) uses the Xero reader; any other .xlsx (the synthetic documents/
         # business_partners/listing shape) uses ExtractChainReader. is_xero_f5_workbook
         # self-guards (an unreadable upload → False), so the only raisers here are the
-        # reader constructors + the Xero period parse.
+        # reader constructors + the Xero period parse (+ the ledger assembly on the F5 path).
+        gst_ledger: Optional[dict] = None
         try:
             is_xero = is_xero_f5_workbook(dest)
             # xero_sales is checked AFTER F5 (F5 keeps precedence) and BEFORE the Extract
@@ -321,6 +349,12 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
             if is_xero:
                 reader = XeroF5ChainReader(dest)
                 xero_period = parse_review_period(dest)
+                # T2.24 (fork b): assemble the ledger side-input ONLY on the F5 path, and
+                # ONLY when a ledger was uploaded — this PARSES the untrusted ledger and reads
+                # the F5 workbook's declared boxes / not-included rows, inside the parse
+                # boundary so a bad ledger is an honest 422 (never a 500).
+                if ledger_dest is not None:
+                    gst_ledger = build_gst_ledger_input(ledger_dest, dest, xero_period)
             elif is_xero_sales:
                 # A TaxType the client neither maps nor marks out-of-scope makes the reader raise
                 # ValueError — that is the USER'S FILE carrying an unmapped/parked code, an honest
@@ -346,7 +380,7 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
         # HTTPException(422)s re-raise unchanged (they are a client-input signal, not our bug).
         try:
             if is_xero:
-                return _xero_f5_review_response(reader, xero_period)
+                return _xero_f5_review_response(reader, xero_period, gst_ledger)
             if is_xero_sales:
                 return _xero_sales_review_response(reader)
             if _extract_engine_enabled():
@@ -374,7 +408,7 @@ async def post_review_upload(request: Request, filename: str = "") -> dict:
     }
 
 
-def _xero_f5_review_response(reader, period: dict) -> dict:
+def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = None) -> dict:
     """Run the real (UNVALIDATED) engine review over an uploaded Xero IRAS-F5 export.
 
     ``reader`` (``XeroF5ChainReader``) and ``period`` are constructed at the PARSE BOUNDARY in
@@ -405,7 +439,11 @@ def _xero_f5_review_response(reader, period: dict) -> dict:
     # A Xero F5 export has no SI-purchase-line / source-document surface; the surfaced findings
     # come entirely from run_chain via the reader. An empty line_source (Reg26/27 emits a clean
     # no-LLM artefact) and no provider (documents pass skipped) keep this hermetic.
-    inputs = ReviewInputs(line_source=lambda: [], provider=None, reader=reader)
+    # T2.24 (fork b/c): gst_ledger is supplied only on the F5 path and only when a ledger was
+    # uploaded; None → run_chain adds no ledger keys and the recon is a clean no-op.
+    inputs = ReviewInputs(
+        line_source=lambda: [], provider=None, reader=reader, gst_ledger=gst_ledger
+    )
     result = review(cfg, period, inputs)
     if result.status != "completed" or result.compile_output is None:
         # A reconciliation halt on an untrusted upload is a client-input error, never a 500.
@@ -417,8 +455,11 @@ def _xero_f5_review_response(reader, period: dict) -> dict:
     # A1 (same screen): project each detect issue into the SHARED central-screen QueueItem
     # (reuses serialize_queue_item/check_reference — E2/E3/E4 carry their real registry
     # iras_basis). The dark checks a Xero export cannot run stay in coverage_status
-    # (degraded/unavailable), NEVER fabricated into this queue.
-    queue = serialize_xero_queue(result.compile_output["detect"]["issues"])
+    # (degraded/unavailable), NEVER fabricated into this queue. T2.24: the ledger-recon rows
+    # (Signal A + B) merge in via serialize_ledger_recon_queue — [] when no ledger, both
+    # emit QUEUE_ITEM_KEYS, ungated.
+    queue = serialize_xero_queue(result.compile_output["detect"]["issues"]) + \
+        serialize_ledger_recon_queue(result.compile_output)
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
     return {
         "source_kind": "xero_f5_upload",

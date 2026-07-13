@@ -22,13 +22,21 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Group>("needs_review");
+  // Optional 820 account-transactions (ledger) export. Attach it BEFORE uploading the F5
+  // export to run the ledger↔declared-return reconciliation (T2.24). Stored, not submitted;
+  // the primary upload carries it. Only used when the primary is a Xero F5 export.
+  const [ledgerFile, setLedgerFile] = useState<File | null>(null);
+
+  function onLedger(event: ChangeEvent<HTMLInputElement>) {
+    setLedgerFile(event.target.files?.[0] ?? null);
+  }
 
   function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     setBusy(true);
     setErr("");
-    uploadExtract(file)
+    uploadExtract(file, ledgerFile)
       .then((resp) => {
         setCoverage(resp);
         // Default the selection to the first finding so its case-file card renders.
@@ -59,6 +67,22 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
         Upload a client .xlsx GST export. A real IRAS-F5 export is reviewed and its findings are
         shown below as candidates — unvalidated, for a human to adjudicate.
       </p>
+
+      <label className="xero-file-label">
+        Optional — 820 account-transactions (ledger) export
+        <input
+          className="xero-file-input xero-ledger-input"
+          type="file"
+          accept=".xlsx"
+          onChange={onLedger}
+        />
+      </label>
+      {ledgerFile && (
+        <p className="xero-ledger-attached">
+          Ledger attached: <span className="mono">{ledgerFile.name}</span> — the
+          ledger↔declared-return reconciliation will run when you upload a Xero F5 export.
+        </p>
+      )}
 
       <label className="xero-file-label">
         Upload .xlsx GST export
