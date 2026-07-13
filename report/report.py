@@ -138,6 +138,11 @@ class ReportModel:
     # T2.24 PR-3: GST control-ledger reconciliation (Signal A + B). None in legacy
     # callers / runs with no gst_ledger; renderer is empty-when-empty in both cases.
     ledger_recon: LedgerReconSection | None = None
+    # T2.27: second/Nth reasoning stream(s), keyed by skill_id, each built through
+    # the SAME gated AI-candidates builder (show=show_ai_candidates). None when no
+    # extra reasoning artefacts were supplied — keeps reg2627-only runs (and their
+    # rendered PDFs) byte-identical. The renderer draws each only when its .show is True.
+    extra_candidates: "dict[str, AICandidatesSection] | None" = None
 
 
 def build_report(
@@ -149,6 +154,7 @@ def build_report(
     document_candidates: list | None = None,
     analytical_review_data: dict | None = None,
     document_legibility_rows: list | None = None,
+    extra_judgment_artefacts: dict[str, dict] | None = None,
 ) -> ReportModel:
     """Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
@@ -182,6 +188,12 @@ def build_report(
                            legibility gate. Appended to the ungated Deterministic
                            Check Coverage section so a reviewer sees them even when
                            show_ai_candidates is False. Defaults to None (no rows).
+        extra_judgment_artefacts: Optional {skill_id: artefact} mapping for a
+                           second/Nth reasoning stream (T2.27).  Each artefact is
+                           routed through the SAME gated builder
+                           (build_ai_candidates_section, show=show_ai_candidates)
+                           and exposed on ReportModel.extra_candidates.  Defaults
+                           to None so reg2627-only runs are byte-identical.
 
     Returns:
         ReportModel: A fully populated model ready to be passed to render_pdf().
@@ -229,6 +241,17 @@ def build_report(
     # (present the "not reconciled" line only when no gst_ledger was supplied).
     ledger_recon_sec = build_ledger_recon_section(compile_output)
 
+    # T2.27: build each extra reasoning stream through the SAME gated builder, so
+    # the show_ai_candidates freeze gate covers every stream identically. None
+    # (not an empty dict) when no extra artefacts were supplied — keeps
+    # reg2627-only ReportModels byte-identical for existing callers/tests.
+    extra_candidates_map: dict | None = None
+    if extra_judgment_artefacts:
+        extra_candidates_map = {
+            skill_id: build_ai_candidates_section(artefact, show=show_ai)
+            for skill_id, artefact in extra_judgment_artefacts.items()
+        }
+
     return ReportModel(
         cover=build_cover_section(
             compile_output, client_config, generated_at=generated_at
@@ -269,4 +292,6 @@ def build_report(
         check_coverage=coverage_sec,
         # T2.24 PR-3: GST control-ledger reconciliation (Signal A + B); empty-when-empty.
         ledger_recon=ledger_recon_sec,
+        # T2.27: second/Nth reasoning stream(s), gated identically to reg2627.
+        extra_candidates=extra_candidates_map,
     )

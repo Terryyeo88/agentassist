@@ -250,6 +250,8 @@ Documents 1–3 describe **validated, deterministic** coverage — what the Pyth
 
 **Agent skills are the productionisation path.** Packaging each extension as a discrete, eval-able skill (e.g. a "Reg 33 exempt classification" skill, an "export-evidence verification" skill) is what makes a J+ capability *measurable and consistent* — and therefore eventually claimable under the accuracy basket. Skills do not change the J+ ceiling; they make the J+ contribution reliable enough to depend on. The end-state design goal is explicit: the reasoning layer flags every candidate that needs human vetting and passes nothing through on its own.
 
+> **Mechanism note (T2.27, built ≠ validated).** The single Reg 26/27 reasoning pass has been generalized into a **skill-parameterized shell** (`reasoning/reasoning_pass.py` — a `SkillSpec` + generic `run_reasoning_pass`, with reg2627 now one byte-identical spec, plus optional forward seams to seal + render a second candidate stream). This means adding one of the J+ extensions above as a **second reasoning skill is now a mechanical wiring exercise** rather than a fork of the pass. It changes **nothing** about coverage or validation: no second real skill has been authored, no new tax semantics exist, the second stream is exercised only by a TEST-ONLY stub, and `engine/review.py` still runs only reg2627. The intended second skill (OS-vs-ZR, outside-scope vs zero-rated) remains **blocked on a data-signal gap** — no place-of-supply / nexus field exists on current line data — so the first-skill choice must be revisited. Nothing here is claimable; **T2.11 still gates every reasoning-layer accuracy claim.**
+
 ---
 
 ## Known limitations of this analysis
