@@ -12,8 +12,12 @@ interface Props {
   reviewOnlyNote?: string;
 }
 
-const DECISIONS = ["Accept", "Not an issue", "Mark known"] as const;
-const NOTE_REQUIRED = new Set(["Not an issue", "Mark known"]);
+// "Decline" is a distinct adjudication from "Not an issue": Decline disputes the
+// finding (the reviewer disagrees with the flag), while "Not an issue" sets it
+// aside as known/acceptable. Both require a reviewer note. Decline records through
+// the existing onRecord → sign flow — no new endpoint, no QUEUE_ITEM_KEYS change.
+const DECISIONS = ["Accept", "Decline", "Not an issue", "Mark known"] as const;
+const NOTE_REQUIRED = new Set(["Decline", "Not an issue", "Mark known"]);
 
 /**
  * FindingDetail — the per-finding case-file card: vendor · what we found · why it matters
