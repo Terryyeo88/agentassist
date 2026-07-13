@@ -2927,6 +2927,28 @@ wiring, gated on Lanes A + B); **T2.11 gates customer-facing**. *(C2 landed — 
 
 ---
 
+## §T2.24 PR-3 — Ledger recon (Signal A + B) RENDERS on the signed PDF working paper (`report/sections.py` + `report/render.py` + `report/report.py` + `report/constants.py`) (built ≠ validated — real-FORMAT over SYNTHETIC content, hermetic; NOT real-client-export-validated, NOT accuracy-validated)
+
+**What landed.** The PR-1/PR-2 ledger recon findings — **Signal A** (ledger-vs-declared-return divergences) and **Signal B** (the not-included 820-control-account GST drop) — now **RENDER into the PDF working paper a reviewer signs**. This is a **REPORT-LAYER-ONLY** slice: it reads what the chain already attaches and lays it out; it computes no boxes and moves no gates.
+
+**New section builder (PURE / read-only).** `report/sections.py` — a NEW `LedgerReconSection` dataclass + `build_ledger_recon_section` over `compile_output`. It **mirrors the T2.10 listing three-state model** (`examined` / `unavailable` / `not_examined`) **per-signal**, keeping **None vs [] vs absent distinct** (no state collapse). Pure and read-only — no mutation of `compile_output`.
+
+**New renderers.** `report/render.py` — a NEW `render_ledger_recon_section` (text) that is **empty-string-when-empty** (**no fabricated all-clear** — when there is nothing examined it renders nothing, it does NOT assert a clean recon) + a `_ledger_recon` PDF flowable, **inserted after `_check_coverage`** in the render order.
+
+**Model wiring.** `report/report.py` — a NEW **optional** `ReportModel.ledger_recon` field, **built once and shared** with `build_not_examined_section` (single source, no double-build).
+
+**Section-6 NOT_EXAMINED coordination.** `report/constants.py` + `report/sections.py` gain a NEW Section-6 NOT_EXAMINED line for the **820 control-ledger reconciliation**, **SUPPRESSED when the recon was performed** (a `gst_ledger` supplied → `examined` / `unavailable`) and **PRESENT when it was never run** (`not_examined`). **Both directions are tested.**
+
+**Surfaces-never-asserts at the render layer.** Descriptions render **verbatim from the PR-1/PR-2 checks** in candidate framing ("if a reviewer adjudicates", "not a verdict", no bare verdict word) — the render layer surfaces a candidate, it does not assert.
+
+**ADDITIVE to the sealed artifact.** `compile_output` shape is **untouched**; the **offline-replay oracle stays byte-identical** (no re-freeze); `test_t58_artifact_contract` green. **No API / queue / frontend / `QUEUE_ITEM_KEYS` change** (that is PR-4). **No `CHECK_REGISTRY` entry**; `iras_basis` is **NOT rendered** in the PDF section. `validation_status="unvalidated"` / `show_ai_candidates=False` **FROZEN**. **BOX-ISOLATION untouched** (render-only). T2.11 unmoved.
+
+**Render proof.** A sample PDF (`exploration-notes/t224-pr3-ledger-recon-sample.pdf`) shows the section with **both divergences** (output **270.00**, input **6.30**) + the **820 drop** (**#14, 6.30**), footer intact.
+
+**Honest status.** Built + real-FORMAT-validated over SYNTHETIC content, hermetic. The ledger recon (Signal A + B) now RENDERS on the PDF working paper a reviewer signs. NOT yet surfaced on the upload endpoint / review-screen queue — that is PR-4. Does NOT reach real-client-export-validated or accuracy-validated. Internal-consistency check, NOT a truth check. T2.11 unmoved.
+
+---
+
 ## MCP tools inventory
 
 ### Custom GST accounting tools
