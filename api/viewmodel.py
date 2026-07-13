@@ -229,6 +229,112 @@ def serialize_xero_queue(issues: list[dict]) -> list[dict[str, Any]]:
     return items
 
 
+# ── Ledger-recon (T2.24) → SHARED queue rows (PR-2; lean A = prose reuse) ─────────────
+# Reuses serialize_queue_item / QUEUE_ITEM_KEYS — NO new contract key. The three review
+# fields (ledger-transaction reference, GST box, impact-on-GST-payable) are folded into
+# description/recommendation as prose; the impact figure is read VERBATIM from the finding
+# (divergence/amount) — no arithmetic, no recompute (box-isolation).
+
+# Ledger-recon is an INTERNAL-CONSISTENCY check, NOT an IRAS-cited finding. This honest
+# basis replaces the citation serialize_queue_item would resolve via CHECK_REGISTRY —
+# GST_LEDGER_RECON is deliberately absent from the registry, so we never manufacture a cite.
+_LEDGER_RECON_IRAS_BASIS = (
+    "Internal-consistency check — ledger-derived GST versus the declared F5 return. "
+    "Not an IRAS-cited finding: it flags a divergence between two derivations of the same "
+    "source for reviewer adjudication, never a verdict that either side is correct."
+)
+_LEDGER_RECON_DISPLAY = {
+    "ledger_recon_divergence": "Ledger vs declared-return divergence",
+    "not_included_gst_drop": "GST posting not included in the F5 return",
+}
+# Mechanical routing labels (finding-type → error_code) — NOT tax meaning.
+_LEDGER_RECON_CODE = {
+    "ledger_recon_divergence": "LEDGER_RECON",
+    "not_included_gst_drop": "NOT_INCLUDED",
+}
+
+
+def _ledger_recon_prose(finding: dict) -> tuple[str, str]:
+    """Fold ledger reference / GST box / impact-on-GST-payable into (description,
+    recommendation) prose. Impact (``divergence``/``amount``) is read VERBATIM from the
+    finding — no arithmetic; the GST box is a constant side→box lookup, not a computation.
+    """
+    ftype = finding.get("finding_type")
+    description = finding.get("description") or "—"
+    base_reco = finding.get("recommendation") or ""
+    if ftype == "ledger_recon_divergence":
+        side = finding.get("side")
+        box = "Box 6" if side == "output" else "Box 7"  # constant lookup, not arithmetic
+        impact = finding.get("divergence")              # VERBATIM
+        detail = (
+            f" (Ledger transaction reference: {side}-side 820 control-account aggregate; "
+            f"GST box: {box}; impact on GST payable if adjudicated as an error: {impact}.)"
+        )
+    else:  # not_included_gst_drop
+        reference = finding.get("reference") or finding.get("account") or "—"
+        impact = finding.get("amount")                  # VERBATIM
+        detail = (
+            f" (Ledger transaction reference: {reference}; GST box: not included in any F5 "
+            f"box (Transactions-not-included section); impact on GST payable if adjudicated "
+            f"as declarable: {impact}.)"
+        )
+    return description, (base_reco + detail).strip()
+
+
+def _serialize_one_ledger_finding(finding: dict) -> dict[str, Any]:
+    """One T2.24 ledger-recon finding → a QueueItem row (exactly QUEUE_ITEM_KEYS)."""
+    ftype = finding.get("finding_type", "")
+    code = _LEDGER_RECON_CODE.get(ftype, "LEDGER_RECON")
+    description, recommendation = _ledger_recon_prose(finding)
+    # Stable per-finding id, mirroring the detect: path's {code}:{key} semantics.
+    key = finding.get("side") if ftype == "ledger_recon_divergence" else (
+        finding.get("reference") or finding.get("account")
+    )
+    item = {
+        "finding_id": f"ledger_recon:{ftype}:{key or '-'}",
+        "check_id": finding.get("check_id", "GST_LEDGER_RECON"),
+        "finding_type": "deterministic",
+        "candidate_framing_text": (
+            "Internal-consistency candidate — a reviewer adjudicates whether the divergence "
+            "is an error in the return; this is not a verdict."
+        ),
+        # flatten_finding_card picks the payload bearing description/error_code.
+        "evidence": {"ledger_recon_finding": {
+            "description": description,
+            "recommendation": recommendation,
+            "error_code": code,
+            "severity": finding.get("severity"),  # ledger-recon carries none → None (lean B)
+        }},
+    }
+    row = serialize_queue_item(item)
+    # serialize_queue_item resolves display_name/iras_basis from CHECK_REGISTRY, which has
+    # NO GST_LEDGER_RECON entry (→ id/"—"). Override with the HONEST internal-consistency
+    # labels — never a manufactured IRAS citation. Same key set → QUEUE_ITEM_KEYS intact.
+    return {
+        **row,
+        "display_name": _LEDGER_RECON_DISPLAY.get(ftype, "Ledger-vs-return reconciliation"),
+        "iras_basis": _LEDGER_RECON_IRAS_BASIS,
+    }
+
+
+def serialize_ledger_recon_queue(compile_output: dict) -> list[dict[str, Any]]:
+    """Project the T2.24 ledger-recon findings into SHARED QueueItem rows (PR-2, hop 1).
+
+    Reads ``compile_output["ledger_recon_findings"]`` (Signal A: side + divergence) and
+    ``compile_output["not_included_findings"]`` (Signal B: reference + amount). A None or
+    absent key — the "unavailable" cannot-run state carried in the sibling ``*_status``
+    key — yields NO rows (honest degradation, never a fabricated finding). The findings are
+    DETERMINISTIC and UNGATED (never behind show_ai_candidates). Read-only over
+    compile_output: the F5 boxes and the offline-replay oracle are untouched.
+    """
+    rows: list[dict[str, Any]] = []
+    for finding in (compile_output.get("ledger_recon_findings") or []):
+        rows.append(_serialize_one_ledger_finding(finding))
+    for finding in (compile_output.get("not_included_findings") or []):
+        rows.append(_serialize_one_ledger_finding(finding))
+    return rows
+
+
 def build_review_payload(artifacts: DemoArtifacts) -> dict[str, Any]:
     """Assemble GET /review: client + period + F5 summary + the serialised queue.
 
