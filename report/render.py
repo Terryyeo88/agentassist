@@ -445,6 +445,52 @@ def render_declared_f5_section(section) -> str:
     return "\n".join(lines)
 
 
+# ── Ledger-recon text renderer (public, T2.24 PR-3) ──────────────────────────
+
+def render_ledger_recon_section(section) -> str:
+    """Render the T2.24 GST control-ledger reconciliation to plain text.
+
+    Empty-string-when-empty (mirrors render_declared_f5_section): a clean run (examined,
+    no findings) and a never-run (not_examined) render NOTHING — no fabricated all-clear.
+    Non-empty only when a divergence/drop candidate exists OR a sub-signal is
+    ``unavailable`` (an honest could-not-run caveat). The finding descriptions already
+    carry candidate framing; this renders them verbatim and asserts nothing. Duck-typed.
+    """
+    if section is None:
+        return ""
+    recon_status = getattr(section, "recon_status", "not_examined")
+    recon_findings = getattr(section, "recon_findings", None) or []
+    drop_status = getattr(section, "drop_status", "not_examined")
+    drop_findings = getattr(section, "drop_findings", None) or []
+
+    body: list[str] = []
+    # Signal A — ledger-derived GST vs the declared return boxes.
+    if recon_status == "unavailable":
+        body.append(
+            "  Ledger-vs-declared-return reconciliation not performed "
+            f"({getattr(section, 'recon_reason', '')})."
+        )
+    else:
+        for f in recon_findings:
+            body.append(f"  [{f.get('side', '—')}] {f.get('description', '')}")
+    # Signal B — GST postings dropped from the F5 report ("Transactions not included").
+    if drop_status == "unavailable":
+        body.append(
+            "  Not-included GST-posting review not performed "
+            f"({getattr(section, 'drop_reason', '')})."
+        )
+    else:
+        for f in drop_findings:
+            body.append(
+                f"  [{f.get('account', '—')} {f.get('reference', '')}] "
+                f"{f.get('description', '')}"
+            )
+
+    if not body:
+        return ""
+    return "\n".join(["GST Control-Ledger Reconciliation", "=" * 50, *body])
+
+
 # ── Analytical review text renderer (public) ─────────────────────────────────
 
 def render_analytical_review_section(section) -> str:
@@ -1199,6 +1245,79 @@ def _listing_findings(m: ReportModel, story: list) -> None:
         story.append(_table(dc_cols, dc_hdr, dc_rows))
 
 
+def _ledger_recon(m: ReportModel, story: list) -> None:
+    """Render the T2.24 GST control-ledger reconciliation (Signal A + B) when present.
+
+    Empty-when-empty: a clean run (examined, no findings) or a never-run reconciliation
+    appends NOTHING — Section 6 carries the "not reconciled" line for the never-run case.
+    Renders per-side divergence candidates (Signal A), the dropped-posting candidates
+    (Signal B), and an honest "could not run" caveat for an unavailable sub-signal.
+    Read-only projection over already-computed findings; touches no F5 box, no gate.
+
+    Args:
+        m:     The ReportModel carrying the optional ledger_recon section.
+        story: Mutable story list; flowables are appended in place.
+    """
+    sec = getattr(m, "ledger_recon", None)
+    if sec is None:
+        return
+    recon_status = getattr(sec, "recon_status", "not_examined")
+    recon_findings = getattr(sec, "recon_findings", None) or []
+    drop_status = getattr(sec, "drop_status", "not_examined")
+    drop_findings = getattr(sec, "drop_findings", None) or []
+
+    recon_shows = recon_status == "unavailable" or bool(recon_findings)
+    drop_shows = drop_status == "unavailable" or bool(drop_findings)
+    if not (recon_shows or drop_shows):
+        return
+
+    story.append(Paragraph("GST Control-Ledger Reconciliation", _H2))
+    story.append(Paragraph(
+        "Internal-consistency reconciliation of the GST control-account (820) ledger "
+        "against the declared F5 return (IRAS ASK Annual Review Guide §10.1(e)). Findings "
+        "are candidates for reviewer attention; they do not affect F5 box totals or gate "
+        "outcomes. This is an internal-consistency check, not a truth check — a "
+        "consistently-mis-coded transaction agrees on both sides and is invisible here.",
+        _SMLX,
+    ))
+
+    # Signal A — ledger-derived GST vs the declared return boxes.
+    if recon_status == "unavailable":
+        story.append(Paragraph(
+            "Ledger-vs-declared-return reconciliation could not run for this review "
+            f"({sec.recon_reason}).",
+            _SMALL,
+        ))
+    elif recon_findings:
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(Paragraph("Ledger vs Declared Return (Signal A)", _H3))
+        for f in recon_findings:
+            story.append(Paragraph(
+                f"[{f.get('side', '—')}] {f.get('description', '')}", _SMALL))
+            rec = f.get("recommendation")
+            if rec:
+                story.append(Paragraph(rec, _SMLX))
+
+    # Signal B — GST postings dropped from the F5 report.
+    if drop_status == "unavailable":
+        story.append(Paragraph(
+            "Not-included GST-posting review could not run for this review "
+            f"({sec.drop_reason}).",
+            _SMALL,
+        ))
+    elif drop_findings:
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(Paragraph("Postings Excluded from the F5 Return (Signal B)", _H3))
+        for f in drop_findings:
+            story.append(Paragraph(
+                f"[{f.get('account', '—')} {f.get('reference', '')}] "
+                f"{f.get('description', '')}",
+                _SMALL))
+            rec = f.get("recommendation")
+            if rec:
+                story.append(Paragraph(rec, _SMLX))
+
+
 def _check_coverage(m: ReportModel, story: list) -> None:
     """Render the dedicated Deterministic Check Coverage section (T2.12-2C).
 
@@ -1342,6 +1461,7 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _findings(model, story)
     _listing_findings(model, story)
     _check_coverage(model, story)
+    _ledger_recon(model, story)
     _cross_findings(model, story)
     _judgment(model, story)
     _not_examined(model, story)
