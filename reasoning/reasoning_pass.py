@@ -65,8 +65,15 @@ class SkillSpec:
         kb_slice_name:       Basename (no extension) of the KB slice markdown
                              file under kb_dir.
         suspected_categories: Allowed values for a candidate's suspected_category.
-        vat_group:           Only lines whose vat_group == this are forwarded to
-                             the LLM; also stamped onto every emitted candidate.
+        vat_group:           The tax code(s) this skill selects — either a single
+                             canonical code (str, e.g. "SI") or a frozenset of
+                             codes (e.g. frozenset({"ES33","ESN33"})).  Only lines
+                             whose vat_group matches are forwarded to the LLM.
+                             For a str spec the single code is also stamped onto
+                             every emitted candidate (unchanged pre-T2.29
+                             behaviour); for a frozenset spec each candidate keeps
+                             its OWN per-line code so a multi-code skill does not
+                             flatten every candidate to one value.
         batch_size:          Max lines per LLM call.
         max_tokens:          Output token budget per batch.
         disclaimer:          Human-review disclaimer stamped into the artefact.
@@ -86,7 +93,7 @@ class SkillSpec:
     prompt_version: str
     kb_slice_name: str
     suspected_categories: frozenset
-    vat_group: str
+    vat_group: "str | frozenset[str]"
     batch_size: int
     max_tokens: int
     disclaimer: str
@@ -95,6 +102,25 @@ class SkillSpec:
     build_user_message: Callable[[dict, list], str]
     kb_dir: Path = _DEFAULT_KB_DIR
     default_llm_call: "LlmCall | None" = None
+
+    def __post_init__(self):
+        # Validation only — no attribute assignment, so this is safe on a frozen
+        # dataclass.  vat_group must be a single str or a frozenset of str; other
+        # types (int, mutable set, frozenset with non-str members) are rejected.
+        vg = self.vat_group
+        if isinstance(vg, str):
+            return
+        if isinstance(vg, frozenset) and all(isinstance(x, str) for x in vg):
+            return
+        raise TypeError(
+            "SkillSpec.vat_group must be a str or a frozenset[str]; "
+            f"got {type(vg).__name__}"
+        )
+
+    def allowed_vat_groups(self) -> "frozenset[str]":
+        """Return the set of codes this spec selects (str → single-element set)."""
+        vg = self.vat_group
+        return vg if isinstance(vg, frozenset) else frozenset({vg})
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +181,15 @@ def validate_candidate(spec: SkillSpec, raw: dict) -> dict:
         "doc_date": str(raw["doc_date"]),
         "card_name": str(raw["card_name"]),
         "line_index": int(raw["line_index"]),
-        "vat_group": spec.vat_group,
+        # str spec: force the single spec code (unchanged pre-T2.29 behaviour —
+        # byte-identical for reg2627, whose filter guarantees line vat_group=="SI").
+        # frozenset spec: keep the candidate's OWN per-line code so a multi-code
+        # skill does not flatten every candidate to a single value.
+        "vat_group": (
+            str(raw["vat_group"])
+            if isinstance(spec.vat_group, frozenset)
+            else spec.vat_group
+        ),
         "line_description": str(raw["line_description"]),
         "line_total": float(raw["line_total"]),
         "tax_total": float(raw["tax_total"]),
@@ -238,9 +272,12 @@ def run_reasoning_pass(
         log.error("%s: line_source failed: %s", spec.skill_id, exc)
         return _errored(f"line_source failed: {exc}", slice_hash)
 
+    # Normalize the spec's code(s) to a set once; a str spec becomes a single-
+    # element set so membership is exactly the pre-T2.29 equality behaviour.
+    allowed_vgs = spec.allowed_vat_groups()
     kept_lines = [
         ln for ln in all_lines
-        if str(ln.get("vat_group") or "").strip() == spec.vat_group
+        if str(ln.get("vat_group") or "").strip() in allowed_vgs
     ]
     doc_nums = {ln["doc_num"] for ln in kept_lines}
 
