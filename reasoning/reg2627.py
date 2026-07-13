@@ -1,5 +1,10 @@
 """reasoning/reg2627.py — Reg 26/27 disallowed input tax candidate pass (T2.7).
 
+As of T2.27 this module is a thin binding of the generic reasoning shell
+(reasoning/reasoning_pass.py): reg2627 is one SkillSpec (REG2627_SPEC) and
+run_reg2627_pass delegates to run_reasoning_pass.  The observable artefact is
+byte-identical to the pre-T2.27 pass (a characterization test proves it).
+
 Invariants (never break these):
 - Outputs are candidates for human review only.  Every phrasing starts with
   "Consider reviewing whether".  The pass NEVER asserts a compliance conclusion.
@@ -8,19 +13,22 @@ Invariants (never break these):
 - Emits the artefact dict unconditionally — status="errored" on any failure.
 - The injectable line_source and llm_call parameters let tests use fakes so
   no test ever hits a live SAP instance or the live Anthropic API.
+- This module is the ONLY place in reasoning/ that imports anthropic (lazily,
+  inside _default_llm_call), bound onto REG2627_SPEC.default_llm_call.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
-import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-log = logging.getLogger(__name__)
+from reasoning.reasoning_pass import (
+    SkillSpec,
+    run_reasoning_pass,
+    validate_candidate as _validate_candidate_generic,
+)
 
 _KB_PATH = Path(__file__).resolve().parent.parent / "knowledge-base" / "slices" / "reg2627.md"
 _PROMPT_VERSION = "t2.7-reg2627-v1"
@@ -37,7 +45,6 @@ _SUSPECTED_CATEGORIES = frozenset({
     "entertainment",
     "other_disallowed",
 })
-_CONFIDENCE_VALUES = frozenset({"low", "medium", "high"})
 
 # Batching: split SI lines into chunks so each LLM response stays within budget.
 # Models differ greatly in output verbosity:
@@ -49,13 +56,8 @@ _MAX_TOKENS  = 8192  # output token budget per batch (safe for all three models)
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Prompt assembly (reg2627-specific; bound onto REG2627_SPEC)
 # ---------------------------------------------------------------------------
-
-def _kb_hash() -> str:
-    data = _KB_PATH.read_bytes()
-    return "sha256:" + hashlib.sha256(data).hexdigest()
-
 
 def _build_system_prompt(kb_text: str) -> str:
     return (
@@ -92,51 +94,6 @@ def _build_user_message(period: dict, lines: list[dict]) -> str:
     )
 
 
-def _validate_candidate(raw: dict) -> dict:
-    """Validate and normalise one candidate.  Raises ValueError on bad data."""
-    required = {
-        "doc_num", "doc_type", "doc_date", "card_name", "line_index",
-        "vat_group", "line_description", "line_total", "tax_total",
-        "suspected_category", "reasoning", "phrasing", "confidence",
-    }
-    missing = required - set(raw.keys())
-    if missing:
-        raise ValueError(f"candidate missing fields: {sorted(missing)}")
-
-    cat = raw.get("suspected_category")
-    if cat not in _SUSPECTED_CATEGORIES:
-        raise ValueError(
-            f"invalid suspected_category {cat!r}; "
-            f"must be one of {sorted(_SUSPECTED_CATEGORIES)}"
-        )
-
-    conf = raw.get("confidence")
-    if conf not in _CONFIDENCE_VALUES:
-        raise ValueError(
-            f"invalid confidence {conf!r}; must be one of {sorted(_CONFIDENCE_VALUES)}"
-        )
-
-    phrasing = str(raw.get("phrasing", ""))
-    if not phrasing.startswith("Consider reviewing whether"):
-        phrasing = "Consider reviewing whether " + phrasing
-
-    return {
-        "doc_num": int(raw["doc_num"]),
-        "doc_type": str(raw["doc_type"]),
-        "doc_date": str(raw["doc_date"]),
-        "card_name": str(raw["card_name"]),
-        "line_index": int(raw["line_index"]),
-        "vat_group": "SI",
-        "line_description": str(raw["line_description"]),
-        "line_total": float(raw["line_total"]),
-        "tax_total": float(raw["tax_total"]),
-        "suspected_category": str(cat),
-        "reasoning": str(raw["reasoning"]),
-        "phrasing": phrasing,
-        "confidence": str(conf),
-    }
-
-
 # ---------------------------------------------------------------------------
 # Default LLM callable (deferred import so tests can run without anthropic)
 # ---------------------------------------------------------------------------
@@ -147,7 +104,7 @@ def _default_llm_call(
     """Call the Anthropic Messages API.
 
     Defers the anthropic import to call time; raises RuntimeError if the SDK
-    is missing or ANTHROPIC_API_KEY is not set.  The caller (run_reg2627_pass)
+    is missing or ANTHROPIC_API_KEY is not set.  The caller (run_reasoning_pass)
     wraps this in a broad try/except so any failure becomes status="errored".
     """
     try:
@@ -183,7 +140,7 @@ def build_anthropic_llm_call(
 ) -> "Callable[[str, str, list[dict], int], dict]":
     """Return an llm_call callable with model_id baked in.
 
-    The returned callable satisfies the run_reg2627_pass llm_call contract:
+    The returned callable satisfies the run_reasoning_pass llm_call contract:
         (model, system, messages, max_tokens) → {"content", "input_tokens", "output_tokens"}
     but ignores the positional 'model' argument and always uses the bound model_id.
 
@@ -200,7 +157,39 @@ def build_anthropic_llm_call(
 
 
 # ---------------------------------------------------------------------------
-# Public entry point
+# The Reg 26/27 skill specification
+# ---------------------------------------------------------------------------
+
+REG2627_SPEC = SkillSpec(
+    skill_id="reg2627",
+    artefact_type="judgment-candidates",
+    check="reg-26-27-disallowed-input-tax",
+    prompt_version=_PROMPT_VERSION,
+    kb_slice_name="reg2627",
+    suspected_categories=_SUSPECTED_CATEGORIES,
+    vat_group="SI",
+    batch_size=_BATCH_SIZE,
+    max_tokens=_MAX_TOKENS,
+    disclaimer=_DISCLAIMER,
+    lines_examined_label="si_purchase_lines_examined",
+    build_system_prompt=_build_system_prompt,
+    build_user_message=_build_user_message,
+    kb_dir=_KB_PATH.parent,
+    default_llm_call=_default_llm_call,
+)
+
+
+def _validate_candidate(raw: dict) -> dict:
+    """Validate and normalise one Reg 26/27 candidate.  Raises ValueError.
+
+    Thin wrapper over the generic validator bound to REG2627_SPEC, preserving
+    the single-argument contract used by the reg2627 unit tests.
+    """
+    return _validate_candidate_generic(REG2627_SPEC, raw)
+
+
+# ---------------------------------------------------------------------------
+# Public entry point (thin wrapper over the generic pass)
 # ---------------------------------------------------------------------------
 
 def run_reg2627_pass(
@@ -212,6 +201,9 @@ def run_reg2627_pass(
 ) -> dict:
     """Run the Regulation 26/27 disallowed input tax reasoning pass.
 
+    Delegates to run_reasoning_pass(REG2627_SPEC, …); the artefact is
+    byte-identical to the pre-T2.27 pass.
+
     Args:
         period:      {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}
         line_source: callable → list of purchase invoice line dicts.
@@ -220,7 +212,7 @@ def run_reg2627_pass(
                      line_total, tax_total.  Only lines with vat_group=="SI"
                      are forwarded to the LLM.
         llm_call:    injectable; defaults to _default_llm_call (real Anthropic
-                     Messages API).  Signature:
+                     Messages API) via REG2627_SPEC.default_llm_call.  Signature:
                        (model: str, system: str, messages: list[dict], max_tokens: int)
                        → {"content": str, "input_tokens": int, "output_tokens": int}
         model_id:    pinned Anthropic model string.
@@ -228,155 +220,10 @@ def run_reg2627_pass(
     Returns the complete judgment-candidates artefact dict — always, even on error.
     The caller (run_agent.py) must never discard this artefact on failure.
     """
-    _llm = llm_call if llm_call is not None else _default_llm_call
-    generated_at = datetime.now(timezone.utc).isoformat()
-
-    def _errored(error_message: str, kb_hash: str = "sha256:" + "0" * 64) -> dict:
-        return {
-            "artefact_type": "judgment-candidates",
-            "schema_version": "1.0",
-            "check": "reg-26-27-disallowed-input-tax",
-            "period": {
-                "start": str(period.get("start", "")),
-                "end": str(period.get("end", "")),
-            },
-            "generated_at": generated_at,
-            "status": "errored",
-            "error": error_message,
-            "provenance": {
-                "in_run_path": True,
-                "model_id": model_id,
-                "prompt_version": _PROMPT_VERSION,
-                "kb_slice_hash": kb_hash,
-                "validation_status": "unvalidated",
-            },
-            "input_summary": {"si_purchase_lines_examined": 0, "documents_examined": 0},
-            "candidates": [],
-            "candidate_count": 0,
-            "token_usage": {"input_tokens": 0, "output_tokens": 0},
-            "disclaimer": _DISCLAIMER,
-        }
-
-    # Load KB — if this fails we cannot run the pass meaningfully.
-    try:
-        kb_text = _KB_PATH.read_text(encoding="utf-8")
-        kb_hash = _kb_hash()
-    except Exception as exc:
-        log.error("reg2627: KB load failed: %s", exc)
-        return _errored(f"KB load failed: {exc}")
-
-    # Fetch lines via the injectable source.
-    try:
-        all_lines = line_source()
-    except Exception as exc:
-        log.error("reg2627: line_source failed: %s", exc)
-        return _errored(f"line_source failed: {exc}", kb_hash)
-
-    si_lines = [
-        ln for ln in all_lines
-        if str(ln.get("vat_group") or "").strip() == "SI"
-    ]
-    doc_nums = {ln["doc_num"] for ln in si_lines}
-
-    # No SI lines — emit a clean ok artefact without calling the LLM.
-    if not si_lines:
-        return {
-            "artefact_type": "judgment-candidates",
-            "schema_version": "1.0",
-            "check": "reg-26-27-disallowed-input-tax",
-            "period": {"start": period["start"], "end": period["end"]},
-            "generated_at": generated_at,
-            "status": "ok",
-            "error": None,
-            "provenance": {
-                "in_run_path": True,
-                "model_id": model_id,
-                "prompt_version": _PROMPT_VERSION,
-                "kb_slice_hash": kb_hash,
-                "validation_status": "unvalidated",
-            },
-            "input_summary": {"si_purchase_lines_examined": 0, "documents_examined": 0},
-            "candidates": [],
-            "candidate_count": 0,
-            "token_usage": {"input_tokens": 0, "output_tokens": 0},
-            "disclaimer": _DISCLAIMER,
-        }
-
-    system_prompt = _build_system_prompt(kb_text)
-
-    # Process SI lines in batches so no single response exceeds _MAX_TOKENS.
-    all_candidates: list[dict] = []
-    total_input_tokens  = 0
-    total_output_tokens = 0
-    n_batches = (len(si_lines) + _BATCH_SIZE - 1) // _BATCH_SIZE
-
-    for batch_idx in range(n_batches):
-        batch = si_lines[batch_idx * _BATCH_SIZE : (batch_idx + 1) * _BATCH_SIZE]
-        user_message = _build_user_message(period, batch)
-
-        try:
-            llm_result = _llm(
-                model_id,
-                system_prompt,
-                [{"role": "user", "content": user_message}],
-                _MAX_TOKENS,
-            )
-        except Exception as exc:
-            log.error("reg2627: LLM call failed (batch %d/%d): %s",
-                      batch_idx + 1, n_batches, exc)
-            return _errored(f"LLM call failed: {exc}", kb_hash)
-
-        raw_content = llm_result.get("content", "")
-        total_input_tokens  += int(llm_result.get("input_tokens",  0))
-        total_output_tokens += int(llm_result.get("output_tokens", 0))
-
-        try:
-            # Strip optional markdown code fences that some models emit.
-            stripped = raw_content.strip()
-            if stripped.startswith("```"):
-                stripped = stripped.split("\n", 1)[1] if "\n" in stripped else stripped[3:]
-            if stripped.endswith("```"):
-                stripped = stripped.rsplit("```", 1)[0]
-            stripped = stripped.strip()
-
-            parsed = json.loads(stripped)
-            if not isinstance(parsed, list):
-                raise ValueError(
-                    f"expected JSON array from LLM, got {type(parsed).__name__}"
-                )
-            all_candidates.extend(_validate_candidate(c) for c in parsed)
-        except Exception as exc:
-            snippet = raw_content[:300] if raw_content else "<empty>"
-            log.error("reg2627: response validation failed: %s | content: %s", exc, snippet)
-            return _errored(
-                f"LLM response invalid: {exc} | snippet: {snippet}",
-                kb_hash,
-            )
-
-    return {
-        "artefact_type": "judgment-candidates",
-        "schema_version": "1.0",
-        "check": "reg-26-27-disallowed-input-tax",
-        "period": {"start": period["start"], "end": period["end"]},
-        "generated_at": generated_at,
-        "status": "ok",
-        "error": None,
-        "provenance": {
-            "in_run_path": True,
-            "model_id": model_id,
-            "prompt_version": _PROMPT_VERSION,
-            "kb_slice_hash": kb_hash,
-            "validation_status": "unvalidated",
-        },
-        "input_summary": {
-            "si_purchase_lines_examined": len(si_lines),
-            "documents_examined": len(doc_nums),
-        },
-        "candidates": all_candidates,
-        "candidate_count": len(all_candidates),
-        "token_usage": {
-            "input_tokens":  total_input_tokens,
-            "output_tokens": total_output_tokens,
-        },
-        "disclaimer": _DISCLAIMER,
-    }
+    return run_reasoning_pass(
+        REG2627_SPEC,
+        period,
+        line_source=line_source,
+        llm_call=llm_call,
+        model_id=model_id,
+    )
