@@ -1,6 +1,7 @@
 {
   "_meta": {
     "schema_version": "reg2627-v1",
+    "skill_id": "reg2627",
     "business_context": "generic trading/services SME",
     "set_name": "adversarial_hard",
     "validation_status": "unvalidated",
