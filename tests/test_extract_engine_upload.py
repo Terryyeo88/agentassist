@@ -67,7 +67,7 @@ def _synthetic_extract_bytes(tmp_path: Path) -> bytes:
 
 
 def _post(client: TestClient, content: bytes, filename: str = "export.xlsx"):
-    return client.post(f"/review/upload?filename={filename}", content=content)
+    return client.post("/review/upload", files={"file": (filename, content)})
 
 
 # ── BT1 — path ON (default): engine runs under demo config, returns queue ──
