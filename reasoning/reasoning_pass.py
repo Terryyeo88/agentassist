@@ -37,6 +37,22 @@ _DEFAULT_KB_DIR = Path(__file__).resolve().parent.parent / "knowledge-base" / "s
 # Confidence vocabulary is skill-agnostic — shared by every spec.
 _CONFIDENCE_VALUES = frozenset({"low", "medium", "high"})
 
+
+def _coerce_doc_num(raw):
+    """Type-preserving doc_num coercion (STOP#2 ruling a-relax, Prompt E).
+
+    Numeric values (int, or a numeric string like "123") coerce to int — the SAP
+    path is byte-identical, its DocNums are genuine ints. A non-numeric string
+    (a Xero InvoiceNumber like "INV-2001") is carried VERBATIM as str so the
+    candidate stays traceable to the client's real document reference.
+    Mirrors orchestrator.steps._coerce_doc_num's tolerance, reasoning-side.
+    """
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return str(raw)
+
+
 # Callable signature for an injectable LLM call:
 #   (model: str, system: str, messages: list[dict], max_tokens: int)
 #     -> {"content": str, "input_tokens": int, "output_tokens": int}
@@ -176,7 +192,9 @@ def validate_candidate(spec: SkillSpec, raw: dict) -> dict:
         phrasing = "Consider reviewing whether " + phrasing
 
     return {
-        "doc_num": int(raw["doc_num"]),
+        # a-relax (Prompt E): numeric -> int (SAP byte-identical); non-numeric
+        # str (Xero "INV-2001") carried verbatim for traceability.
+        "doc_num": _coerce_doc_num(raw["doc_num"]),
         "doc_type": str(raw["doc_type"]),
         "doc_date": str(raw["doc_date"]),
         "card_name": str(raw["card_name"]),
