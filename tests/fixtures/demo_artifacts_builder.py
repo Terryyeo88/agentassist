@@ -95,6 +95,7 @@ def build_review_result() -> dict:
         "run_started_at": fetched_at,
         "run_completed_at": fetched_at,
         "gate_failure": None,
+        "exempt_artefact": None,
     }
 
 

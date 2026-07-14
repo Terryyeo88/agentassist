@@ -46,6 +46,7 @@ from config.loader import ClientConfig
 from orchestrator.chain import run_chain
 from orchestrator.check_analytical_review import run_analytical_review_pass
 from orchestrator.exceptions import GateFailure
+from reasoning.exempt import run_exempt_pass
 from reasoning.reg2627 import run_reg2627_pass
 from report.report import build_report
 from report.render import render_pdf
@@ -122,6 +123,13 @@ class ReviewInputs:
                           When supplied, forwarded into run_chain, which runs the
                           ledger<->declared-return internal-consistency reconciliation
                           (a CANDIDATE surface, never a gate). Default None — byte-identical.
+        sales_line_source: Optional callable → list of SALES line dicts (T2.30,
+                          typically fetch_sales_lines).  When supplied, the
+                          exempt-supply reasoning pass (run_exempt_pass) runs
+                          beside the chain and its artefact rides the T2.27
+                          extra_* seams (steps/exempt-supply-candidates.json;
+                          gated extra_candidates).  Default None — the pass is
+                          skipped and every reg2627-only run is byte-identical.
     """
     line_source: Callable[[], list[dict]]
     provider: "DocumentProvider | None" = None
@@ -132,6 +140,7 @@ class ReviewInputs:
     # construction (run_agent.py, ui/engine_seam.py) byte-identical.
     reader: "sap_b1_server.ChainReader | None" = None
     gst_ledger: dict | None = None
+    sales_line_source: "Callable[[], list[dict]] | None" = None
 
 
 @dataclass
@@ -165,6 +174,10 @@ class ReviewResult:
                               before seal_bundle.  None on halted.
         gate_failure:         GateHalt(message, checked) on halted; None on
                               completed.
+        exempt_artefact:      Dict from run_exempt_pass (T2.30).  None when
+                              inputs.sales_line_source was not supplied or on
+                              halted.  May carry status="errored" on a completed
+                              run (non-blocking, mirrors reasoning_artefact).
     """
     status: str
     compile_output: dict | None
@@ -177,6 +190,8 @@ class ReviewResult:
     run_started_at: str
     run_completed_at: str | None
     gate_failure: GateHalt | None
+    # T2.30: defaulted so pre-existing construction/consumption stays compatible.
+    exempt_artefact: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +258,26 @@ def review(
             reasoning_artefact.get("error", "")[:120],
         )
 
+    # --- Phase 2b: Exempt-supply reasoning pass (T2.30; optional, never raises) ---
+
+    # Runs beside the chain only when a sales line source is supplied.  Default
+    # None skips the pass entirely, keeping every reg2627-only run byte-identical.
+    exempt_artefact: dict | None = None
+    if inputs.sales_line_source is not None:
+        exempt_artefact = run_exempt_pass(
+            period, line_source=inputs.sales_line_source
+        )
+        if exempt_artefact.get("status") == "errored":
+            log.warning(
+                "exempt-supply pass errored (non-blocking): %s",
+                exempt_artefact.get("error", "")[:120],
+            )
+    # Keyed extra_* mapping for the T2.27 seams; None (not {}) when the pass did
+    # not run so build_report/seal_bundle behave byte-identically to pre-T2.30.
+    extra_artefacts: dict | None = (
+        {"exempt-supply": exempt_artefact} if exempt_artefact is not None else None
+    )
+
     # --- Phase 3: Source-document cross-reference pass (optional) ---
 
     doc_candidates: list | None = None
@@ -286,6 +321,7 @@ def review(
         document_candidates=doc_candidates,
         analytical_review_data=analytical_review_data,
         document_legibility_rows=doc_legibility_rows,
+        extra_judgment_artefacts=extra_artefacts,
     )
     render_pdf(model, pdf_path)
 
@@ -301,6 +337,7 @@ def review(
         run_completed_at=run_completed_at,
         reasoning_artefact=reasoning_artefact,
         declared_f5=inputs.declared_f5,
+        extra_reasoning_artefacts=extra_artefacts,
     )
 
     return ReviewResult(
@@ -315,4 +352,5 @@ def review(
         run_started_at=run_started_at,
         run_completed_at=run_completed_at,
         gate_failure=None,
+        exempt_artefact=exempt_artefact,
     )

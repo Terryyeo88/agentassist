@@ -43,7 +43,7 @@ if str(_REPO_ROOT) not in sys.path:
 from config.loader import ConfigError, load_client_config          # noqa: E402
 from engine.review import ReviewInputs, review                     # noqa: E402
 from orchestrator.check_declared_f5 import load_declared_f5        # noqa: E402
-from reasoning.sap_lines import fetch_si_purchase_lines            # noqa: E402
+from reasoning.sap_lines import fetch_sales_lines, fetch_si_purchase_lines  # noqa: E402
 
 
 # The gst_ledger assembly is shared with the web layer (api/app.py) — a single source of
@@ -187,12 +187,16 @@ def main(*, provider=None) -> None:
     # --- Build inputs and call review() ---
 
     line_source = functools.partial(fetch_si_purchase_lines, period["start"], period["end"])
+    # T2.30: sales line source for the exempt-supply pass. The pass runs beside
+    # the chain; its stream stays hidden while show_ai_candidates=False.
+    sales_line_source = functools.partial(fetch_sales_lines, period["start"], period["end"])
     inputs = ReviewInputs(
         line_source=line_source,
         provider=provider,
         declared_f5=declared_f5,
         analytical_review=args.analytical_review,
         gst_ledger=gst_ledger,
+        sales_line_source=sales_line_source,
     )
 
     print(f"Running chain for period {period['start']} → {period['end']} ...")
