@@ -37,8 +37,9 @@ FROZEN_REVIEW_RESULT = {
     "status", "compile_output", "gate_results", "reasoning_artefact",
     "document_candidates", "analytical_review_data", "report_pdf_path",
     "bundle_dir", "run_started_at", "run_completed_at", "gate_failure",
+    "exempt_artefact"
 }
-FROZEN_REVIEW_INPUTS = {"line_source", "provider", "declared_f5", "analytical_review", "reader", "gst_ledger"}
+FROZEN_REVIEW_INPUTS = {"line_source", "provider", "declared_f5", "analytical_review", "reader", "gst_ledger","sales_line_source"}
 FROZEN_GATE_HALT = {"message", "checked"}
 FROZEN_DOSSIER = {
     "finding_id", "check_id", "finding_type", "evidence",
