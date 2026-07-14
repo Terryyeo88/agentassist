@@ -43,6 +43,10 @@ HONEST STATUS (T2.11): real-Xero-FORMAT parsing over SYNTHETIC content. NOT a re
 export); NOT accuracy-validated. The mapping is Terry-authored against IRAS Annex E and lives in
 the client YAML — this reader is the mechanism, never the authority.
 
+line_description emit is real-FORMAT over synthetic Xero, NOT real-client-validated; field is
+INERT until the Prompt E adapter wires sales_line_source — the exempt skill does NOT run on
+Xero yet.
+
 Pure stdlib; openpyxl is imported lazily only on the .xlsx path. No SAP, no anthropic. Imports
 only feeders siblings + stdlib (feeders stays a leaf).
 """
@@ -63,6 +67,9 @@ from feeders.extract_reader import ExtractCoverage
 _COL_CONTACT = "ContactName"
 _COL_INVOICE_NUMBER = "InvoiceNumber"
 _COL_INVOICE_DATE = "InvoiceDate"
+# Per-line narrative (Prompt D): emitted as line_description so the Prompt-E adapter is a
+# straight passthrough into the reasoning contract. Optional — absent/blank column → "".
+_COL_DESCRIPTION = "Description"
 _COL_TAX_TYPE = "TaxType"
 _COL_TAX_AMOUNT = "TaxAmount"
 _COL_LINE_AMOUNT = "LineAmount"
@@ -173,6 +180,12 @@ class XeroSalesInvoiceChainReader:
                     "VatGroup": vat_group,
                     "LineTotal": schema.to_float(row.get(_COL_LINE_AMOUNT)),
                     "TaxTotal": schema.to_float(row.get(_COL_TAX_AMOUNT)),
+                    # Prompt D: the export's per-line Description, verbatim, under the
+                    # reasoning-contract key name (Prompt-E adapter = straight passthrough).
+                    # Tolerant: absent/blank column -> "". INERT for boxes/gates —
+                    # calculate_f5_return reads only the three fixed keys above — and
+                    # unconsumed until the Prompt-E adapter wires sales_line_source.
+                    "line_description": schema.to_str(row.get(_COL_DESCRIPTION)).strip(),
                 }
             )
 
