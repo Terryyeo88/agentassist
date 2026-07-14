@@ -109,9 +109,7 @@ def test_xero_upload_runs_engine_and_returns_findings(client: TestClient, hermet
     """
     assert _XERO_FIXTURE.is_file(), f"committed Xero fixture missing: {_XERO_FIXTURE}"
 
-    resp = client.post(
-        f"/review/upload?filename={_XERO_FILENAME}", content=_XERO_FIXTURE.read_bytes()
-    )
+    resp = client.post("/review/upload", files={"file": (_XERO_FILENAME, _XERO_FIXTURE.read_bytes())})
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -219,9 +217,7 @@ def test_synthetic_upload_stays_coverage_only_when_engine_disabled(
     out = tmp_path / "synthetic_export.xlsx"
     _synth.export_xlsx(_FROZEN_EXTRACT_DIR, out)
 
-    resp = client.post(
-        "/review/upload?filename=synthetic_export.xlsx", content=out.read_bytes()
-    )
+    resp = client.post("/review/upload", files={"file": ("synthetic_export.xlsx", out.read_bytes())})
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
