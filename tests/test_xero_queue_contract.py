@@ -81,9 +81,7 @@ def _coverage_row(rows: list, check: str) -> dict:
 def test_xero_upload_emits_shared_queue_contract(client: TestClient, hermetic_engine):
     assert _XERO_FIXTURE.is_file(), f"committed Xero fixture missing: {_XERO_FIXTURE}"
 
-    resp = client.post(
-        f"/review/upload?filename={_XERO_FILENAME}", content=_XERO_FIXTURE.read_bytes()
-    )
+    resp = client.post("/review/upload", files={"file": (_XERO_FILENAME, _XERO_FIXTURE.read_bytes())})
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -136,9 +134,7 @@ def test_xero_upload_emits_shared_queue_contract(client: TestClient, hermetic_en
 # ── BT2 — Decision-4 honesty: dark checks degrade WITH a reason; queue has NO fabrication ──
 
 def test_absent_companion_sheet_degrades_without_fabricating(client: TestClient, hermetic_engine):
-    resp = client.post(
-        f"/review/upload?filename={_XERO_FILENAME}", content=_XERO_FIXTURE.read_bytes()
-    )
+    resp = client.post("/review/upload", files={"file": (_XERO_FILENAME, _XERO_FIXTURE.read_bytes())})
     assert resp.status_code == 200, resp.text
     body = resp.json()
 

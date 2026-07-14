@@ -3,8 +3,7 @@
 FAILING-FIRST tests for the "source selector + empty state" feature. The locked backend
 contract under test is a NEW route, ``POST /review/upload``:
 
-  * raw-body upload (NOT multipart): query param ``filename`` + the file BYTES as the raw
-    request body;
+  * multipart upload: the workbook is sent as the ``file`` form part;
   * only ``.xlsx`` accepted — any other suffix (or an unreadable workbook) is a 422,
     never a 500;
   * on success returns a COVERAGE-ONLY view-model with EXACTLY the top-level keys
@@ -76,9 +75,7 @@ def _xlsx_bytes(tmp_path) -> bytes:
 def test_upload_returns_coverage_only_shape(client: TestClient, tmp_path: Path, monkeypatch):
     """200 + EXACTLY the coverage-only key set, with a well-formed coverage_status list."""
     monkeypatch.setenv("AGENTASSIST_EXTRACT_ENGINE", "0")
-    resp = client.post(
-        "/review/upload?filename=export.xlsx", content=_xlsx_bytes(tmp_path)
-    )
+    resp = client.post("/review/upload", files={"file": ("export.xlsx", _xlsx_bytes(tmp_path))})
     assert resp.status_code == 200
     body = resp.json()
 
@@ -125,21 +122,20 @@ def test_upload_coverage_only_when_engine_disabled(client: TestClient, tmp_path:
     monkeypatch.setattr("engine.review.review", boom)
     monkeypatch.setattr("orchestrator.chain.run_chain", boom)
 
-    resp = client.post(
-        "/review/upload?filename=export.xlsx", content=_xlsx_bytes(tmp_path)
-    )
+    resp = client.post("/review/upload", files={"file": ("export.xlsx", _xlsx_bytes(tmp_path))})
     assert resp.status_code == 200
 
 
 # ── 3. + 4. rejections — a bad upload is a 422, never a 500 ───────────────────────────
 
 def test_upload_rejects_non_xlsx(client: TestClient):
-    resp = client.post("/review/upload?filename=export.txt", content=b"not a workbook")
+    resp = client.post("/review/upload", files={"file": ("data.csv", b"not a workbook")})
     assert resp.status_code == 422
+    assert "xlsx" in resp.json()["detail"].lower()  # the suffix gate, not the parse-boundary 422
 
 
 def test_upload_rejects_unreadable_xlsx(client: TestClient):
-    resp = client.post("/review/upload?filename=export.xlsx", content=b"garbage")
+    resp = client.post("/review/upload", files={"file": ("export.xlsx", b"not a real xlsx")})
     assert resp.status_code == 422
 
 
