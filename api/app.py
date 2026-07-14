@@ -579,10 +579,17 @@ def _xero_sales_review_response(reader) -> dict:
     # Lazy imports keep api/ anthropic-free AT MODULE IMPORT (Inv-1) — same posture as the other branches.
     from config.loader import load_client_config
     from engine.review import ReviewInputs, review
+    from feeders.xero_sales_lines import xero_sales_lines
 
     cfg = load_client_config("xero_sales_demo", check_connectivity=False)
     period = _derive_extract_period(reader)  # a sales export carries no "for the period …" line
-    inputs = ReviewInputs(line_source=lambda: [], provider=None, reader=reader)
+    # Prompt E: the adapter connects this upload to the exempt-supply pass (Phase 2b).
+    # real-FORMAT over synthetic Xero, NOT real-client-validated; exempt skill now runs
+    # on Xero over synthetic data only. Candidates stay gated (show_ai_candidates=False).
+    inputs = ReviewInputs(
+        line_source=lambda: [], provider=None, reader=reader,
+        sales_line_source=lambda: xero_sales_lines(reader, period["start"], period["end"]),
+    )
     result = review(cfg, period, inputs)
     if result.status != "completed" or result.compile_output is None:
         # A reconciliation halt on an untrusted upload is a client-input error, never a 500.
