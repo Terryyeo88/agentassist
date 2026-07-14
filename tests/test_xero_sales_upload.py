@@ -58,7 +58,7 @@ def _coverage_row(rows: list, check: str) -> dict:
 def test_xero_sales_upload_routes_completes_and_surfaces_coverage(client, hermetic_engine):
     assert _FIXTURE.is_file(), f"committed Xero sales fixture missing: {_FIXTURE}"
 
-    resp = client.post(f"/review/upload?filename={_FILENAME}", content=_FIXTURE.read_bytes())
+    resp = client.post("/review/upload", files={"file": (_FILENAME, _FIXTURE.read_bytes())})
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
