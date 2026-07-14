@@ -1,0 +1,116 @@
+{
+  "demo": "t2.30-exempt-live-mechanism-demo",
+  "run_at": "2026-07-14T03:52:11.117786+00:00",
+  "note": "MECHANISM demo over frozen SBODEMOSG ES33 lines + 1 crafted trap line. NOT accuracy-validated; no labels; no scoring. ESN33 absent from the frozen extract (recorded honestly).",
+  "input_lines": [
+    {
+      "doc_num": 1001,
+      "doc_type": "sales_invoice",
+      "doc_date": "2024-07-15",
+      "card_name": "River Inc",
+      "line_index": 0,
+      "vat_group": "ES33",
+      "line_description": "Financial Advisory Service",
+      "line_total": 3000.0,
+      "tax_total": 0.0
+    },
+    {
+      "doc_num": 1004,
+      "doc_type": "sales_invoice",
+      "doc_date": "2024-07-15",
+      "card_name": "River Inc",
+      "line_index": 0,
+      "vat_group": "ES33",
+      "line_description": "Financial Advisory Service",
+      "line_total": 3000.0,
+      "tax_total": 0.0
+    },
+    {
+      "doc_num": 99001,
+      "doc_type": "sales_invoice",
+      "doc_date": "2024-08-15",
+      "card_name": "DEMO TENANT PTE LTD",
+      "line_index": 0,
+      "vat_group": "ES33",
+      "line_description": "OFFICE UNIT LEASE Q3",
+      "line_total": 12000.0,
+      "tax_total": 0.0
+    }
+  ],
+  "artefact": {
+    "artefact_type": "exempt-supply-candidates",
+    "schema_version": "1.0",
+    "check": "exempt-supply-misclassification",
+    "period": {
+      "start": "2024-07-01",
+      "end": "2024-09-30"
+    },
+    "generated_at": "2026-07-14T03:51:57.912263+00:00",
+    "status": "ok",
+    "error": null,
+    "provenance": {
+      "in_run_path": true,
+      "model_id": "claude-sonnet-4-6",
+      "prompt_version": "t2.30-exempt-supply-v1",
+      "kb_slice_hash": "sha256:14b6e5f3d039d746b1603ee44042e8b9713c2f4a2f457cb6eac3c9f11cacd7b3",
+      "validation_status": "unvalidated"
+    },
+    "input_summary": {
+      "exempt_sales_lines_examined": 3,
+      "documents_examined": 3
+    },
+    "candidates": [
+      {
+        "doc_num": 1001,
+        "doc_type": "sales_invoice",
+        "doc_date": "2024-07-15",
+        "card_name": "River Inc",
+        "line_index": 0,
+        "vat_group": "ES33",
+        "line_description": "Financial Advisory Service",
+        "line_total": 3000.0,
+        "tax_total": 0.0,
+        "suspected_category": "intermediary_fee",
+        "reasoning": "The description 'Financial Advisory Service' suggests an advisory or arrangement-type service, which is a taxable intermediary fee rather than an exempt financial service under the Fourth Schedule. Advising on financial activities is standard-rated (or potentially zero-rated if supplied to an overseas customer), not exempt.",
+        "phrasing": "Consider reviewing whether this 'Financial Advisory Service' constitutes a taxable financial intermediary or advisory fee rather than an exempt Fourth Schedule financial service, and whether GST at the standard rate (or zero rate if the customer belongs outside Singapore) should apply.",
+        "confidence": "medium"
+      },
+      {
+        "doc_num": 1004,
+        "doc_type": "sales_invoice",
+        "doc_date": "2024-07-15",
+        "card_name": "River Inc",
+        "line_index": 0,
+        "vat_group": "ES33",
+        "line_description": "Financial Advisory Service",
+        "line_total": 3000.0,
+        "tax_total": 0.0,
+        "suspected_category": "intermediary_fee",
+        "reasoning": "Same as doc 1001 — the description 'Financial Advisory Service' suggests an advisory or arrangement-type service, which is a taxable intermediary fee rather than an exempt Fourth Schedule financial service. Advising on financial activities is standard-rated (or potentially zero-rated if supplied to an overseas customer), not exempt.",
+        "phrasing": "Consider reviewing whether this 'Financial Advisory Service' constitutes a taxable financial intermediary or advisory fee rather than an exempt Fourth Schedule financial service, and whether GST at the standard rate (or zero rate if the customer belongs outside Singapore) should apply.",
+        "confidence": "medium"
+      },
+      {
+        "doc_num": 99001,
+        "doc_type": "sales_invoice",
+        "doc_date": "2024-08-15",
+        "card_name": "DEMO TENANT PTE LTD",
+        "line_index": 0,
+        "vat_group": "ES33",
+        "line_description": "OFFICE UNIT LEASE Q3",
+        "line_total": 12000.0,
+        "tax_total": 0.0,
+        "suspected_category": "commercial_property",
+        "reasoning": "The description 'OFFICE UNIT LEASE Q3' explicitly references an office unit, which is commercial property. Only the sale or lease of residential property qualifies as an exempt supply under the Fourth Schedule. Commercial property leases are standard-rated supplies and should not be coded as exempt.",
+        "phrasing": "Consider reviewing whether the lease of an office unit qualifies as an exempt supply, given that the GST exemption for property applies only to residential property — a commercial office lease would ordinarily be standard-rated.",
+        "confidence": "high"
+      }
+    ],
+    "candidate_count": 3,
+    "token_usage": {
+      "input_tokens": 3509,
+      "output_tokens": 801
+    },
+    "disclaimer": "AI-surfaced candidates for human review only — not assertions. The reviewer determines treatment and signs off."
+  }
+}
