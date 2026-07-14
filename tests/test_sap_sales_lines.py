@@ -267,12 +267,13 @@ class TestIsolation:
         assert "import orchestrator" not in src
         assert "import audit_bundle" not in src
 
-    def test_fetch_sales_lines_not_wired_into_chain_or_review(self):
-        # fetch_sales_lines is a passive line_source, not yet consumed by any
-        # pass — so run_chain / F5 boxes / gates are byte-identical. Assert it is
-        # referenced by NO deterministic-path or review-composition module.
+    def test_fetch_sales_lines_not_in_deterministic_chain(self):
+        # fetch_sales_lines must NEVER enter the deterministic chain — that is the
+        # box-isolation invariant (run_chain / F5 boxes / gates byte-identical).
+        # Review-layer wiring (engine/review.py, run_agent.py) landed in T2.30 by
+        # design, so only chain.py is asserted here.
         repo = Path(_sap_lines_mod.__file__).resolve().parent.parent
-        for rel in ("orchestrator/chain.py", "engine/review.py", "run_agent.py"):
+        for rel in ("orchestrator/chain.py",):
             src = (repo / rel).read_text(encoding="utf-8")
             assert "fetch_sales_lines" not in src, (
                 f"fetch_sales_lines unexpectedly wired into {rel}"

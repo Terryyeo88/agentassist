@@ -1594,16 +1594,14 @@
           "vat_group": "SI"
         }
       ],
-      "sap_inline_count": null
+      "sap_inline_count": 86
     },
     "listing_findings": [],
     "period": {
       "end": "2024-09-30",
       "start": "2024-07-01"
     },
-    "surfaced_warnings": [
-      "Gate 1: SAP $inlinecount unavailable on this instance — pagination completeness not verified."
-    ]
+    "surfaced_warnings": []
   },
   "document_candidates": [
     {
@@ -1616,6 +1614,7 @@
       "severity": "MEDIUM"
     }
   ],
+  "exempt_artefact": null,
   "gate_failure": null,
   "gate_results": {
     "all_passed": true,
@@ -1624,14 +1623,13 @@
         "after_step": "fetch",
         "checked": {
           "fetched_count": 86,
-          "sap_inline_count": null,
+          "sap_inline_count": 86,
           "structural_sentinel_ok": true
         },
         "gate": 1,
-        "message": "SAP $inlinecount unavailable — cannot verify pagination completeness",
         "name": "record-count",
         "passed": true,
-        "status": "WARN_PASS"
+        "status": "PASS"
       },
       {
         "after_step": "calculate",
