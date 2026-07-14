@@ -16,6 +16,7 @@ session and confirmed by the specialist before sign-off.
 
 | Field | Type | Allowed values / notes |
 |---|---|---|
+| `skill_id` | string (const) | `"reg2627"` | Identifies which reasoning skill this fixture set validates. Read by `reasoning/fixture_schema.py::fixture_skill_id()`; stamping it explicitly removes reliance on that function's `"reg2627"` fallback once other skills' fixtures exist. |
 | schema_version | string | `"reg2627-v1"` |
 | business_context | string | `"generic trading/services SME"` |
 | set_name | string | `"representative"` or `"adversarial_hard"` |

@@ -92,6 +92,11 @@ def fixture_data(request, representative, adversarial):
 
 
 class TestMetaInvariants:
+    def test_skill_id_is_reg2627(self, fixture_data):
+        assert fixture_data["_meta"]["skill_id"] == "reg2627", (
+            "_meta.skill_id must be 'reg2627' in shipped reg2627 fixtures"
+        )
+        
     def test_schema_version(self, fixture_data):
         assert fixture_data["_meta"]["schema_version"] == "reg2627-v1"
 
