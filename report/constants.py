@@ -178,8 +178,18 @@ NOT_EXAMINED_ITEMS: list[str] = [
     "(custom VatGroups are flagged as anomalies and excluded from all box totals; "
     "their full GST treatment is not verified)",
 
-    "Partial-exemption apportionment (TX-RE and mixed standard-rated / exempt "
-    "supply scenarios; apportionment formula and De Minimis test not computed)",
+    # Permanent — never computed, whether or not the De Minimis check runs.
+    "Partial-exemption input tax apportionment (TX-RE and mixed standard-rated / "
+    "exempt supply scenarios; three-bucket attribution of input tax to taxable / "
+    "exempt / residual, the residual apportionment formula, and the Longer Period "
+    "Adjustment are not computed — ASK Step 3D.1.2)",
+
+    # Suppressible — accurate only when the De Minimis check did NOT run.
+    # Suppression keys on the actively_makes_exempt_supplies config flag (did the
+    # check RUN), never on whether findings exist: flag on + De Minimis passes
+    # means the position WAS computed.
+    "Partial-exemption De Minimis position (not computed — set "
+    "actively_makes_exempt_supplies in the client configuration to enable)",
 
     "Scheme-specific imports with GST suspended or deferred (Boxes 9, 19, 21 "
     "not computed; MES / IGDS scheme approval status and import-permit verification "
