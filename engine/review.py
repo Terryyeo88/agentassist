@@ -45,6 +45,7 @@ from audit_bundle import seal_bundle
 from config.loader import ClientConfig
 from orchestrator.chain import run_chain
 from orchestrator.check_analytical_review import run_analytical_review_pass
+from orchestrator.check_partial_exemption import run_partial_exemption_check
 from orchestrator.exceptions import GateFailure
 from reasoning.exempt import run_exempt_pass
 from reasoning.reg2627 import run_reg2627_pass
@@ -300,6 +301,18 @@ def review(
     if inputs.analytical_review:
         analytical_review_data = run_analytical_review_pass(client_config, period)
 
+    # --- Phase 4b: Deterministic partial-exemption / De Minimis check (Prompt I) ---
+
+    # Self-gated by client_config.actively_makes_exempt_supplies (default False for
+    # every shipped client -> returns [] and every existing run is byte-identical).
+    # READ-ONLY over compile_output: no box recomputed, no gate touched, cannot halt.
+    # Deliberately NOT a ReviewInputs flag and NOT a ReviewResult field (keeps the
+    # frozen T5.8 contracts untouched); the finding reaches the working paper via
+    # build_report below, ungated like the analytical review.
+    partial_exemption_findings = run_partial_exemption_check(
+        client_config, compile_output
+    )
+
     # --- Phase 5: Report + seal ---
 
     generated_at: str = compile_output["fetch_manifest"]["fetched_at"]
@@ -322,6 +335,7 @@ def review(
         analytical_review_data=analytical_review_data,
         document_legibility_rows=doc_legibility_rows,
         extra_judgment_artefacts=extra_artefacts,
+        partial_exemption_findings=(partial_exemption_findings or None),
     )
     render_pdf(model, pdf_path)
 
