@@ -52,6 +52,7 @@ from report.sections import (
     JudgmentSection,
     LedgerReconSection,
     ListingFindingsSection,
+    PartialExemptionSection,
     NotExaminedSection,
     ScopeSection,
     SignatureSection,
@@ -67,6 +68,7 @@ from report.sections import (
     build_judgment_section,
     build_ledger_recon_section,
     build_not_examined_section,
+    build_partial_exemption_section,
     build_scope_section,
     build_signature_section,
     build_unified_candidates_section,
@@ -143,6 +145,9 @@ class ReportModel:
     # extra reasoning artefacts were supplied — keeps reg2627-only runs (and their
     # rendered PDFs) byte-identical. The renderer draws each only when its .show is True.
     extra_candidates: "dict[str, AICandidatesSection] | None" = None
+    # Prompt I: deterministic partial-exemption / De Minimis section. None in legacy
+    # callers; UNGATED (show derives from the check firing, never show_ai_candidates).
+    partial_exemption: PartialExemptionSection | None = None
 
 
 def build_report(
@@ -155,6 +160,7 @@ def build_report(
     analytical_review_data: dict | None = None,
     document_legibility_rows: list | None = None,
     extra_judgment_artefacts: dict[str, dict] | None = None,
+    partial_exemption_findings: list | None = None,
 ) -> ReportModel:
     """Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
@@ -294,4 +300,10 @@ def build_report(
         ledger_recon=ledger_recon_sec,
         # T2.27: second/Nth reasoning stream(s), gated identically to reg2627.
         extra_candidates=extra_candidates_map,
+        # Prompt I: deterministic partial-exemption section; None for legacy callers,
+        # show=False when the check produced no finding (renderer no-op either way).
+        partial_exemption=(
+            build_partial_exemption_section(partial_exemption_findings)
+            if partial_exemption_findings is not None else None
+        ),
     )
