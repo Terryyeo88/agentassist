@@ -1190,6 +1190,51 @@ def _judgment(m: ReportModel, story: list) -> None:
     _extra_candidates_subsections(m, story)
 
 
+def _partial_exemption(m: ReportModel, story: list) -> None:
+    """Append the deterministic partial-exemption / De Minimis section (Prompt I).
+
+    No-op when model.partial_exemption is None (legacy caller) or show=False (the
+    check did not fire) — the rest of the report stays byte-identical.
+
+    UNGATED like the analytical review: keys ONLY on section.show (the check
+    firing), never on show_ai_candidates — this is a deterministic finding
+    surface, not an AI-candidate stream. The wording renders the computed
+    position given the CODED figures; every finding is a reviewer candidate.
+
+    Args:
+        m:     The ReportModel; partial_exemption may be None for legacy callers.
+        story: Mutable story list; flowables are appended in place.
+    """
+    pe = getattr(m, "partial_exemption", None)
+    if pe is None or not pe.show:
+        return
+
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph(
+        "Partial Exemption — De Minimis Position (ASK Step 6)", _H2
+    ))
+    for f in pe.findings:
+        story.append(Paragraph(str(f.get("description", "")), _BODY))
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(Paragraph(
+            f"<b>Computed on coded figures:</b> Box 3 = {f.get('box_3')}; "
+            f"monthly average = {f.get('monthly_average_exempt')} "
+            f"(threshold {f.get('threshold_monthly_avg')}"
+            f"{' — breached' if f.get('monthly_average_breached') else ''}); "
+            f"exempt share = {f.get('exempt_ratio')} "
+            f"(threshold {f.get('threshold_ratio')}"
+            f"{' — breached' if f.get('ratio_breached') else ''}).",
+            _SMALL,
+        ))
+        story.append(Paragraph(str(f.get("txre_note", "")), _SMALL))
+        story.append(Paragraph(f"Basis: {f.get('basis', '')}", _SMALL))
+        if f.get("caveat"):
+            story.append(Paragraph(str(f["caveat"]), _SMALL))
+        if f.get("caveat_incidental"):
+            story.append(Paragraph(str(f["caveat_incidental"]), _SMALL))
+        story.append(Paragraph(str(f.get("note", "")), _SMALL))
+
+
 def _analytical_review(m: ReportModel, story: list) -> None:
     """Append the Annual Analytical Review section when the pass ran.
 
@@ -1686,6 +1731,8 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _scope(model, story)
     _f5_boxes(model, story)
     _analytical_review(model, story)
+    # Prompt I: deterministic partial-exemption / De Minimis position (ungated).
+    _partial_exemption(model, story)
     _declared_f5(model, story)
     _findings(model, story)
     _listing_findings(model, story)

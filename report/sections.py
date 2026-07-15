@@ -447,6 +447,26 @@ class AnalyticalReviewSection:
 
 
 @dataclass
+class PartialExemptionSection:
+    """Data for the deterministic partial-exemption / De Minimis section (Prompt I).
+
+    show=False (no findings) → renderer is a no-op; rest of report byte-identical.
+    show=True                → renders the computed De Minimis position (given the
+                               coded figures) + the TX-RE informational note.
+
+    UNGATED like the analytical review: show derives from whether the check fired,
+    NEVER from show_ai_candidates — this is a deterministic finding, not an AI
+    candidate.
+
+    Attributes:
+        show:     True when the check produced a finding.
+        findings: list of PARTIAL_EXEMPTION_DE_MINIMIS finding dicts (0 or 1 today).
+    """
+    show: bool
+    findings: list[dict]
+
+
+@dataclass
 class SignatureSection:
     """Data for the declaration and sign-off page.
 
@@ -789,6 +809,14 @@ _DECL_F5_NOT_EXAMINED_PREFIX: str = "Declared-vs-computed F5 comparison"
 # analytical-review pass ran (--analytical-review flag supplied).
 _ANALYTICAL_REVIEW_NE_PREFIX: str = "Annual analytical review"
 
+# Prefix of the NOT_EXAMINED_ITEMS entry that is suppressed when the
+# partial-exemption De Minimis check ran. Suppression keys on the
+# actively_makes_exempt_supplies CONFIG FLAG (did the check RUN), never on
+# whether findings exist: flag on + De Minimis passes means the position WAS
+# computed, so the "not computed" line must still be suppressed. The permanent
+# apportionment item is never suppressed.
+_PARTIAL_EXEMPTION_NE_PREFIX: str = "Partial-exemption De Minimis position"
+
 
 def render_listing_findings_section(
     compile_output: dict[str, Any],
@@ -959,6 +987,25 @@ def build_analytical_review_section(
     )
 
 
+def build_partial_exemption_section(findings: list[dict] | None) -> PartialExemptionSection:
+    """Build the deterministic partial-exemption section (Prompt I).
+
+    show derives ONLY from whether the check fired (findings non-empty) — never
+    from show_ai_candidates; this is an UNGATED deterministic surface like the
+    analytical review.
+
+    Args:
+        findings: run_partial_exemption_check() output (0 or 1 finding), or None
+                  for legacy callers.
+
+    Returns:
+        PartialExemptionSection: Fully populated; renderer never receives None
+            from build_report (a None ReportModel field means a legacy caller).
+    """
+    findings = list(findings or [])
+    return PartialExemptionSection(show=bool(findings), findings=findings)
+
+
 def build_not_examined_section(
     compile_output: dict[str, Any],
     client_config: Any,
@@ -982,6 +1029,12 @@ def build_not_examined_section(
 
     When analytical_review_section.show is True the "Annual analytical review"
     placeholder is suppressed — the pass ran and the section is in the report.
+
+    When client_config.actively_makes_exempt_supplies is True the
+    "Partial-exemption De Minimis position" placeholder is suppressed — the
+    check RAN (the config flag gates it), whether or not it produced a finding.
+    The permanent "Partial-exemption input tax apportionment" item is never
+    suppressed.
 
     Args:
         compile_output:              CompileOutput dict; reads 'deduplicated_anomalies'
@@ -1012,12 +1065,19 @@ def build_not_examined_section(
     suppress_analytical_review: bool = bool(
         analytical_review_section and analytical_review_section.show
     )
+    # Keys on the CONFIG FLAG (the check ran), never on whether findings exist:
+    # flag on + De Minimis passes = the position WAS computed → still suppress.
+    suppress_partial_exemption: bool = bool(
+        getattr(client_config, "actively_makes_exempt_supplies", False)
+    )
 
     items: list[str] = []
     for item in NOT_EXAMINED_ITEMS:
         if suppress_decl_f5 and item.startswith(_DECL_F5_NOT_EXAMINED_PREFIX):
             continue
         if suppress_analytical_review and item.startswith(_ANALYTICAL_REVIEW_NE_PREFIX):
+            continue
+        if suppress_partial_exemption and item.startswith(_PARTIAL_EXEMPTION_NE_PREFIX):
             continue
         items.append(item)
 
