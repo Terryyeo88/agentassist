@@ -53,6 +53,7 @@ from report.sections import (
     LedgerReconSection,
     ListingFindingsSection,
     PartialExemptionSection,
+    SchemeStatusSection,
     NotExaminedSection,
     ScopeSection,
     SignatureSection,
@@ -69,6 +70,7 @@ from report.sections import (
     build_ledger_recon_section,
     build_not_examined_section,
     build_partial_exemption_section,
+    build_scheme_status_section,
     build_scope_section,
     build_signature_section,
     build_unified_candidates_section,
@@ -148,6 +150,9 @@ class ReportModel:
     # Prompt I: deterministic partial-exemption / De Minimis section. None in legacy
     # callers; UNGATED (show derives from the check firing, never show_ai_candidates).
     partial_exemption: PartialExemptionSection | None = None
+    # Scheme-status contradiction (config-vs-data): declared MES/IGDS participation
+    # vs ME/IGDS-coded lines. None in legacy callers; UNGATED like partial_exemption.
+    scheme_status: SchemeStatusSection | None = None
 
 
 def build_report(
@@ -161,6 +166,7 @@ def build_report(
     document_legibility_rows: list | None = None,
     extra_judgment_artefacts: dict[str, dict] | None = None,
     partial_exemption_findings: list | None = None,
+    scheme_status_findings: list | None = None,
 ) -> ReportModel:
     """Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
@@ -305,5 +311,11 @@ def build_report(
         partial_exemption=(
             build_partial_exemption_section(partial_exemption_findings)
             if partial_exemption_findings is not None else None
+        ),
+        # Scheme-status contradiction section; None for legacy callers,
+        # show=False when the check produced no finding (renderer no-op either way).
+        scheme_status=(
+            build_scheme_status_section(scheme_status_findings)
+            if scheme_status_findings is not None else None
         ),
     )
