@@ -18,8 +18,12 @@ What the corpus exercises (intended fixtures):
 - E3: INV-2002 (SR-NoGST) — standard-rated code carrying 0 tax.
 - E4/stale-rate: BILL-3002 (SI-Stale 8%) among 9% peers.
 - Quotation-in-filing: BILL-3004 ("Server hardware (quotation)").
-- Standing-order duplicate (MUST NOT fire): BILL-3004 + BILL-3005, same
-  supplier + amount, different references.
+- Quotation + tax-invoice double-entry: BILL-3004 ("Server hardware
+  (quotation)") + BILL-3005 ("Server hardware (tax invoice)") — same supplier,
+  same amount, different references, 7 days apart. Shipped DUP_CLAIM does not
+  catch it: its key needs a shared NumAtCard, and these references differ. This
+  pair IS a real double-entry the duplicate/quotation feature is meant to
+  catch; that gap is tracked as DEBT-6 (open) in KNOWN-LIMITATIONS-xero-demo.md.
 - NO_GST_REG: NoReg Trading has a blank TaxNumber + claims input tax on BILL-3003.
 - Blocked-input (Reg 26/27) surface cases: BILL-3006 (entertainment),
   BILL-3007 (private passenger car) — sit in Box 7 as claimed; semantic/
@@ -36,3 +40,7 @@ Known gaps / cautions:
   accrual + unpaid invoices — a display artifact. Any reconciliation must
   recompute from line-level Debit/Credit, never trust the totals row.
 - GST basis: ACCRUAL.
+- No genuine standing-order case (a legitimate recurring identical charge from
+  one supplier) in this corpus. BILL-3004/3005 was previously labelled as one;
+  it is a quotation + tax-invoice double-entry, not a standing order. Nothing
+  here defends a future supplier+amount matcher against over-firing.
