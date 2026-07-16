@@ -65,9 +65,17 @@ from __future__ import annotations
 #         direction carries IRAS exposure. Severity HIGH.
 # ---------------------------------------------------------------------------
 
+# BASIS RULING (rule-author, 2026-07-16): this check is NOT IRAS-prescribed —
+# no provision or ASK cell defines a config-vs-codes comparison, and ASK Step 3E
+# PRESUPPOSES scheme participation (this check fires when the client declares
+# none, so it sits UPSTREAM of 3E, testing 3E's own precondition). The basis
+# therefore leads with the disclaimer and cites the CODE TREATMENTS only.
 _BASIS = (
-    "IRAS ASK Step 3E (imports with GST suspended or deferred); scheme "
-    "participation facts rule-author-supplied 2026-07-15"
+    "Not an IRAS-prescribed check. Grounded in the code treatments only "
+    "(rule-author-supplied 2026-07-15): ME = import GST suspended under the "
+    "Major Exporter Scheme; IGDS = import GST deferred under the Import GST "
+    "Deferment Scheme. This is an internal consistency check between client "
+    "configuration and coded lines; no IRAS provision or ASK cell prescribes it."
 )
 
 # Mirrors the mirror's discipline: note and severity_note are SEPARATE fields,

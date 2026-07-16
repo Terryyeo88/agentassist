@@ -239,9 +239,25 @@ class TestFindingShapeWording:
         assert isinstance(_me_finding()["doc_count"], int)
         assert isinstance(_igds_finding()["doc_count"], int)
 
-    def test_basis_mentions_3e(self):
-        assert "3E" in _me_finding()["basis"]
-        assert "3E" in _igds_finding()["basis"]
+    def test_basis_disclaims_iras_prescription(self):
+        # BASIS RULING (rule-author, 2026-07-16), replacing the inverted
+        # test_basis_mentions_3e: no IRAS provision or ASK cell prescribes a
+        # config-vs-codes comparison, and ASK Step 3E PRESUPPOSES scheme
+        # participation (this check fires when the client declares none — it is
+        # UPSTREAM of 3E, not inside it). The basis must LEAD with the
+        # disclaimer and cite the code treatments only, never 3E as authority.
+        # NOTE: the ruled string itself ends "...no IRAS provision or ASK cell
+        # prescribes it", so a blanket no-"ASK" ban would contradict the ruled
+        # text; the pin is: no "3E", no "ASK Step" citation form, and the sole
+        # "ASK" occurrence sits inside that negating clause.
+        for f in (_me_finding(), _igds_finding()):
+            basis = f["basis"]
+            assert basis.startswith("Not an IRAS-prescribed check.")
+            assert "3E" not in basis
+            assert "ASK Step" not in basis
+            assert basis.count("ASK") == 1
+            assert "no IRAS provision or ASK cell prescribes it" in basis
+            assert "code treatments" in basis
 
     def test_description_holds_both_hypotheses_verbatim(self):
         # config-vs-data: the check cannot know which side is wrong, so the
@@ -388,6 +404,22 @@ class TestReportSurface:
         _scheme_status(types.SimpleNamespace(
             scheme_status=build_scheme_status_section(_fire_both())), story)
         assert len(story) > 0
+
+    def test_rendered_heading_contains_no_ask(self):
+        # BASIS RULING (rule-author, 2026-07-16): the heading must not carry an
+        # ASK parenthetical — an "(ASK Step 3E)" tag reads as IRAS prescribing
+        # this check, which no provision or ASK cell does.
+        import types
+        from report.render import _scheme_status
+        story: list = []
+        _scheme_status(types.SimpleNamespace(
+            scheme_status=build_scheme_status_section(_fire_both())), story)
+        heading = next(
+            fl.text for fl in story
+            if hasattr(fl, "text") and "Scheme Status" in getattr(fl, "text", "")
+        )
+        assert heading == "Scheme Status — Configuration vs Coded Lines"
+        assert "ASK" not in heading
 
 
 # ---------------------------------------------------------------------------

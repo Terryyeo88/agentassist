@@ -1257,7 +1257,7 @@ def _scheme_status(m: ReportModel, story: list) -> None:
 
     story.append(Spacer(1, 0.3 * cm))
     story.append(Paragraph(
-        "Scheme Status — Configuration vs Coded Lines (ASK Step 3E)", _H2
+        "Scheme Status — Configuration vs Coded Lines", _H2
     ))
     for f in ss.findings:
         story.append(Paragraph(str(f.get("description", "")), _BODY))
