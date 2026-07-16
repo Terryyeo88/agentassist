@@ -360,6 +360,32 @@ class ListingFindingsSection:
 
 
 @dataclass
+class DocumentDupSection:
+    """Data for the same-day duplicate-purchase surfacer (DUP_SAME_DAY).
+
+    Distinct from ListingFindingsSection: this surfacer keys on
+    (card_name, doc_total, doc_date) over the normalised purchase records, not on
+    the vendor reference over the listing surface. Its execution state mirrors the
+    listing section's three-state model so a thrown pass never reads as a clean one.
+
+    Attributes:
+        findings: DUP_SAME_DAY finding dicts from document_dup_findings in
+                  CompileOutput. Empty list means no same-day collisions detected
+                  (status "examined") or the pass was skipped/failed.
+        status:   Execution state of the surfacer, kept distinct so the report never
+                  reads a thrown pass as a clean one:
+                    "examined"     — the check RAN (findings may be empty);
+                    "unavailable"  — the check could NOT run (threw);
+                    "not_examined" — the check was never run (legacy compile_output
+                                     with no document_dup_findings key).
+        reason:   Execution-fact caveat; non-empty ONLY for "unavailable". No IRAS rationale.
+    """
+    findings: list[dict]
+    status: str = "examined"
+    reason: str = ""
+
+
+@dataclass
 class LedgerReconSection:
     """Data for the T2.24 "GST Control-Ledger Reconciliation" section (PR-3 render).
 
@@ -884,6 +910,49 @@ def render_listing_findings_section(
     return ListingFindingsSection(
         seq_gap_findings=[f for f in raw if f.get("check") == "SEQ_GAP"],
         dup_claim_findings=[f for f in raw if f.get("check") == "DUP_CLAIM"],
+        status=status,
+        reason=reason,
+    )
+
+
+def build_document_dup_section(
+    compile_output: dict[str, Any],
+) -> "DocumentDupSection":
+    """Build the same-day duplicate-purchase surfacer section from chain output.
+
+    Reads compile_output["document_dup_findings"] (DUP_SAME_DAY dicts produced by
+    orchestrator.check_document_dup after the listing checks) and derives the pass
+    execution state, mirroring render_listing_findings_section — examined /
+    unavailable / not_examined:
+
+      * ``document_dup_status.level == "unavailable"`` (chain set it because the
+        check THREW) → status "unavailable" (could not run);
+      * else ``"document_dup_findings"`` key present (the chain ran the check;
+        findings may be []) → status "examined";
+      * else the key is absent (legacy compile_output) → status "not_examined".
+
+    The execution state is DERIVED from existing compile_output keys — read, never
+    written — so this stays read-only over compile_output and the offline-replay
+    oracle (which serialises compile_output) is byte-unaffected by this builder.
+
+    Args:
+        compile_output: CompileOutput dict; reads 'document_dup_findings' +
+                        'document_dup_status' (both optional keys).
+
+    Returns:
+        DocumentDupSection: findings plus the derived status/reason. Never None.
+    """
+    chain_status: dict = compile_output.get("document_dup_status") or {}
+    if chain_status.get("level") == "unavailable":
+        status, reason = "unavailable", str(chain_status.get("reason") or "")
+    elif "document_dup_findings" in compile_output:
+        status, reason = "examined", ""
+    else:
+        status, reason = "not_examined", ""
+
+    raw: list[dict] = compile_output.get("document_dup_findings") or []
+    return DocumentDupSection(
+        findings=list(raw),
         status=status,
         reason=reason,
     )
