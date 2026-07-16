@@ -39,7 +39,8 @@ from decimal import ROUND_HALF_UP, Decimal
 # ---------------------------------------------------------------------------
 # TERRY-AUTHORED CONSTANTS + WORDING (tax semantics — rule-author owns this block).
 #
-# VERIFIED 2026-07-15 (rule-author, against named sources):
+# VERIFIED (rule-author, against named sources — items (1)-(2) 2026-07-15,
+# item (3) 2026-07-16):
 #   (1) INCIDENTAL exempt supplies (reg 29(3) — e.g. bank interest, realised FX
 #       gain/loss, share issuance; cf. General Guide §6.3.2) are EXCLUDED from
 #       BOTH the numerator and the denominator of the De Minimis test.
@@ -57,6 +58,31 @@ from decimal import ROUND_HALF_UP, Decimal
 #       therefore PROVISIONAL pending the Longer Period Adjustment (§6.3.8).
 #       Sources: SSO GSTA1993-RG1 reg 28; IRAS e-Tax Guide "GST: Partial
 #       Exemption and Input Tax Recovery" (6th edition).
+#   (3) De Minimis 5% limb, denominator exclusions: the value of taxable
+#       supplies excludes the value of imported services subject to reverse
+#       charge; the value of digital services supplied by an electronic
+#       marketplace operator on behalf of underlying suppliers under the
+#       overseas vendor registration regime; and the value of relevant
+#       supplies received from the supplier that are subject to customer
+#       accounting.
+#       Source: IRAS e-Tax Guide "GST: Reverse Charge" (Tenth Edition,
+#       published 30 Jan 2026), footnote 12 (p.8). Verified from the cover
+#       page + publication-history page — the file slug says "2ndedition"
+#       and is WRONG (Second Edition was 22 Aug 2019); do not cite the
+#       filename. fn 12 is RUNNING PROSE; the three-way split above is
+#       rule-author structuring, not an IRAS enumeration.
+#       CONSEQUENCE (data-path facts, engineering not tax semantics):
+#       - SAP path: reverse-charge value is journal-booked, never line-coded,
+#         so computed Box 1 already excludes it — the denominator is correct
+#         BY ACCIDENT, not by an implemented exclusion. A future change that
+#         routed RC value into computed Box 1 would over-state the
+#         denominator and silently break this check.
+#       - Declared/filed path (Xero F5, armed once DEBT-1 maps ES33/ESN33):
+#         declared Box 1 may include these values -> denominator over-stated.
+#       - Customer accounting is LATENT: such a code would route to Box 1
+#         through the ordinary F5_BOX_MAPPING; Annex E bucket 3 (customer-
+#         accounting family) is unbuilt, which is the only reason it cannot
+#         fire today. Open item #36; the bucket-3 build must address it.
 # ---------------------------------------------------------------------------
 
 # De Minimis thresholds. Exempt supplies are within De Minimis when the value is
@@ -72,18 +98,34 @@ _BASIS = (
     "IRAS GST: General Guide for Businesses §6.3.4"
 )
 
-# Mirrors check_analytical_review._RC_OVR_CAVEAT: a SEPARATE field, never baked
-# into the description. States what THIS SYSTEM does — it does not assert a
-# definition of the denominator (§6.3.4 states a concept, "all taxable and exempt
-# supplies made in that accounting period", not a box reference).
+# A SEPARATE field, never baked into the description. DELIBERATE DIVERGENCE
+# from check_analytical_review._RC_OVR_CAVEAT (same name, different framing —
+# do NOT resync them): ASK fn 6 defines Total Supplies BY BOX NUMBER (Boxes
+# 14/15/16), so box-reasoning is correct and NATIVE for the Step-10 TP/TS
+# ratio caveat over there. RC fn 12 defines the De Minimis denominator
+# exclusions BY CONCEPT and names no box at all — so THIS caveat reasons from
+# the rule, not from boxes. Same exclusions, different framing, different
+# authority (rule-author ruling, 2026-07-16).
 _RC_OVR_CAVEAT = (
-    "Denominator scope: this system computes total taxable + exempt supplies as "
-    "Box 1 + Box 2 + Box 3 from the coded figures. Reverse-charge / OVR / LVG "
-    "supplies (Boxes 14-16) are not computed by this system and are therefore "
-    "absent from the denominator; whether they form part of 'all taxable and "
-    "exempt supplies' for this test is not determined here. For a business with "
-    "material reverse-charge or OVR activity the denominator may be incomplete. "
-    "This finding is a candidate for reviewer confirmation, not a determination "
+    "Denominator scope — RC e-Tax Guide (Tenth Edition, 30 Jan 2026), fn 12 "
+    "(p.8): in the De Minimis test's 5% limb, the value of taxable supplies "
+    "in the denominator excludes the value of imported services subject to "
+    "reverse charge, the value of digital services supplied by an electronic "
+    "marketplace operator on behalf of underlying suppliers under the "
+    "overseas vendor registration regime (RC/OVR), and the value of relevant "
+    "supplies received from suppliers that are subject to customer "
+    "accounting. This system computes the denominator as Box 1 + Box 2 + "
+    "Box 3 from the coded figures. Where Box 1 is re-derived from coded "
+    "lines, reverse-charge value is journal-booked rather than line-coded, "
+    "so it is already absent from the computed denominator — correct in "
+    "effect, but by data-path accident rather than by an implemented "
+    "exclusion; a change that routed reverse-charge value into computed "
+    "Box 1 would over-state the denominator. Where the boxes derive from a "
+    "declared or filed figure, the declared Box 1 may include these values "
+    "and the denominator may be over-stated. Customer accounting is a "
+    "latent exposure: a customer-accounting tax code would route to Box 1 "
+    "through the ordinary mapping; no such code is mapped today. This "
+    "finding is a candidate for reviewer confirmation, not a determination "
     "of non-compliance."
 )
 
