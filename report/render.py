@@ -1558,6 +1558,88 @@ def _listing_findings(m: ReportModel, story: list) -> None:
         story.append(_table(dc_cols, dc_hdr, dc_rows))
 
 
+def _document_dup(m: ReportModel, story: list) -> None:
+    """Render the same-day duplicate-purchase surfacer (DUP_SAME_DAY) when present.
+
+    Mirrors _listing_findings' three-state rendering (examined / unavailable /
+    not_examined), and carries the honest-status caveats VERBATIM in the section
+    header so a reviewer sees the surfacer's limits on the page:
+      * "not_examined" with no findings → skipped (legacy compile_output);
+      * "unavailable" → a "could not run" note surfacing the execution reason;
+      * "examined" with no findings → a positive "checks performed; none found" note;
+      * any findings → the candidate table.
+
+    The surfacer NEVER asserts the documents are duplicates; every row is a candidate
+    for reviewer attention. Read-only over the section; touches no F5 box, no gate.
+
+    Args:
+        m:     The ReportModel carrying the optional document_dup section.
+        story: Mutable story list; flowables are appended in place.
+    """
+    dd = getattr(m, "document_dup", None)
+    if dd is None:
+        return
+    status = getattr(dd, "status", "examined")
+    has_findings = bool(dd.findings)
+    if status == "not_examined" and not has_findings:
+        return
+
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph("Same-Day Duplicate-Purchase Review", _H2))
+    story.append(Paragraph(
+        "Surfaces purchase invoices sharing the same supplier, total, and date as "
+        "candidates for reviewer attention — never an assertion that they are "
+        "duplicates. It does not affect F5 box totals or gate outcomes.",
+        _SMLX,
+    ))
+    # Honest-status caveats — VERBATIM on the page, one per line so PDF line-wrapping
+    # never splits a caveat phrase mid-string (each must survive text extraction intact).
+    story.append(Paragraph("Honest status of this check:", _SMALL))
+    for _caveat in (
+        "built",
+        "not accuracy-validated",
+        "same-day only pending a worksheet-derived window",
+        "over-firing untestable pending a must-spare fixture",
+    ):
+        story.append(Paragraph(f"— {_caveat}", _SMALL))
+
+    if status == "unavailable":
+        story.append(Paragraph(
+            f"This check could not run for this review ({dd.reason}); "
+            "same-day duplicate-purchase completeness is NOT covered by this report.",
+            _SMALL,
+        ))
+        return
+
+    if not has_findings:
+        story.append(Paragraph(
+            "Check performed — no same-supplier, same-total, same-day purchase "
+            "collisions detected.",
+            _SMALL,
+        ))
+        return
+
+    story.append(Paragraph(
+        f"{len(dd.findings)} same-day collision candidate(s). Each groups two or more "
+        "purchase invoices sharing supplier, total, and date.",
+        _SMALL,
+    ))
+    dd_cols = [3.6*cm, 2.4*cm, 2.6*cm, 3.4*cm, 5.0*cm]
+    dd_hdr = [_p(h, _CELLB) for h in
+              ["Supplier", "Date", "Total (SGD)", "DocNums", "Description"]]
+    dd_rows = [
+        [
+            _p(f.get("card_name", "—")),
+            _p(str(f.get("doc_date", "—"))),
+            _p(_sgd(f.get("doc_total"))),
+            _p(", ".join(str(n) for n in f.get("doc_nums", []))),
+            _p(f.get("description", "—")),
+        ]
+        for f in dd.findings
+    ]
+    story.append(_table(dd_cols, dd_hdr, dd_rows))
+
+
 def _ledger_recon(m: ReportModel, story: list) -> None:
     """Render the T2.24 GST control-ledger reconciliation (Signal A + B) when present.
 
@@ -1777,6 +1859,7 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _declared_f5(model, story)
     _findings(model, story)
     _listing_findings(model, story)
+    _document_dup(model, story)
     _check_coverage(model, story)
     _ledger_recon(model, story)
     _cross_findings(model, story)
