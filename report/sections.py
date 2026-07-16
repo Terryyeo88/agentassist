@@ -467,6 +467,31 @@ class PartialExemptionSection:
 
 
 @dataclass
+class SchemeStatusSection:
+    """Data for the deterministic scheme-status contradiction section.
+
+    A CONFIG-vs-DATA surface: the client's declared scheme participation
+    (participates_in_mes / participates_in_igds) disagrees with the ME/IGDS
+    codes present on their lines. The finding wording carries BOTH hypotheses
+    (stale configuration vs lines coded to a scheme not participated in) and
+    asserts neither.
+
+    show=False (no findings) → renderer is a no-op; rest of report byte-identical.
+    show=True                → renders the contradiction candidate(s).
+
+    UNGATED like the partial-exemption section: show derives from whether the
+    check fired, NEVER from show_ai_candidates — this is a deterministic
+    finding, not an AI candidate.
+
+    Attributes:
+        show:     True when the check produced at least one finding.
+        findings: list of SCHEME_STATUS_CONTRADICTION finding dicts (0-2 today).
+    """
+    show: bool
+    findings: list[dict]
+
+
+@dataclass
 class SignatureSection:
     """Data for the declaration and sign-off page.
 
@@ -1004,6 +1029,25 @@ def build_partial_exemption_section(findings: list[dict] | None) -> PartialExemp
     """
     findings = list(findings or [])
     return PartialExemptionSection(show=bool(findings), findings=findings)
+
+
+def build_scheme_status_section(findings: list[dict] | None) -> SchemeStatusSection:
+    """Build the deterministic scheme-status contradiction section.
+
+    show derives ONLY from whether the check fired (findings non-empty) — never
+    from show_ai_candidates; this is an UNGATED deterministic surface like the
+    partial-exemption section.
+
+    Args:
+        findings: run_scheme_status_check() output (0-2 findings), or None for
+                  legacy callers.
+
+    Returns:
+        SchemeStatusSection: Fully populated; renderer never receives None from
+            build_report (a None ReportModel field means a legacy caller).
+    """
+    findings = list(findings or [])
+    return SchemeStatusSection(show=bool(findings), findings=findings)
 
 
 def build_not_examined_section(

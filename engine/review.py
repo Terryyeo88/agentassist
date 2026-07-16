@@ -46,6 +46,7 @@ from config.loader import ClientConfig
 from orchestrator.chain import run_chain
 from orchestrator.check_analytical_review import run_analytical_review_pass
 from orchestrator.check_partial_exemption import run_partial_exemption_check
+from orchestrator.check_scheme_status import run_scheme_status_check
 from orchestrator.exceptions import GateFailure
 from reasoning.exempt import run_exempt_pass
 from reasoning.reg2627 import run_reg2627_pass
@@ -313,6 +314,16 @@ def review(
         client_config, compile_output
     )
 
+    # --- Phase 4c: Deterministic scheme-status contradiction check ---
+
+    # Config-vs-data: declared MES/IGDS participation vs ME/IGDS-coded lines.
+    # ALWAYS runs (the flags are a predicate input, not a gate); self-silent when
+    # no ME/IGDS row exists in the classify inventory (every current frozen run ->
+    # [] -> byte-identical). READ-ONLY over compile_output: no box recomputed, no
+    # gate touched, cannot halt. Like the partial-exemption check, deliberately
+    # NOT a ReviewInputs flag and NOT a ReviewResult field.
+    scheme_status_findings = run_scheme_status_check(client_config, compile_output)
+
     # --- Phase 5: Report + seal ---
 
     generated_at: str = compile_output["fetch_manifest"]["fetched_at"]
@@ -336,6 +347,7 @@ def review(
         document_legibility_rows=doc_legibility_rows,
         extra_judgment_artefacts=extra_artefacts,
         partial_exemption_findings=(partial_exemption_findings or None),
+        scheme_status_findings=(scheme_status_findings or None),
     )
     render_pdf(model, pdf_path)
 
