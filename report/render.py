@@ -1235,6 +1235,45 @@ def _partial_exemption(m: ReportModel, story: list) -> None:
         story.append(Paragraph(str(f.get("note", "")), _SMALL))
 
 
+def _scheme_status(m: ReportModel, story: list) -> None:
+    """Append the deterministic scheme-status contradiction section.
+
+    No-op when model.scheme_status is None (legacy caller) or show=False (the
+    check did not fire) — the rest of the report stays byte-identical.
+
+    UNGATED like the partial-exemption section: keys ONLY on section.show,
+    never on show_ai_candidates — this is a deterministic finding surface, not
+    an AI-candidate stream. The wording carries BOTH hypotheses (stale
+    configuration vs lines coded to a scheme not participated in) and asserts
+    neither; every finding is a reviewer candidate.
+
+    Args:
+        m:     The ReportModel; scheme_status may be None for legacy callers.
+        story: Mutable story list; flowables are appended in place.
+    """
+    ss = getattr(m, "scheme_status", None)
+    if ss is None or not ss.show:
+        return
+
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph(
+        "Scheme Status — Configuration vs Coded Lines", _H2
+    ))
+    for f in ss.findings:
+        story.append(Paragraph(str(f.get("description", "")), _BODY))
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(Paragraph(
+            f"<b>Severity:</b> {f.get('severity', '—')} — "
+            f"{f.get('doc_count', '—')} document(s) carrying the "
+            f"{f.get('vat_group', '—')} VatGroup code; configuration flag "
+            f"{f.get('config_flag', '—')}.",
+            _SMALL,
+        ))
+        story.append(Paragraph(str(f.get("severity_note", "")), _SMALL))
+        story.append(Paragraph(f"Basis: {f.get('basis', '')}", _SMALL))
+        story.append(Paragraph(str(f.get("note", "")), _SMALL))
+
+
 def _analytical_review(m: ReportModel, story: list) -> None:
     """Append the Annual Analytical Review section when the pass ran.
 
@@ -1733,6 +1772,8 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _analytical_review(model, story)
     # Prompt I: deterministic partial-exemption / De Minimis position (ungated).
     _partial_exemption(model, story)
+    # Scheme-status contradiction (config-vs-data, ungated).
+    _scheme_status(model, story)
     _declared_f5(model, story)
     _findings(model, story)
     _listing_findings(model, story)
