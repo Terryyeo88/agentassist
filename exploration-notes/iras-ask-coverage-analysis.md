@@ -77,7 +77,7 @@ Procedural step: choose which filed return(s) to subject to substantive testing.
 | ASK check (¶) | What it requires | Coverage | AgentAssist function | What's missing |
 |---|---|---|---|---|
 | 3D.1.1.a — Listing tallies to Boxes 5, 7 (10, 11) | Sum purchase lines = declared boxes | ◐ | `calculate_f5_return` (Box 5, 7); T2.9 Check B provides declared-vs-computed for Box 5 and Box 7 | Boxes 10/11 (TRS, bad-debt/RC refunds) not computed; declared reconciliation: T2.9 adds Check B (**MECHANISM VALIDATED ON DEMO, T2.9-V 2026-06-10** — flag-gated; renders findings when `--declared-f5` supplied with divergences). Rounding/tolerance convention still unconfirmed; coverage cell stays ◐ — not unconditionally covered. |
-| 3D.1.1.b — Import permits beginning "ME"/"MC" wrongly used without MES/IGDS approval | Permit-prefix scan + scheme status | ✗ / D+ | — | No import-permit data ingested; would need permit feed + per-client scheme config |
+| 3D.1.1.b — Import permits beginning "ME"/"MC" wrongly used without MES/IGDS approval | Permit-prefix scan + scheme status | ✗ / D+ | — | Permit-prefix signal not ingested (ME/MC permit numbers unreachable: SAP ImportFileNum/CCDNumbers unpopulated and unprojected, Xero F5 has no permit column). Per-client scheme config now exists (T2.18). check_scheme_status implements a VatGroup-code PROXY for this cell on weaker evidence — the client's own coding rather than Customs' record — and does not perform the prescribed check. See STATE D51. |
 | 3D.1.1.c — Input tax claimed outside the accounting period | Date-window + cross-period dedup | ✗ | — | No cross-period claim tracking |
 | 3D.1.1.d — Duplicate input-tax claims | Cross-transaction dedup | ✗ | — | Not implemented |
 | 3D.1.1.f — Credit notes received / debit notes issued reduce purchases & GST | CN/DN linkage | ◐ | Purchase credit notes fetched & subtracted; CN lines classified | Subtraction handled; original-document matching not |
@@ -200,7 +200,7 @@ Classifies each substantive check in the ASK Annual Review's transaction-testing
 | Check (¶) | Class | Rationale / AgentAssist contribution |
 |---|---|---|
 | 3D.1.1.a Listing reconciles to Box 5/7 | D | `calculate_f5_return` |
-| 3D.1.1.b "ME"/"MC" permit misuse | D+ | Deterministic given import-permit feed + scheme-status config |
+| 3D.1.1.b "ME"/"MC" permit misuse | D+ | Deterministic given an import-permit feed (per-client scheme-status config now exists — T2.18). check_scheme_status implements a VatGroup-code PROXY on weaker evidence — the client's own coding rather than Customs' record — and does not perform the prescribed check. See STATE D51. |
 | 3D.1.1.c Claim outside accounting period | D+ | Deterministic with cross-period claim history |
 | 3D.1.1.d Duplicate claims | D | DUP_CLAIM built in T2.10 (`orchestrator/check_listing.py`). Key = (CardCode, NumAtCard, DocTotal); blank NumAtCard excluded. **Positive-detection validated on synthetic cases (T2.10-V):** dup pair 7001/7002 (same CardCode + NumAtCard + DocTotal) → flagged; near-miss 7003 (different NumAtCard) → not flagged. Renders in signed PDF when findings present; Not-Examined item suppressed independently. Live zero-FP on SBODEMOSG (NumAtCard 0% populated — all excluded per design). **INERT on SBODEMOSG and any company where AP operators do not populate NumAtCard** — client-onboarding data-quality precondition. NOT validated on real client data. |
 | 3D.1.1.f Purchase reductions via CN/DN | D+ | CN subtraction handled; matching needs document state |
