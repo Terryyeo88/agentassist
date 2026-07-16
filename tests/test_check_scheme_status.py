@@ -239,24 +239,30 @@ class TestFindingShapeWording:
         assert isinstance(_me_finding()["doc_count"], int)
         assert isinstance(_igds_finding()["doc_count"], int)
 
-    def test_basis_disclaims_iras_prescription(self):
-        # BASIS RULING (rule-author, 2026-07-16), replacing the inverted
-        # test_basis_mentions_3e: no IRAS provision or ASK cell prescribes a
-        # config-vs-codes comparison, and ASK Step 3E PRESUPPOSES scheme
-        # participation (this check fires when the client declares none — it is
-        # UPSTREAM of 3E, not inside it). The basis must LEAD with the
-        # disclaimer and cite the code treatments only, never 3E as authority.
-        # NOTE: the ruled string itself ends "...no IRAS provision or ASK cell
-        # prescribes it", so a blanket no-"ASK" ban would contradict the ruled
-        # text; the pin is: no "3E", no "ASK Step" citation form, and the sole
-        # "ASK" occurrence sits inside that negating clause.
+    def test_basis_cites_3d_and_discloses_proxy(self):
+        # BASIS RULING v2 (rule-author, 2026-07-16), replacing
+        # test_basis_disclaims_iras_prescription, which pinned a FALSE ruling.
+        # v1 concluded no IRAS provision prescribes a config-vs-codes check.
+        # ASK Annual Review Guide Step 3D.1.1(b) DOES prescribe it: a business
+        # not approved under MES/IGDS must scan its listings for import permit
+        # numbers beginning "ME" or "MC". v1 reasoned correctly that the check
+        # is not 3E (3E presupposes participation) and then wrongly inferred it
+        # was nowhere. It is in 3D — the step every business performs.
+        # The honesty point that survives: IRAS's signal is the permit-number
+        # prefix (Customs' record). Ours is the VatGroup code (the client's own
+        # bookkeeping). We proxy the check on weaker evidence, which is why
+        # findings surface both hypotheses rather than naming an error.
         for f in (_me_finding(), _igds_finding()):
             basis = f["basis"]
-            assert basis.startswith("Not an IRAS-prescribed check.")
+            assert basis.startswith("IRAS-prescribed check, proxied.")
+            assert "3D.1.1(b)" in basis
+            assert "'ME' or 'MC'" in basis
+            assert "VatGroup" in basis
+            assert "weaker evidence" in basis
+            assert "not 3D.1.1(b)" in basis
+            assert "Not an IRAS-prescribed check" not in basis
+            assert "no IRAS provision or ASK cell prescribes it" not in basis
             assert "3E" not in basis
-            assert "ASK Step" not in basis
-            assert basis.count("ASK") == 1
-            assert "no IRAS provision or ASK cell prescribes it" in basis
             assert "code treatments" in basis
 
     def test_description_holds_both_hypotheses_verbatim(self):
