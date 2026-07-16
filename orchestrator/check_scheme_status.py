@@ -15,6 +15,16 @@ MUST surface both hypotheses and assert neither; it must NEVER state that the
 lines are wrongly coded. The phrasing surfaces a question, not a verdict — the
 reviewer, who can ask the client whether they are in the scheme, adjudicates.
 
+BASIS (v2 ruling, 2026-07-16): IRAS-prescribed at ASK Annual Review Guide Step
+3D.1.1(b) — the NON-participant's Input Tax check: scan the listings for import
+permit numbers beginning 'ME' or 'MC'. This system proxies that check via the
+VatGroup code because permit numbers are not ingested (SAP: permit-adjacent
+fields unpopulated and unprojected; Xero F5: no permit column). The proxy rests
+on the client's own coding rather than Singapore Customs' record and is
+therefore weaker evidence than the prescribed signal — which is why findings
+surface both hypotheses (see the invariant above) rather than naming the error.
+This module performs a proxy for 3D.1.1(b), never 3D.1.1(b) itself.
+
 Invariants (mirror check_partial_exemption.py):
 - No ``anthropic`` import. Pure Python; safe from orchestrator/.
 - check_scheme_status() and run_scheme_status_check() are READ-ONLY over
@@ -65,17 +75,38 @@ from __future__ import annotations
 #         direction carries IRAS exposure. Severity HIGH.
 # ---------------------------------------------------------------------------
 
-# BASIS RULING (rule-author, 2026-07-16): this check is NOT IRAS-prescribed —
-# no provision or ASK cell defines a config-vs-codes comparison, and ASK Step 3E
-# PRESUPPOSES scheme participation (this check fires when the client declares
-# none, so it sits UPSTREAM of 3E, testing 3E's own precondition). The basis
-# therefore leads with the disclaimer and cites the CODE TREATMENTS only.
+# BASIS RULING v2 (rule-author, 2026-07-16), correcting the same-day v1 ruling,
+# which was FALSE. v1 concluded no IRAS provision or ASK cell prescribes a
+# config-vs-codes comparison. ASK Annual Review Guide Step 3D.1.1(b) (printed
+# p.36) DOES prescribe this check — for NON-participants, in Input Tax, the
+# step every business performs. v1 reasoned correctly that the check is not
+# Step 3E (3E presupposes scheme participation, which is precisely why IRAS put
+# the non-participant's check in 3D) and then wrongly inferred it was nowhere:
+# both rulings were made without either party searching the guide for where the
+# check IS. The honesty point that survives v1: IRAS's signal is the import
+# permit number prefix (ME/MC — Singapore Customs' record, third-party
+# evidence); ours is the VatGroup code (the client's own bookkeeping). We
+# perform a PROXY on weaker evidence, not 3D.1.1(b) itself, and the basis must
+# say so.
 _BASIS = (
-    "Not an IRAS-prescribed check. Grounded in the code treatments only "
-    "(rule-author-supplied 2026-07-15): ME = import GST suspended under the "
-    "Major Exporter Scheme; IGDS = import GST deferred under the Import GST "
-    "Deferment Scheme. This is an internal consistency check between client "
-    "configuration and coded lines; no IRAS provision or ASK cell prescribes it."
+    "IRAS-prescribed check, proxied. The prescribing cell is ASK Annual Review "
+    "Guide Step 3D.1.1(b) (Input Tax): a business not approved under the MES, "
+    "IGDS or any other GST scheme to import goods with GST suspended or "
+    "deferred is to run through its listings for any import permit number that "
+    "begins with 'ME' or 'MC'. IRAS's signal is the import-permit-number "
+    "prefix — Singapore Customs' record, third-party evidence. Permit numbers "
+    "are not ingested by this system, so the check proxies that signal via the "
+    "VatGroup code — the client's own bookkeeping: a ME-prefixed permit means "
+    "someone actually used MES status at the border, while a ME VatGroup means "
+    "someone typed ME into a field. The proxy rests on the client's own coding "
+    "rather than Customs' record and is therefore a proxy on weaker evidence "
+    "for an IRAS-prescribed check; the finding surfaces both hypotheses rather "
+    "than naming the error not because the check is unprescribed, but because "
+    "this signal is weaker than the prescribed one. This check performs a "
+    "proxy for 3D.1.1(b), not 3D.1.1(b) itself. Grounded in the code "
+    "treatments (rule-author-supplied 2026-07-15): ME = import GST suspended "
+    "under the Major Exporter Scheme; IGDS = import GST deferred under the "
+    "Import GST Deferment Scheme."
 )
 
 # Mirrors the mirror's discipline: note and severity_note are SEPARATE fields,
