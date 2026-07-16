@@ -403,6 +403,14 @@ class CompileOutput(TypedDict):
     # Absent on the success path, preserving offline-replay byte-identity.
     # {"level": "unavailable", "reason": "<execution fact>"} when set.
     listing_checks_status: NotRequired[dict]
+    # Same-day duplicate-purchase surfacer findings ([] if the check ran clean; None if it
+    # could not run — see document_dup_status). DECOUPLED from listing_findings: keyed on
+    # (card_name, doc_total, doc_date) over the normalised purchase records, distinct from
+    # DUP_CLAIM. A failed run is never [] (zero findings).
+    document_dup_findings: NotRequired[list[dict] | None]
+    # Execution signal set ONLY when the same-day dup check THREW (mirrors listing_checks_status).
+    # Absent on the success path, preserving offline-replay byte-identity.
+    document_dup_status: NotRequired[dict]
 
 
 class ReportInput(TypedDict):

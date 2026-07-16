@@ -47,6 +47,7 @@ from report.sections import (
     CoverSection,
     CrossFindingSection,
     DeclaredF5Section,
+    DocumentDupSection,
     F5BoxSection,
     FindingsSection,
     JudgmentSection,
@@ -64,6 +65,7 @@ from report.sections import (
     build_cover_section,
     build_cross_finding_section,
     build_declared_f5_section,
+    build_document_dup_section,
     build_f5_box_section,
     build_findings_section,
     build_judgment_section,
@@ -153,6 +155,9 @@ class ReportModel:
     # Scheme-status contradiction (config-vs-data): declared MES/IGDS participation
     # vs ME/IGDS-coded lines. None in legacy callers; UNGATED like partial_exemption.
     scheme_status: SchemeStatusSection | None = None
+    # Same-day duplicate-purchase surfacer (DUP_SAME_DAY). None in legacy callers that
+    # predate the check; renderer skips the section when None or status "not_examined".
+    document_dup: DocumentDupSection | None = None
 
 
 def build_report(
@@ -318,4 +323,8 @@ def build_report(
             build_scheme_status_section(scheme_status_findings)
             if scheme_status_findings is not None else None
         ),
+        # Same-day duplicate-purchase surfacer section; three-state (examined /
+        # unavailable / not_examined) derived from compile_output keys. Renderer is a
+        # no-op when not_examined with no findings (legacy compile_output).
+        document_dup=build_document_dup_section(compile_output),
     )

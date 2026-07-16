@@ -55,6 +55,7 @@ from config.loader import ClientConfig  # noqa: E402
 
 from .exceptions import GateFailure  # noqa: E402
 from .check_declared_f5 import run_declared_f5_checks  # noqa: E402
+from .check_document_dup import detect_same_day_dups  # noqa: E402
 from .check_gst_ledger_recon import run_ledger_recon_checks, run_not_included_checks  # noqa: E402
 from .check_listing import detect_seq_gaps, detect_dup_claims  # noqa: E402
 from .gates import (  # noqa: E402
@@ -308,6 +309,36 @@ def run_chain(
     if result["calculate"]["boxes"] != _boxes_before:
         raise RuntimeError(
             "BOX-ISOLATION VIOLATION: listing checks corrupted F5 box values"
+        )
+
+    # Same-day duplicate-purchase surfacer — findings, never gates. DECOUPLED from the
+    # listing checks above (its OWN try + OWN result key): it reads the NORMALISED
+    # purchase records (fetch_manifest.records), which are populated on the Xero path
+    # where the listing surface is EMPTY. Coupling it to the listing fetch would
+    # suppress it whenever the listing degrades — the normal Xero state. Its findings
+    # land in result["document_dup_findings"], NOT listing_findings (that key is
+    # SEQ_GAP/DUP_CLAIM only). Same failure contract as the listing block: a throw
+    # yields None findings + a distinct "unavailable" status, never a silent [].
+    _boxes_before_dup = dict(result["calculate"]["boxes"])
+    try:
+        _purchase_records = result["fetch_manifest"]["records"]
+        document_dup = detect_same_day_dups(_purchase_records)
+        result["document_dup_findings"] = document_dup
+        log.info(f"same-day dup surfacer: DUP_SAME_DAY={len(document_dup)} findings")
+    except Exception as exc:
+        # Mirrors the listing failure contract (Option B): findings None (not []) so a
+        # failed run never reads as zero findings, plus a distinct execution-fact status.
+        log.warning(f"same-day dup check could not run (non-fatal, → unavailable): {exc}")
+        result["document_dup_findings"] = None
+        result["document_dup_status"] = {
+            "level": "unavailable",
+            "reason": f"same-day dup check failed to run: {exc}",
+        }
+
+    # BOX-ISOLATION assertion: the surfacer is read-only over records; boxes untouched.
+    if result["calculate"]["boxes"] != _boxes_before_dup:
+        raise RuntimeError(
+            "BOX-ISOLATION VIOLATION: same-day dup check corrupted F5 box values"
         )
 
     # T2.24: GST control-ledger <-> declared-F5 internal-consistency reconciliation —
