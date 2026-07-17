@@ -56,6 +56,7 @@ from config.loader import ClientConfig  # noqa: E402
 from .exceptions import GateFailure  # noqa: E402
 from .check_declared_f5 import run_declared_f5_checks  # noqa: E402
 from .check_document_dup import detect_same_day_dups  # noqa: E402
+from .check_document_dup_window import detect_window_dups  # noqa: E402
 from .check_gst_ledger_recon import run_ledger_recon_checks, run_not_included_checks  # noqa: E402
 from .check_listing import detect_seq_gaps, detect_dup_claims  # noqa: E402
 from .gates import (  # noqa: E402
@@ -340,6 +341,44 @@ def run_chain(
         raise RuntimeError(
             "BOX-ISOLATION VIOLATION: same-day dup check corrupted F5 box values"
         )
+
+    # Windowed duplicate-purchase surfacer (DUP_WINDOW) — findings, never gates.
+    # Owns the MULTI-DAY range (1 <= delta <= window) ONLY; day-0 stays the same-day
+    # check's exclusively, so the two never double-report a pair and no dedupe pass
+    # exists. Its OWN try + OWN result keys, decoupled from the same-day block above
+    # exactly as that block is decoupled from the listing checks.
+    #
+    # ENABLEMENT (load-bearing — read before editing this guard): the whole block is
+    # wrapped in `if client_config.dup_window_enabled:`, mirroring the T2.24
+    # `if gst_ledger is not None:` seam below. When DISABLED (the default for every
+    # client) it adds NEITHER result key — not [], not None, not a status. Nothing.
+    # That is what keeps the offline-replay oracle byte-identical without a re-freeze.
+    # Do NOT "helpfully" write an unavailable status here: "unavailable" means the
+    # check RAN AND THREW, which is a DIFFERENT state from "not enabled".
+    if client_config.dup_window_enabled:
+        _boxes_before_window = dict(result["calculate"]["boxes"])
+        try:
+            _window_records = result["fetch_manifest"]["records"]
+            window_dups = detect_window_dups(
+                _window_records, client_config.dup_window_days
+            )
+            result["document_dup_window_findings"] = window_dups
+            log.info(f"window dup surfacer: DUP_WINDOW={len(window_dups)} findings")
+        except Exception as exc:
+            # Same failure contract as the same-day block: findings None (not []) so
+            # a failed run never reads as zero findings, plus a distinct status.
+            log.warning(f"window dup check could not run (non-fatal, → unavailable): {exc}")
+            result["document_dup_window_findings"] = None
+            result["document_dup_window_status"] = {
+                "level": "unavailable",
+                "reason": f"window dup check failed to run: {exc}",
+            }
+
+        # BOX-ISOLATION assertion: read-only over records; boxes untouched.
+        if result["calculate"]["boxes"] != _boxes_before_window:
+            raise RuntimeError(
+                "BOX-ISOLATION VIOLATION: window dup check corrupted F5 box values"
+            )
 
     # T2.24: GST control-ledger <-> declared-F5 internal-consistency reconciliation —
     # FINDINGS, never a gate. Mirrors the T2.9 declared_f5 conditional: it runs ONLY when a

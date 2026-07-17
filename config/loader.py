@@ -186,6 +186,17 @@ class ClientConfig:
     participates_in_mes: bool = False
     participates_in_igds: bool = False
     reverse_charge_applicable: bool = False
+    # DUP_WINDOW enablement (windowed duplicate-purchase surfacer). Default OFF:
+    # when disabled the chain writes NEITHER of the check's result keys, which is
+    # what keeps the frozen offline-replay oracle byte-identical. dup_window_days
+    # has NO default value on purpose — a window is DEFERRED to a worksheet that
+    # does not exist yet, so enabling the check without supplying one FAILS LOUD at
+    # load rather than guessing a threshold. A window may be PARKED here (declared
+    # while disabled) ahead of enabling: its TYPE is always validated, its range
+    # only once the flag makes it load-bearing. Read only at orchestrator/chain.py,
+    # inside the dup_window_enabled guard.
+    dup_window_enabled: bool = False
+    dup_window_days: int | None = None
 
     @property
     def effective_tax_code_mappings(self) -> dict:
@@ -485,6 +496,65 @@ def load_client_config(
             f"  A tax code is EITHER mapped to a VatGroup OR out-of-scope, never both."
         )
 
+    # --- Step 12: DUP_WINDOW enablement + window (windowed duplicate surfacer) ---
+
+    # Flat top-level keys. Absent OR explicit YAML null -> disabled / no window, and
+    # the config loads fine (the DEFAULT for every existing client — this is what
+    # keeps the frozen replay oracle byte-identical). The enabled flag reuses the
+    # isinstance(bool) guard used for show_ai_candidates / the scheme flags above,
+    # so a quoted-"yes" truthy-string surprise fails LOUD at load, not silently.
+    _raw_window_enabled = raw.get("dup_window_enabled", False)
+    if _raw_window_enabled is None:  # explicit YAML null -> default OFF
+        _raw_window_enabled = False
+    if not isinstance(_raw_window_enabled, bool):
+        raise ConfigError(
+            f"dup_window_enabled in '{client_id}.yaml' must be a boolean "
+            f"(true or false), got: {_raw_window_enabled!r}"
+        )
+    dup_window_enabled: bool = _raw_window_enabled
+
+    dup_window_days = raw.get("dup_window_days")
+
+    # TYPE is validated UNCONDITIONALLY — a parked window is still a WINDOW, and a
+    # str/list/dict is never one under any future flag state. This keeps the
+    # `dup_window_days: int | None` annotation TRUE in every reachable state (there
+    # is no mypy in CI, so an unenforced annotation would be documentation that
+    # lies). bool is an int subclass; reject it explicitly so `dup_window_days: true`
+    # cannot be read as a 1-day window.
+    if dup_window_days is not None and (
+        isinstance(dup_window_days, bool) or not isinstance(dup_window_days, int)
+    ):
+        raise ConfigError(
+            f"dup_window_days in '{client_id}.yaml' must be an integer number "
+            f"of days, got: {dup_window_days!r}"
+        )
+
+    # The REQUIRED-ness and the RANGE are gated on the flag. A window supplied while
+    # disabled is INERT (the chain's `if client_config.dup_window_enabled:` guard
+    # means the value is never read), so rejecting its range would forbid PARKING a
+    # window in YAML ahead of enabling the check. The range becomes load-bearing —
+    # and is enforced — at the moment the flag is flipped on.
+    if dup_window_enabled:
+        # NEVER a guessed default: an enabled check with no window is a config
+        # error, not an invitation to invent a threshold. The validated value is
+        # DEFERRED to a worksheet that does not exist yet.
+        if dup_window_days is None:
+            raise ConfigError(
+                f"dup_window_enabled is true in '{client_id}.yaml' but no "
+                f"dup_window_days is set.\n"
+                f"  A window has no safe default — supply a validated value "
+                f"(an integer number of days >= 1)."
+            )
+        # A 0 (or negative) window makes the predicate 1 <= delta <= 0 — empty. The
+        # check would be enabled, load clean, and never fire: a silently-dead check.
+        if dup_window_days < 1:
+            raise ConfigError(
+                f"dup_window_days in '{client_id}.yaml' must be >= 1, got: "
+                f"{dup_window_days}.\n"
+                f"  A window below 1 day can never fire (day-0 belongs to the "
+                f"same-day check), so the check would be silently dead."
+            )
+
     return ClientConfig(
         client_id=raw["client_id"],
         client_name=raw["client_name"],
@@ -506,6 +576,11 @@ def load_client_config(
         out_of_scope_codes=out_of_scope_codes,
         # Scheme-status flags (T2.18); keys match the kwarg names exactly.
         **scheme_flags,
+        # DUP_WINDOW enablement + window (validated in Step 12 above). The window is
+        # passed through AS DECLARED, not normalised away when disabled: a parked
+        # window (staged in YAML ahead of enabling the check) survives the load.
+        dup_window_enabled=dup_window_enabled,
+        dup_window_days=dup_window_days,
     )
 
 
