@@ -36,6 +36,14 @@ exploration-notes/t1.4-reports/
 exploration-notes/t1.6-tool-outputs/*.json
 *.pdf
 !tests/fixtures/documents/*.pdf
+# Knowledge-base reference PDFs are TRACKED by declaration (θ ruling,
+# 2026-07-19): the manifest (knowledge-base/sources.md) asserts local paths
+# resolve in a CLONE, so the corpus must be in git — the same negation idiom
+# the fixtures line above already uses. Historical force-adds made the KB the
+# undocumented anomaly; this makes tracking the default for exactly the files
+# the manifest governs. "In the repo" has three meanings — on disk, tracked,
+# present in a clone — and the manifest's local_path column means CLONED.
+!knowledge-base/**/*.pdf
 *-specialist.json
 
 # Claude Code per-project memory (local only, not for version control)
