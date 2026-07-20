@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from config.loader import ClientConfig
+from config.source_labels import source_display_name
 from report.enrich import EnrichedFinding, enrich
 from report.sections import (
     AICandidatesSection,
@@ -158,6 +159,10 @@ class ReportModel:
     # Same-day duplicate-purchase surfacer (DUP_SAME_DAY). None in legacy callers that
     # predate the check; renderer skips the section when None or status "not_examined".
     document_dup: DocumentDupSection | None = None
+    # D-2026-07-20-source-provenance: display label of the data source (from
+    # ClientConfig.source_system via config.source_labels). Defaulted so legacy
+    # callers that construct ReportModel directly keep the pre-existing SAP wording.
+    source_label: str = "SAP B1"
 
 
 def build_report(
@@ -277,7 +282,7 @@ def build_report(
         f5_boxes=build_f5_box_section(compile_output),
         findings=build_findings_section(enriched),
         cross_findings=build_cross_finding_section(enriched),
-        judgment=build_judgment_section(compile_output, enriched),
+        judgment=build_judgment_section(compile_output, enriched, client_config=client_config),
         not_examined=build_not_examined_section(
             compile_output, client_config,
             declared_f5_findings=df5_findings,
@@ -327,4 +332,9 @@ def build_report(
         # unavailable / not_examined) derived from compile_output keys. Renderer is a
         # no-op when not_examined with no findings (legacy compile_output).
         document_dup=build_document_dup_section(compile_output),
+        # D-2026-07-20-source-provenance: the renderer never reaches into
+        # ClientConfig, so the data-source display label rides on the model.
+        source_label=source_display_name(
+            getattr(client_config, "source_system", None)
+        ),
     )
