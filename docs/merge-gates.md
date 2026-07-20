@@ -154,7 +154,13 @@ runtime note:** this path (at PR-B) required `SAP_USERNAME`/`SAP_PASSWORD` env v
 load `xero_demo.yaml`, even though no SAP call is made — making `sap_b1` optional for non-SAP clients was
 deferred (PR-D). **Since resolved (branch `t-debt9-sap-decouple`, commit `8daf757`):** the `sap_b1`
 block + creds are now required iff `source_system == "sap_b1"`, so the Xero upload path no longer requires
-SAP creds to load; offline-replay stays byte-identical to the frozen oracle. See
+SAP creds to load; offline-replay stays byte-identical to the frozen oracle. **Residuals closed
+(branch `t-debt9-xero-creds`, commit `08d8877`):** the stale in-code docstring in `api/app.py`
+(still claiming the deferred-PR-D dependency, false since `8daf757`) is corrected, and an
+endpoint-level creds-absent regression PIN is added (`tests/test_debt9_endpoint_creds_absent.py`,
+3 tests — a real Xero F5 POST to `/review/upload` returns HTTP 200 with the locked 5-key shape
+even with `SAP_USERNAME`/`SAP_PASSWORD` unset, while `sbodemosg` still raises `ConfigError`).
+These PIN behaviour already on `master` (they passed immediately). See
 `KNOWN-LIMITATIONS-xero-demo.md` (PR-B status + DEBT-9 RESOLVED) and
 `AGENTASSIST_TECHNICAL_STATE.md` §T-xero-engine-wire.
 
