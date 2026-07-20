@@ -114,6 +114,40 @@ DISCLAIMER = (
     "not a real client's real numbers, and not a compliance verdict."
 )
 
+# Source-aware disclaimers for the REAL-upload endpoints (D-2026-07-20-source-provenance).
+# Value-only: the response key stays "disclaimer" (the exact key-set contract tests are
+# locked) and every text preserves the honest-status wording verbatim. The demo-specific
+# clauses ("Demo over FROZEN SBODEMOSG engine output", "not a real client's real numbers")
+# are dropped only where they would be FALSE for a real upload; the b1-demo surfaces
+# (/health, /audit, /command, /sign, serialize_review) keep DISCLAIMER unchanged.
+_UPLOAD_DISCLAIMER_TEMPLATE = (
+    "AgentAssist flags — you decide. Computed from {source_phrase}; "
+    "validation_status=unvalidated (T2.11 is the binding gate). Findings are "
+    "unvalidated candidates — not a compliance verdict."
+)
+
+#: source_kind -> disclaimer text. Both Xero kinds share ONE text (ruling M2: the
+#: F5-vs-sales distinction is internal and must not leak into client-facing prose).
+UPLOAD_DISCLAIMERS: dict[str, str] = {
+    "xero_f5_upload": _UPLOAD_DISCLAIMER_TEMPLATE.format(
+        source_phrase="your uploaded Xero export"),
+    "xero_sales_upload": _UPLOAD_DISCLAIMER_TEMPLATE.format(
+        source_phrase="your uploaded Xero export"),
+    "extract_review": _UPLOAD_DISCLAIMER_TEMPLATE.format(
+        source_phrase="your uploaded extract"),
+    "extract_upload": _UPLOAD_DISCLAIMER_TEMPLATE.format(
+        source_phrase="your uploaded extract"),
+}
+
+
+def upload_disclaimer(source_kind: str) -> str:
+    """Source-aware disclaimer for an upload response.
+
+    Unknown/unmapped kinds fall back to the demo DISCLAIMER — fail-closed to the
+    loudest wording rather than inventing a source label.
+    """
+    return UPLOAD_DISCLAIMERS.get(source_kind, DISCLAIMER)
+
 
 def _client_identity(client_yaml: Path | str = _CLIENT_YAML) -> dict[str, str]:
     """Read the real client display identity from the committed YAML (no secrets)."""
