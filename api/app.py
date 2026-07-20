@@ -425,9 +425,11 @@ def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = 
     verdicts. validation_status stays "unvalidated" (Inv-5); no AI candidates surface; the
     VatGroup mapping is PROPOSED (DEBT-1); accuracy is NOT validated (T2.11 unmoved).
 
-    DEBT-9 runtime dependency: load_client_config("xero_demo") hard-requires SAP_USERNAME/
-    SAP_PASSWORD env vars even though NO SAP call is made on this path (XeroF5ChainReader
-    short-circuits every read). Making sap_b1 optional for non-SAP clients is deferred (PR-D).
+    DEBT-9 RESOLVED (8daf757 / PR #83): load_client_config("xero_demo") requires NO SAP
+    credentials — xero_demo.yaml declares source_system "xero", so the loader's is_sap_sourced
+    gate (config/loader.py, step 2.5/5) skips the sap_b1 block + env-var requirement; SAP
+    connection fields load as "" and the injected XeroF5ChainReader short-circuits every read.
+    Endpoint-level pin: tests/test_debt9_endpoint_creds_absent.py (creds-absent 200).
     """
     # Lazy imports keep api/ anthropic-free AT MODULE IMPORT (Inv-1): engine.review pulls
     # reasoning.reg2627, whose anthropic import is itself lazy — so importing api.app loads
