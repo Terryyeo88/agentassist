@@ -1747,6 +1747,13 @@ on glibc (`ubuntu-latest`) and assert `_bundled/claude` exists post-install. Imp
 accept a custom `transport=`, so the hermetic suite injects a FakeTransport (no binary, no
 tokens); any live-in-CI loop is opt-in (`workflow_dispatch`) and burns real tokens.
 
+**CI wheel-download hardening (branch `t-ci-pip-retry`, infra-only):** because this SDK wheel
+download intermittently drops on runners (`IncompleteRead`/`ProtocolError`), CI hardens the install
+with pip retries + timeout (job-level `PIP_*` env, `--prefer-binary`, no `--no-deps` so dependency
+resolution is unchanged). Honest status: this validation is inherently on-runner — the network flake
+is not locally reproducible — so the hardening is **built**, with effectiveness confirmed only by
+subsequent green CI runs, not by any local test. CI-infra change only; it moves no product rung.
+
 **Test state (T5.2b):** 44 new tests (T-1 through T-8) in 4 test files
 (`test_t52b_hooks.py`, `test_t52b_ledger_seal.py`, `test_t52b_registry.py`,
 `test_t52b_approve_cli.py`). All hermetic — synthetic SDK events, mocked SDK, no live model.
