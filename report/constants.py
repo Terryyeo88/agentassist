@@ -203,14 +203,14 @@ NOT_EXAMINED_ITEMS: list[str] = [
     "Turnover from management accounts not performed; financial statements not ingested)",
 
     "Declared-vs-computed F5 comparison (filed GST return not ingested; "
-    "reconciliation of SAP-computed box figures against submitted declared values "
-    "requires the filed return as a second input — ASK Steps 1.3b / 1.3c)",
+    "reconciliation of {source_label}-computed box figures against submitted declared "
+    "values requires the filed return as a second input — ASK Steps 1.3b / 1.3c)",
 
     "Invoice sequence gap detection (running-sequence continuity not verified against "
     "company-wide DocNum history — ASK Annual Review Guide §10.1(c)(i))",
 
     "Duplicate input-tax claims (cross-vendor deduplication using supplier invoice "
-    "reference not performed; requires NumAtCard population in SAP B1 — "
+    "reference not performed; requires NumAtCard population in {source_label} — "
     "ASK Annual Review Guide §10.1(d)(i))",
 
     "Time-of-supply compliance (transaction payment-date ingestion not implemented; "
@@ -242,3 +242,16 @@ DISCLAIMER_TEXT: str = (
     "This report is not a substitute for professional GST advice. "
     "AgentAssist is not an SCTP-accredited ATA (GST) or ATP (GST)."
 )
+
+
+def disclaimer_text_for(source_label_long: str) -> str:
+    """DISCLAIMER_TEXT with the data-source NAME swapped for a non-SAP source.
+
+    Name-swap ONLY — the approved legal language is never paraphrased or shortened
+    (see the note above DISCLAIMER_TEXT). Byte-identical to DISCLAIMER_TEXT for the
+    SAP source or any falsy label (invariant-auditor caveat: never propagate None
+    into legal text). "SAP Business One" occurs exactly once in the approved text.
+    """
+    if not source_label_long or source_label_long == "SAP Business One":
+        return DISCLAIMER_TEXT
+    return DISCLAIMER_TEXT.replace("SAP Business One", source_label_long)

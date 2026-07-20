@@ -35,9 +35,19 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from report.constants import DISCLAIMER_TEXT, NOT_EXAMINED_ITEMS
+from config.source_labels import source_display_name
+from report.constants import NOT_EXAMINED_ITEMS, disclaimer_text_for
 from report.enrich import EnrichedFinding
 from report.routing import TemplateRef
+
+
+def _source_label(client_config: Any, long: bool = False) -> str:
+    """Display label for the config's data source; missing/None -> SAP (the
+    ClientConfig default) so duck-typed test configs and legacy callers keep the
+    exact pre-D-2026-07-20 wording (invariant-auditor caveats 1-2)."""
+    return source_display_name(
+        getattr(client_config, "source_system", None), long=long
+    )
 
 # ── Severity sort order ───────────────────────────────────────────────────────
 
@@ -735,6 +745,7 @@ def build_cross_finding_section(findings: list[EnrichedFinding]) -> CrossFinding
 def build_judgment_section(
     compile_output: dict[str, Any],
     findings: list[EnrichedFinding],
+    client_config: Any = None,
 ) -> JudgmentSection:
     """Build Section 5 judgment groups from findings requiring reviewer decisions.
 
@@ -751,10 +762,15 @@ def build_judgment_section(
         compile_output: CompileOutput dict (currently unused; reserved for future
                         judgment triggers sourced directly from chain output).
         findings:       Flat list of EnrichedFindings from report.enrich.enrich().
+        client_config:  Optional ClientConfig; source_system drives the data-source
+                        label in the judgment prose. None (legacy two-arg callers)
+                        defaults to the SAP label — pre-existing call shapes render
+                        byte-identical text.
 
     Returns:
         JudgmentSection: Only populated groups (those with at least one doc_num).
     """
+    source_label = _source_label(client_config)
     groups: list[JudgmentGroup] = []
 
     # 1. Export evidence — E1: FX sales coded as local standard-rated.
@@ -807,7 +823,7 @@ def build_judgment_section(
             judgment_question=(
                 "For each BL-coded expense carrying GST (disallowed under GST (General) "
                 "Regulations 26 and 27): confirm the GST charge on the supplier invoice "
-                "is correct and that no input tax has been claimed against it in SAP B1."
+                f"is correct and that no input tax has been claimed against it in {source_label}."
             ),
             doc_nums=bl_docs,
         ))
@@ -824,7 +840,9 @@ def build_judgment_section(
             judgment_question=(
                 "For each supplier with input tax claims but no GST registration number "
                 "on record: verify the supplier's current GST registration status with IRAS. "
-                "Note: if your SAP B1 instance stores GST registration numbers in a "
+                # The SAP-mechanism nouns (UDF / FederalTaxID) deliberately stay
+                # unchanged on ALL sources — open item #44, rule-author ruling M3.
+                f"Note: if your {source_label} instance stores GST registration numbers in a "
                 "User Defined Field (UDF) rather than the standard FederalTaxID field, "
                 "these findings may be false positives requiring UDF-to-FederalTaxID mapping."
             ),
@@ -1184,6 +1202,10 @@ def build_not_examined_section(
         getattr(client_config, "actively_makes_exempt_supplies", False)
     )
 
+    # Data-source label substituted into the {source_label}-templated entries
+    # (.replace, not .format — brace-safe against literal parens/braces in items).
+    source_label = _source_label(client_config)
+
     items: list[str] = []
     for item in NOT_EXAMINED_ITEMS:
         if suppress_decl_f5 and item.startswith(_DECL_F5_NOT_EXAMINED_PREFIX):
@@ -1192,7 +1214,7 @@ def build_not_examined_section(
             continue
         if suppress_partial_exemption and item.startswith(_PARTIAL_EXEMPTION_NE_PREFIX):
             continue
-        items.append(item)
+        items.append(item.replace("{source_label}", source_label))
 
     # T2.10 + tfix: the SEQ_GAP/DUP_CLAIM not-examined lines are driven by the listing
     # pass EXECUTION STATE, so the report keeps three states distinct and never claims a
@@ -1258,15 +1280,17 @@ def build_signature_section(client_config: Any) -> SignatureSection:
                        defaults so missing attributes degrade gracefully.
 
     Returns:
-        SignatureSection: Reviewer metadata plus the verbatim DISCLAIMER_TEXT
-            from report.constants.
+        SignatureSection: Reviewer metadata plus the approved legal disclaimer —
+            DISCLAIMER_TEXT byte-identical for SAP sources (and legacy configs
+            without source_system); name-swapped only, never paraphrased, for
+            non-SAP sources (disclaimer_text_for).
     """
     return SignatureSection(
         reviewer_name=getattr(client_config, "reviewer_name", ""),
         firm_name=getattr(client_config, "firm_name", ""),
         gst_registration_number=getattr(client_config, "gst_registration_number", ""),
-        # DISCLAIMER_TEXT is used verbatim — must not be reformatted here
-        disclaimer=DISCLAIMER_TEXT,
+        # Name-swap only — the approved legal language is never reformatted here.
+        disclaimer=disclaimer_text_for(_source_label(client_config, long=True)),
     )
 
 

@@ -737,7 +737,8 @@ def _f5_boxes(m: ReportModel, story: list) -> None:
     """
     story.append(Paragraph("2.  GST F5 Return — Box Figures", _H2))
     story.append(Paragraph(
-        "SGD. Computed from SAP B1 invoice and credit note lines by calculate_f5_return.",
+        f"SGD. Computed from {m.source_label} invoice and credit note lines "
+        "by calculate_f5_return.",
         _SMLX,
     ))
 

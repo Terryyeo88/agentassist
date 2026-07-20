@@ -58,6 +58,7 @@ from api.viewmodel import (
     f5_summary,
     serialize_ledger_recon_queue,
     serialize_xero_queue,
+    upload_disclaimer,
 )
 # Shared with the CLI (run_agent) — assembles the T2.24 gst_ledger side-input from the
 # uploaded Xero F5 workbook + optional 820 account-transactions export. Calls only feeder
@@ -403,7 +404,7 @@ async def post_review_upload(
     return {
         "source_kind": "extract_upload",
         "validation_status": VALIDATION_STATUS,
-        "disclaimer": DISCLAIMER,
+        "disclaimer": upload_disclaimer("extract_upload"),
         "coverage_status": coverage_status,
     }
 
@@ -466,7 +467,7 @@ def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = 
     return {
         "source_kind": "xero_f5_upload",
         "validation_status": VALIDATION_STATUS,
-        "disclaimer": DISCLAIMER,
+        "disclaimer": upload_disclaimer("xero_f5_upload"),
         "coverage_status": coverage_status,
         "queue": queue,
     }
@@ -532,7 +533,7 @@ def _extract_review_response(reader) -> dict:
     return {
         "source_kind": "extract_review",
         "validation_status": VALIDATION_STATUS,
-        "disclaimer": DISCLAIMER,
+        "disclaimer": upload_disclaimer("extract_review"),
         "coverage_status": coverage_status,
         "queue": queue,
         "config_scope": "default_demo",
@@ -605,7 +606,7 @@ def _xero_sales_review_response(reader) -> dict:
     return {
         "source_kind": "xero_sales_upload",
         "validation_status": VALIDATION_STATUS,
-        "disclaimer": DISCLAIMER,
+        "disclaimer": upload_disclaimer("xero_sales_upload"),
         "coverage_status": coverage_status,
         "queue": queue,
         "config_scope": "xero_sales_demo",
