@@ -263,6 +263,21 @@ oracle — SAP spine undisturbed). Moves NO rung toward T2.11; `validation_statu
 and `show_ai_candidates=False` UNCHANGED; no tax semantics. Verified by
 `tests/test_debt9_sap_decouple.py` (18 tests, incl. a real-`run_chain` zero-SAP-contact proof);
 full suite **2093 passed, 1 skipped**. This debt is now CLOSED.
+*Residuals closed (branch `t-debt9-xero-creds`, commit `08d8877`):* two loose ends left after
+`8daf757` are now tied off. (1) A **stale in-code docstring** in `api/app.py`'s
+`_xero_f5_review_response` still asserted the old "DEBT-9 runtime dependency … deferred (PR-D)"
+claim, which had been false since `8daf757`; it now states the `source_system`-gated resolution.
+(2) An **endpoint-level creds-absent pin** was added — `tests/test_debt9_endpoint_creds_absent.py`
+(**3 tests**): (a) `SAP_USERNAME`/`SAP_PASSWORD` `delenv`'d (overriding the conftest session
+stubs), a real Xero F5 fixture POSTed to `/review/upload` → HTTP 200 + the locked 5-key
+`xero_f5_upload` shape + `QUEUE_ITEM_KEYS` queue; (b) SAP-direction pin — `sbodemosg` load still
+raises `ConfigError` naming the missing vars (the loud SAP guard is NOT weakened); (c) `xero_demo`
+loads with empty SAP fields. **Honest status:** these are regression **PINS of behaviour already
+on `master`** since `8daf757` — they **passed immediately** (built + pinned ≠ accuracy-validated;
+T2.11 unmoved). Branch full suite **2673 passed, 1 skipped** (6 xfailed, 2 xpassed); a single
+**pre-existing** `tests/test_motorcar_statute_source.py` manifest-sha256 failure reproduces
+identically on clean `master` `0f56f5c` (from PR #123) and is unrelated to this branch — flagged
+to Terry separately.
 
 ### DEBT-10 — `source_system` docstring understates its effect — RESOLVED (commit `8daf757`)
 `config/loader.py:114-116` (historically) documented `source_system` as "logging/display
