@@ -4,6 +4,9 @@ import { postSign, type SignResponse } from "../api";
 interface Props {
   onClose: () => void;
   onSigned: (reviewerName: string) => void;
+  // t-xero-signoff (M3): pre-fill from the up-front reviewer-of-record capture so the
+  // signature and the persisted decisions share ONE identity. Still editable here.
+  initialReviewer?: string;
 }
 
 /**
@@ -11,8 +14,8 @@ interface Props {
  * reproduces ui.sign.sign_working_paper, carries the reviewer name onto the working paper,
  * and is box-isolated (F5 boxes are never recomputed). Sign refuses an empty reviewer.
  */
-export function SignModal({ onClose, onSigned }: Props) {
-  const [reviewer, setReviewer] = useState("");
+export function SignModal({ onClose, onSigned, initialReviewer }: Props) {
+  const [reviewer, setReviewer] = useState(initialReviewer ?? "");
   const [firm, setFirm] = useState("");
   const [err, setErr] = useState("");
   const [result, setResult] = useState<SignResponse | null>(null);

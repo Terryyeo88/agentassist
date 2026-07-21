@@ -149,7 +149,10 @@ class ReviewInputs:
 class ReviewResult:
     """Full output of one review() invocation.
 
-    On status="completed" all fields except gate_failure are populated.
+    On status="completed" all fields except gate_failure are populated — unless
+    review() was called with persist_artifacts=False (M2, t-xero-signoff), where
+    report_pdf_path and bundle_dir are None by design (pure review: Phase-5
+    render/seal skipped; nothing persisted to disk).
     On status="halted" (GateFailure): compile_output, gate_results,
     reasoning_artefact, document_candidates, analytical_review_data,
     report_pdf_path, bundle_dir, and run_completed_at are all None.
@@ -204,6 +207,8 @@ def review(
     client_config: ClientConfig,
     period: dict,
     inputs: ReviewInputs,
+    *,
+    persist_artifacts: bool = True,
 ) -> ReviewResult:
     """Run the full GST review pipeline and return a ReviewResult.
 
@@ -220,6 +225,16 @@ def review(
         period:        {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}.
         inputs:        ReviewInputs descriptor carrying the source-adapter
                        callables and optional inputs for this run.
+        persist_artifacts: t-xero-signoff (M2). Execution POLICY, keyword-only —
+                       deliberately NOT a ReviewInputs field (the T5.8 artifact
+                       contract freezes that dataclass's field set; policy is not
+                       input data). When False, Phase-5 (build_report/render_pdf/
+                       seal_bundle) is skipped entirely: a pure review persisting
+                       NO artefact — no unsigned PDF, no unsigned bundle. Plain
+                       web uploads pass False; the sign path and every legacy
+                       caller keep the default True (SAP/CLI byte-identical).
+                       Phases 1-4c are untouched either way (box-isolation:
+                       compile_output/gates come from run_chain).
 
     Returns:
         ReviewResult with status="completed" or status="halted".
@@ -324,47 +339,54 @@ def review(
     # NOT a ReviewInputs flag and NOT a ReviewResult field.
     scheme_status_findings = run_scheme_status_check(client_config, compile_output)
 
-    # --- Phase 5: Report + seal ---
+    # --- Phase 5: Report + seal (skipped when persist_artifacts=False, M2) ---
 
-    generated_at: str = compile_output["fetch_manifest"]["fetched_at"]
-    ts = (
-        datetime.fromisoformat(generated_at)
-        .astimezone(timezone.utc)
-        .strftime("%Y%m%d-%H%M%S")
-    )
+    pdf_path: Path | None = None
+    bundle_dir: Path | None = None
+    if persist_artifacts:
+        generated_at: str = compile_output["fetch_manifest"]["fetched_at"]
+        ts = (
+            datetime.fromisoformat(generated_at)
+            .astimezone(timezone.utc)
+            .strftime("%Y%m%d-%H%M%S")
+        )
 
-    _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    pdf_path = _REPORTS_DIR / (
-        f"{client_config.client_id}-{period['start']}-{period['end']}-{ts}.pdf"
-    )
+        _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        pdf_path = _REPORTS_DIR / (
+            f"{client_config.client_id}-{period['start']}-{period['end']}-{ts}.pdf"
+        )
 
-    model = build_report(
-        compile_output, client_config,
-        generated_at=generated_at,
-        judgment_artefact=reasoning_artefact,
-        document_candidates=doc_candidates,
-        analytical_review_data=analytical_review_data,
-        document_legibility_rows=doc_legibility_rows,
-        extra_judgment_artefacts=extra_artefacts,
-        partial_exemption_findings=(partial_exemption_findings or None),
-        scheme_status_findings=(scheme_status_findings or None),
-    )
-    render_pdf(model, pdf_path)
+        model = build_report(
+            compile_output, client_config,
+            generated_at=generated_at,
+            judgment_artefact=reasoning_artefact,
+            document_candidates=doc_candidates,
+            analytical_review_data=analytical_review_data,
+            document_legibility_rows=doc_legibility_rows,
+            extra_judgment_artefacts=extra_artefacts,
+            partial_exemption_findings=(partial_exemption_findings or None),
+            scheme_status_findings=(scheme_status_findings or None),
+        )
+        render_pdf(model, pdf_path)
 
-    run_completed_at = datetime.now(timezone.utc).isoformat()
+        run_completed_at = datetime.now(timezone.utc).isoformat()
 
-    bundle_dir = seal_bundle(
-        client_config=client_config,
-        period=period,
-        compile_output=compile_output,
-        gate_results=gate_results,
-        report_pdf_path=pdf_path,
-        run_started_at=run_started_at,
-        run_completed_at=run_completed_at,
-        reasoning_artefact=reasoning_artefact,
-        declared_f5=inputs.declared_f5,
-        extra_reasoning_artefacts=extra_artefacts,
-    )
+        bundle_dir = seal_bundle(
+            client_config=client_config,
+            period=period,
+            compile_output=compile_output,
+            gate_results=gate_results,
+            report_pdf_path=pdf_path,
+            run_started_at=run_started_at,
+            run_completed_at=run_completed_at,
+            reasoning_artefact=reasoning_artefact,
+            declared_f5=inputs.declared_f5,
+            extra_reasoning_artefacts=extra_artefacts,
+        )
+    else:
+        # Pure review: the deterministic result is returned in-memory only. The
+        # timestamp is still stamped so the result shape stays uniform.
+        run_completed_at = datetime.now(timezone.utc).isoformat()
 
     return ReviewResult(
         status="completed",

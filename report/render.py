@@ -1771,12 +1771,40 @@ def _signature(m: ReportModel, story: list) -> None:
     (width matches the IRAS Declaration Form convention), a date field, and
     the disclaimer text.
 
+    #43 signable-render guard: when ``m.show_ai_candidates`` is True this render
+    includes UNVALIDATED AI-candidate content, so the sign-off is SUPPRESSED — an
+    explicit do-not-sign notice replaces the ruled signature line entirely (no
+    line to sign on). The guard keys on ``show_ai_candidates`` ONLY, never on
+    ``validation_status``: the deterministic working paper is meant to be
+    human-signed regardless of T2.11. In the signable branch the system still
+    never signs — the ruled line stays empty until a human signs it.
+
     Args:
         m:     The ReportModel containing signature and disclaimer data.
         story: Mutable story list; flowables are appended in place.
     """
     story.append(PageBreak())
     story.append(Paragraph("Declaration and Sign-Off", _H2))
+
+    if m.show_ai_candidates:
+        # SUPPRESSED branch (#43): no declaration text, no ruled line, no date
+        # field — nothing that invites a signature on an AI-preview render.
+        story.append(Spacer(1, 0.4 * cm))
+        story.append(Paragraph(
+            "<b>Signature suppressed.</b> This render includes UNVALIDATED "
+            "AI-candidate preview content (show_ai_candidates enabled) and is "
+            "NOT a signable working paper. Do not sign this document. Render "
+            "the standard working paper (AI-candidate preview disabled) to "
+            "obtain the signable version — the deterministic findings and F5 "
+            "boxes in this document are identical in that version.",
+            _BODY,
+        ))
+        story.append(Spacer(1, 1.2 * cm))
+        story.append(HRFlowable(width=_UW, thickness=0.25, color=_GRID_LINE))
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph(m.signature.disclaimer, _SMLX))
+        return
+
     story.append(Paragraph(
         "I have reviewed the findings in this report, exercised professional judgment "
         "on the items listed in Section 5, and confirm the accuracy of the "
@@ -1849,6 +1877,25 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     )
 
     story: list = []
+    # #43 signable-render guard: a render carrying UNVALIDATED AI-candidate preview
+    # content opens with a loud report-level banner (and its sign-off is suppressed
+    # in _signature). Gated on show_ai_candidates ONLY — never validation_status;
+    # the flag is False in every committed config, so the standard render is
+    # byte-identical (banner absent).
+    if model.show_ai_candidates:
+        story.append(Paragraph(
+            "UNVALIDATED — AI-CANDIDATE PREVIEW RENDER", _H1,
+        ))
+        story.append(Paragraph(
+            "This document includes AI-candidate preview sections that are "
+            "unvalidated and advisory only. It is NOT a signable working paper "
+            "(the sign-off page is suppressed). The deterministic findings and "
+            "F5 boxes it contains are unchanged from the standard working paper.",
+            _BODY,
+        ))
+        story.append(Spacer(1, 0.6 * cm))
+        story.append(HRFlowable(width=_UW, thickness=0.75, color=colors.black))
+        story.append(Spacer(1, 0.6 * cm))
     _cover(model, story)
     _scope(model, story)
     _f5_boxes(model, story)
