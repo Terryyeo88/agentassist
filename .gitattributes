@@ -8,3 +8,4 @@ tests/fixtures/sbodemosg-extract/*.json text eol=lf
 # T2.12a synthetic extract-export fixtures: pin to LF so the byte-stability
 # round-trip holds across Windows capture / Linux CI.
 tests/fixtures/extract-export-sbodemosg/*.csv text eol=lf
+knowledge-base/statute/*.md text eol=lf
