@@ -11,12 +11,6 @@ import { RUN_REVIEW_UTTERANCE, asRunReviewData, normalizeFilters, toggleFilter }
 const CLIENT = "sbodemosg";
 const PERIOD = "2024Q3";
 
-// Reviewer of record sent with each persisted decision. The demo surface collects a
-// reviewer name only at SIGN time; capturing identity at decision time is a filed
-// open item (t-decision-persistence) — until then decisions are attributed to the
-// demo surface, honestly labelled.
-const WEB_REVIEWER = "web-demo-reviewer";
-
 type Decision = { action: string; note: string };
 
 // Humanise an F5 box key for the returns table: "box_8_net_gst" → "Box 8" + "Net gst".
@@ -152,6 +146,21 @@ export function App() {
               </div>
             )}
 
+            {/* t-xero-signoff (M3): reviewer identity is captured ONCE, up front, and
+                attributes BOTH persisted decisions and the signature — the old
+                web-demo-reviewer placeholder constant is retired (closes open item #2).
+                Empty → decisions record locally only (never a placeholder attribution). */}
+            <div className="reviewer-identity" role="group" aria-label="Reviewer of record">
+              <label htmlFor="reviewer-of-record">Reviewer of record</label>
+              <input
+                id="reviewer-of-record"
+                aria-label="Reviewer of record"
+                placeholder="Your name — attributed to decisions and the signed paper"
+                value={reviewerName}
+                onChange={(e) => setReviewerName(e.target.value)}
+              />
+            </div>
+
             <CommandBar
               clientId={CLIENT}
               period={PERIOD}
@@ -210,17 +219,28 @@ export function App() {
                 // local `decided` map still drives immediate button state. A row without a
                 // fingerprint (probabilistic/unjoinable) records locally only — nothing to
                 // key persistence on; a failed POST surfaces in the error banner.
+                // t-xero-signoff (M3): the decision is attributed to the reviewer of record
+                // the user entered — never a placeholder. No name entered → local-only
+                // record with a visible hint (persistence needs a real attributable name).
                 onRecord: (id, action, note) => {
                   setDecided((d) => ({ ...d, [id]: { action, note } }));
                   const row = review.queue.find((it) => it.finding_id === id);
                   if (!row?.fingerprint) return;
+                  const reviewer = reviewerName.trim();
+                  if (!reviewer) {
+                    setErr(
+                      "Decision recorded locally only — enter the reviewer of record " +
+                        "(Review tab) to persist decisions under a real name."
+                    );
+                    return;
+                  }
                   postDecision({
                     client_id: CLIENT,
                     finding_id: id,
                     fingerprint: row.fingerprint,
                     action,
                     note,
-                    reviewer_name: WEB_REVIEWER,
+                    reviewer_name: reviewer,
                     period: PERIOD,
                   })
                     .then(() => fetchReview(CLIENT, PERIOD))
@@ -249,7 +269,11 @@ export function App() {
       </div>
 
       {signOpen && (
-        <SignModal onClose={() => setSignOpen(false)} onSigned={(name) => setReviewerName(name)} />
+        <SignModal
+          onClose={() => setSignOpen(false)}
+          onSigned={(name) => setReviewerName(name)}
+          initialReviewer={reviewerName}
+        />
       )}
     </div>
   );

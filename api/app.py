@@ -32,7 +32,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from dataclasses import replace as _dc_replace
+
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -159,6 +161,17 @@ XERO_SALES_REVIEW_KEYS: tuple[str, ...] = (
     "config_scope", "out_of_scope",
 )
 OUT_OF_SCOPE_KEYS: tuple[str, ...] = ("count", "by_code", "reason")
+
+# POST /sign/upload response contract (t-xero-signoff / B4) — pinned by
+# tests/test_sign_upload_endpoint.py. The ONE place an uploaded Xero F5 review becomes a
+# signed working paper + sealed bundle: the reviewer identity is stamped into the config
+# BEFORE review() runs, so review()'s own full-argument Phase-5 render produces the
+# signed-identity paper (no second renderer, no sign-path content drift). The SYSTEM never
+# signs — the paper carries the reviewer's identity above an EMPTY ruled signature line.
+SIGN_UPLOAD_KEYS: tuple[str, ...] = (
+    "source_kind", "reviewer_name", "firm_name", "working_paper_path",
+    "bundle_dir", "validation_status", "disclaimer",
+)
 
 # POST /decision response contract (t-decision-persistence) — pinned by
 # tests/test_decision_endpoint_contract.py and mirrored by DecisionResponse in
@@ -572,7 +585,9 @@ def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = 
     inputs = ReviewInputs(
         line_source=lambda: [], provider=None, reader=reader, gst_ledger=gst_ledger
     )
-    result = review(cfg, period, inputs)
+    # M2 (t-xero-signoff): a plain upload is a PURE review — no unsigned PDF, no unsigned
+    # bundle lands on disk. Persistence happens only at sign time (POST /sign/upload).
+    result = review(cfg, period, inputs, persist_artifacts=False)
     if result.status != "completed" or result.compile_output is None:
         # A reconciliation halt on an untrusted upload is a client-input error, never a 500.
         raise HTTPException(
@@ -650,7 +665,8 @@ def _extract_review_response(reader) -> dict:
     cfg = load_client_config("extract_demo", check_connectivity=False)
     period = _derive_extract_period(reader)
     inputs = ReviewInputs(line_source=lambda: [], provider=None, reader=reader)
-    result = review(cfg, period, inputs)
+    # M2: pure review — no persisted artefacts on a plain upload.
+    result = review(cfg, period, inputs, persist_artifacts=False)
     if result.status != "completed" or result.compile_output is None:
         # A reconciliation halt on an untrusted upload is a client-input error, never a 500.
         raise HTTPException(
@@ -726,7 +742,8 @@ def _xero_sales_review_response(reader) -> dict:
         line_source=lambda: [], provider=None, reader=reader,
         sales_line_source=lambda: xero_sales_lines(reader, period["start"], period["end"]),
     )
-    result = review(cfg, period, inputs)
+    # M2: pure review — no persisted artefacts on a plain upload.
+    result = review(cfg, period, inputs, persist_artifacts=False)
     if result.status != "completed" or result.compile_output is None:
         # A reconciliation halt on an untrusted upload is a client-input error, never a 500.
         raise HTTPException(
@@ -747,6 +764,138 @@ def _xero_sales_review_response(reader) -> dict:
         "queue": queue,
         "config_scope": "xero_sales_demo",
         "out_of_scope": reader.out_of_scope_summary(),
+    }
+
+
+@app.post("/sign/upload")
+async def post_sign_upload(
+    file: UploadFile = File(...),
+    ledger: Optional[UploadFile] = File(None),
+    reviewer_name: str = Form(...),
+    firm_name: str = Form(""),
+) -> dict:
+    """Sign an uploaded Xero F5 review — the ONE persist event on the upload path (B4).
+
+    Takes the SAME multipart workbook (+ optional 820 ledger) as POST /review/upload,
+    PLUS the reviewer's identity. The reviewer is stamped into the xero_demo config
+    BEFORE ``review()`` runs, so review()'s own Phase-5 render — the FULL build_report
+    argument set, including scheme-status / partial-exemption / exempt sections —
+    produces the signed-identity working paper and seals the bundle. No second renderer
+    exists to drift (the ui/sign.py reduced-arg path is deliberately NOT reused here).
+
+    THE SYSTEM NEVER SIGNS: the rendered paper carries the reviewer's captured identity
+    above an EMPTY ruled signature line — a human signs the paper, never AgentAssist.
+    READ-NEVER-WRITE-ON-SOURCE: the only writes are AgentAssist's own PDF + sealed
+    bundle (both under gitignored roots); nothing touches Xero/SAP/client data.
+
+    Xero F5 exports only this slice — any other format is a 422 (extract / xero_sales
+    sign-off is a follow-up). Halted reconciliation → 422 (client-input signal). The
+    response is SIGN_UPLOAD_KEYS; paths are returned as strings (the /sign convention —
+    no file bytes served). validation_status stays "unvalidated" (T2.11 gates the AI
+    layer; the deterministic paper is human-signed regardless — see the #43 guard).
+    """
+    reviewer = (reviewer_name or "").strip()
+    if not reviewer:
+        raise HTTPException(status_code=422, detail="reviewer_name must not be empty.")
+    firm = (firm_name or "").strip()
+
+    primary_name = file.filename or ""
+    if Path(primary_name).suffix.lower() != ".xlsx":
+        raise HTTPException(
+            status_code=422,
+            detail="Upload the .xlsx Xero F5 export workbook as the 'file' part.",
+        )
+    body = await file.read()
+    if not body:
+        raise HTTPException(status_code=422, detail="Empty upload.")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="aa-sign-upload-"))
+    try:
+        dest = tmp_dir / "upload.xlsx"
+        dest.write_bytes(body)
+
+        ledger_dest: Optional[Path] = None
+        if ledger is not None and (ledger.filename or "").strip():
+            if Path(ledger.filename).suffix.lower() != ".xlsx":
+                raise HTTPException(
+                    status_code=422,
+                    detail="The optional ledger must be a .xlsx account-transactions export.",
+                )
+            ledger_body = await ledger.read()
+            if ledger_body:
+                ledger_dest = tmp_dir / "ledger.xlsx"
+                ledger_dest.write_bytes(ledger_body)
+
+        # --- PARSE BOUNDARY (mirrors post_review_upload) -------------------------------
+        gst_ledger: Optional[dict] = None
+        try:
+            if not is_xero_f5_workbook(dest):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Sign-off supports Xero IRAS-F5 exports only in this slice. "
+                        "Upload the 'Transactions by box number' F5 workbook."
+                    ),
+                )
+            reader = XeroF5ChainReader(dest)
+            xero_period = parse_review_period(dest)
+            if ledger_dest is not None:
+                gst_ledger = build_gst_ledger_input(ledger_dest, dest, xero_period)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=422, detail=f"Could not read export: {exc}"
+            ) from exc
+
+        # --- ENGINE EXECUTION (below the parse boundary) -------------------------------
+        try:
+            # Lazy imports keep api/ anthropic-free AT MODULE IMPORT (Inv-1) — same
+            # posture as the upload branches.
+            from config.loader import load_client_config
+            from engine.review import ReviewInputs, review
+
+            # Reviewer identity stamped BEFORE the run: review()'s own render carries it
+            # into the signature block. NEVER reads shared_artifacts() (that is the
+            # frozen SBODEMOSG demo) — this signs the uploaded review, nothing else.
+            cfg = _dc_replace(
+                load_client_config("xero_demo", check_connectivity=False),
+                reviewer_name=reviewer,
+                firm_name=firm,
+            )
+            inputs = ReviewInputs(
+                line_source=lambda: [], provider=None, reader=reader,
+                gst_ledger=gst_ledger,
+            )
+            # persist_artifacts default True — signing IS the persist event.
+            result = review(cfg, xero_period, inputs)
+            if result.status != "completed" or result.compile_output is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Review could not complete over this export (reconciliation halted).",
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            log.exception("engine-internal failure on POST /sign/upload")
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Internal error while signing this export — an application error, "
+                    "not a problem with your uploaded file."
+                ),
+            ) from exc
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    return {
+        "source_kind": "xero_f5_signed",
+        "reviewer_name": reviewer,
+        "firm_name": firm,
+        "working_paper_path": str(result.report_pdf_path),
+        "bundle_dir": str(result.bundle_dir),
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": upload_disclaimer("xero_f5_upload"),
     }
 
 
