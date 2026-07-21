@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchReview, postCommand, type CommandResponse, type Group, type ReviewPayload } from "./api";
+import { fetchReview, postCommand, postDecision, type CommandResponse, type Group, type ReviewPayload } from "./api";
 import { TopBar, type View } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
@@ -10,6 +10,12 @@ import { RUN_REVIEW_UTTERANCE, asRunReviewData, normalizeFilters, toggleFilter }
 
 const CLIENT = "sbodemosg";
 const PERIOD = "2024Q3";
+
+// Reviewer of record sent with each persisted decision. The demo surface collects a
+// reviewer name only at SIGN time; capturing identity at decision time is a filed
+// open item (t-decision-persistence) — until then decisions are attributed to the
+// demo surface, honestly labelled.
+const WEB_REVIEWER = "web-demo-reviewer";
 
 type Decision = { action: string; note: string };
 
@@ -198,8 +204,29 @@ export function App() {
               facets={facetProps}
               adjudication={{
                 decided,
-                onRecord: (id, action, note) =>
-                  setDecided((d) => ({ ...d, [id]: { action, note } })),
+                // t-decision-persistence: a decision PERSISTS via POST /decision (append-only
+                // server store), then the review is re-fetched so the persisted demotion /
+                // annotation re-renders from the server — decisions survive refresh. The
+                // local `decided` map still drives immediate button state. A row without a
+                // fingerprint (probabilistic/unjoinable) records locally only — nothing to
+                // key persistence on; a failed POST surfaces in the error banner.
+                onRecord: (id, action, note) => {
+                  setDecided((d) => ({ ...d, [id]: { action, note } }));
+                  const row = review.queue.find((it) => it.finding_id === id);
+                  if (!row?.fingerprint) return;
+                  postDecision({
+                    client_id: CLIENT,
+                    finding_id: id,
+                    fingerprint: row.fingerprint,
+                    action,
+                    note,
+                    reviewer_name: WEB_REVIEWER,
+                    period: PERIOD,
+                  })
+                    .then(() => fetchReview(CLIENT, PERIOD))
+                    .then(setReview)
+                    .catch((e) => setErr(String(e)));
+                },
                 onOpenSign: () => setSignOpen(true),
               }}
             />

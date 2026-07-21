@@ -17,6 +17,9 @@ from typing import Any
 
 import yaml
 
+# Pure hermetic core (stdlib-only): fingerprint + append-only ledger + annotate/demote.
+# Used here READ-ONLY — this module never writes the ledger (serialisers stay pure).
+from agent.decision_ledger import DecisionLedger, annotate_and_demote
 from ui.artifacts import (
     DemoArtifacts,
     VALIDATION_STATUS,
@@ -231,7 +234,10 @@ def serialize_queue_item(item: dict) -> dict[str, Any]:
     }
 
 
-def serialize_xero_queue(issues: list[dict]) -> list[dict[str, Any]]:
+def serialize_xero_queue(
+    issues: list[dict],
+    decision_entries: list[dict] | None = None,
+) -> list[dict[str, Any]]:
     """Project engine detect-issues from an uploaded Xero F5 export into the SHARED
     ``QueueItem`` rows the central review screen consumes (BUILD 2, A1 — same screen).
 
@@ -245,12 +251,28 @@ def serialize_xero_queue(issues: list[dict]) -> list[dict[str, Any]]:
     ``detect:{error_code}:{doc_num}``. A same-(code, doc_num) collision collides IDENTICALLY
     on both paths — a pre-existing property, deliberately NOT diverged on the Xero side.
 
+    t-decision-persistence: ``decision_entries`` (persisted adjudications from
+    ``agent.decision_store``, keyed on the upload's config client_id) RE-APPLIES prior
+    reviewer decisions to this queue. Falsy (None or [] — no store / empty store) is a
+    STRUCTURAL no-op: rows keep today's stubs (fingerprint None, demoted False) byte-for-
+    byte. Non-empty entries run ``annotate_and_demote`` over the detect issues — the same
+    cardinality-preserving read the frozen /review path uses — so a prior KNOWN_ACCEPTED
+    renders the row demoted-but-PRESENT (never suppressed), and every row gains its
+    deterministic fingerprint. VALUES change, KEYS never do (QUEUE_ITEM_KEYS intact).
+
     Surfaces, never asserts: every row carries ``validation_status="unvalidated"``; no verdict,
     no auto-correction, no write. The dark checks a Xero export cannot run are surfaced in
     ``coverage_status`` (degraded/unavailable), NEVER fabricated into this queue.
     """
+    annotated = None
+    if decision_entries:
+        ledger = DecisionLedger.from_entries(list(decision_entries))
+        # Detect issues ARE the counterparty-bearing payloads the fingerprint keys on —
+        # the same shape ui.artifacts feeds annotate_and_demote on the frozen path.
+        annotated = annotate_and_demote(issues, ledger)
+
     items: list[dict[str, Any]] = []
-    for issue in issues:
+    for pos, issue in enumerate(issues):
         code = issue.get("error_code")
         item = {
             "finding_id": f"detect:{code}:{issue.get('doc_num')}",
@@ -259,6 +281,12 @@ def serialize_xero_queue(issues: list[dict]) -> list[dict[str, Any]]:
             # flatten_finding_card picks the payload bearing description/error_code (the issue).
             "evidence": {"detect_issue": issue},
         }
+        if annotated is not None:
+            af = annotated[pos]
+            item["fingerprint"] = af.fingerprint
+            item["demoted"] = af.demoted
+            item["annotation"] = af.annotation
+            item["prior_dispositions"] = af.prior_dispositions
         items.append(serialize_queue_item(item))
     return items
 
@@ -369,16 +397,32 @@ def serialize_ledger_recon_queue(compile_output: dict) -> list[dict[str, Any]]:
     return rows
 
 
-def build_review_payload(artifacts: DemoArtifacts) -> dict[str, Any]:
+def build_review_payload(
+    artifacts: DemoArtifacts,
+    extra_decision_entries: list[dict] | None = None,
+) -> dict[str, Any]:
     """Assemble GET /review: client + period + F5 summary + the serialised queue.
 
     The queue comes from ``annotated_adjudication_items`` — the demoted doc-592
     ``NO_GST_REG`` "Far East Imports" entry is present-but-demoted (T5.5b). Only the REAL
     frozen check types appear (E1 / E2 / NO_GST_REG / gst_amount_mismatch); the mock's
     aspirational DUP_CLAIM / SEQ_GAP / FLUX are not in the engine and never appear.
+
+    t-decision-persistence: ``extra_decision_entries`` (the durable per-client store) is
+    MERGED with the frozen fixture entries into one in-memory ledger for annotation.
+    Falsy → byte-identical to before (the frozen fixture alone; empty store is a no-op).
+    The merged object concatenates two independently-rooted hash chains, so it is a
+    LOOKUP-ONLY view — it is never ``verify()``-ed and never persisted; each source chain
+    verifies alone against its own store. Loaded per-request by the route handler, never
+    cached (the lru_cache holds only the frozen artifacts).
     """
     period = ((artifacts.review_result or {}).get("compile_output") or {}).get("period") or {}
-    items = annotated_adjudication_items(artifacts)
+    merged_ledger = None
+    if extra_decision_entries:
+        merged_ledger = DecisionLedger.from_entries(
+            list(artifacts.decision_ledger or []) + list(extra_decision_entries)
+        )
+    items = annotated_adjudication_items(artifacts, decision_ledger=merged_ledger)
     return {
         "client": _client_identity(),
         "period": {
