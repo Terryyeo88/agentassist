@@ -211,6 +211,15 @@ gate and does NOT depend on Node.** The frontend `vitest`/`vite build` is kept a
 optional/local** job — **no Node job was added to `ci.yml`** in this slice (adding one is a deliberate
 later step). Run the frontend tests locally with `cd frontend && npm install && npm test`.
 
+**Install-step pip hardening (infra-only, gates unchanged):** the build job's dependency-install
+step carries pip retry/timeout hardening — job-level `PIP_DEFAULT_TIMEOUT`/`PIP_RETRIES`/
+`PIP_PROGRESS_BAR` env (covering both the `requirements.txt` install and the lint step's `flake8`
+install) plus `--prefer-binary` and an upgraded `pip`/`setuptools`/`wheel`. This exists because the
+`claude-agent-sdk` wheel download intermittently drops on runners (`IncompleteRead`/`ProtocolError`).
+There is **no `--no-deps`** — full dependency resolution is preserved and `--prefer-binary` changes
+no resolved package today. The flake8, import-scan, and pytest gate steps are byte-identical; this
+is CI infrastructure only and moves no gate.
+
 **Why this exact form — not `grep -r "anthropic" orchestrator/`:**
 
 The plain-string form produces false positives on comments and docstrings. On 2026-06-09
