@@ -80,6 +80,32 @@ export interface SignResponse {
   disclaimer: string;
 }
 
+// POST /decision (t-decision-persistence). Mirrors api/app.py DECISION_KEYS — a recorded
+// human adjudication over a finding fingerprint, persisted to AgentAssist's OWN
+// append-only store (never a write to client data, never a verdict).
+export interface DecisionRequest {
+  client_id: string;
+  finding_id: string;
+  fingerprint: string;
+  action: string;
+  note?: string;
+  reviewer_name: string;
+  period?: string;
+}
+
+export interface DecisionResponse {
+  client_id: string;
+  finding_id: string;
+  action: string;
+  disposition: string;
+  fingerprint: string;
+  entry_id: string;
+  entry_hash: string;
+  chain_length: number;
+  validation_status: string;
+  disclaimer: string;
+}
+
 /*
  * Source-selector Xero branch. Two honest response shapes from POST /review/upload, keyed by
  * `source_kind` (mirrors api/app.py's UPLOAD_COVERAGE_KEYS / XERO_UPLOAD_KEYS / COVERAGE_ROW_KEYS,
@@ -140,6 +166,22 @@ export async function postSign(reviewer_name: string, firm_name: string): Promis
     throw new Error((detail as { detail?: string }).detail || `Sign failed: ${resp.status}`);
   }
   return (await resp.json()) as SignResponse;
+}
+
+// Persist one reviewer adjudication (t-decision-persistence). Mirrors the postSign
+// pattern: JSON POST, throws the server's `detail` on non-2xx — a failed persist is
+// surfaced, never a silent success.
+export async function postDecision(req: DecisionRequest): Promise<DecisionResponse> {
+  const resp = await fetch(`${BASE}/decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail || `Decision failed: ${resp.status}`);
+  }
+  return (await resp.json()) as DecisionResponse;
 }
 
 /*
