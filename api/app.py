@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import tempfile
 from functools import lru_cache
@@ -41,6 +42,9 @@ from agent.classifier_factory import (
     ClassifierConfigError,
     make_classifier_backend,
 )
+# Durable per-client decision store (t-decision-persistence): stdlib-only writes under
+# the gitignored decisions/ root — AgentAssist's OWN store, never a client-source write.
+from agent.decision_store import append_decision, load_decision_entries
 from agent.dispatch_exec import FrozenArtifacts, FrozenEngine, execute_intent
 from agent.intent_classifier import (
     Classified,
@@ -156,6 +160,35 @@ XERO_SALES_REVIEW_KEYS: tuple[str, ...] = (
 )
 OUT_OF_SCOPE_KEYS: tuple[str, ...] = ("count", "by_code", "reason")
 
+# POST /decision response contract (t-decision-persistence) — pinned by
+# tests/test_decision_endpoint_contract.py and mirrored by DecisionResponse in
+# frontend/src/api.ts. A decision is a recorded human adjudication over a finding
+# fingerprint — NEVER a verdict, and never a write to client data.
+DECISION_KEYS: tuple[str, ...] = (
+    "client_id", "finding_id", "action", "disposition", "fingerprint",
+    "entry_id", "entry_hash", "chain_length", "validation_status", "disclaimer",
+)
+
+# The four reviewer actions (mirrors frontend/src/components/FindingDetail.tsx DECISIONS)
+# mapped onto the controlled T5.5 disposition vocabulary. Per the documented semantics:
+# Accept = genuine issue accepted this period (annotate-only); Decline = the reviewer
+# DISPUTES the flag (annotate-only); "Not an issue" and "Mark known" both set the finding
+# aside as known/acceptable → KNOWN_ACCEPTED (demote-on-recurrence). The UI verb is
+# preserved verbatim in the stored reason ("[<action>] <note>") so the two set-aside verbs
+# stay distinguishable in the append-only record.
+_ACTION_TO_DISPOSITION: dict[str, str] = {
+    "Accept": "ACCEPTED",
+    "Decline": "REJECTED",
+    "Not an issue": "KNOWN_ACCEPTED",
+    "Mark known": "KNOWN_ACCEPTED",
+}
+
+# Note-required actions — mirrors frontend NOTE_REQUIRED (FindingDetail.tsx). Three-times
+# rule: this rule lives in the FE code, HERE, and the contract test.
+_NOTE_REQUIRED_ACTIONS = frozenset({"Decline", "Not an issue", "Mark known"})
+
+_CLIENT_ID_RE = re.compile(r"^[a-z0-9_]+$")
+
 # Global kill switch (BUILD 3) — DEFAULT ON. Disable globally, without a code change, by setting
 # AGENTASSIST_EXTRACT_ENGINE to a falsey token (0/off/false/no). GLOBAL ONLY: an anonymous extract
 # upload has no per-client identity, so there is deliberately no per-client disable.
@@ -208,6 +241,23 @@ class SignRequest(BaseModel):
 
     reviewer_name: str = Field(..., description="Reviewer of record; carried onto the working paper.")
     firm_name: str = Field("", description="Reviewer's firm (optional).")
+
+
+class DecisionRequest(BaseModel):
+    """POST /decision body (t-decision-persistence).
+
+    A human reviewer's adjudication of ONE finding, keyed by its deterministic
+    fingerprint. Persisted to AgentAssist's OWN append-only store — never a write to
+    Xero/SAP/client data, and never a verdict on the return.
+    """
+
+    client_id: str = Field(..., description="Store key (config client_id, e.g. sbodemosg).")
+    finding_id: str = Field(..., description="The queue row's finding_id (display echo).")
+    fingerprint: str = Field(..., description="Deterministic finding fingerprint (sha256:…).")
+    action: str = Field(..., description="Accept | Decline | Not an issue | Mark known.")
+    note: str = Field("", description="Reviewer note; REQUIRED for all actions but Accept.")
+    reviewer_name: str = Field(..., description="Reviewer of record for the adjudication.")
+    period: Optional[str] = Field(None, description="Audit period label (e.g. 2024Q3).")
 
 
 class CommandRequest(BaseModel):
@@ -265,7 +315,82 @@ def get_review(client: str, period: str) -> dict:
                 f"{DEMO_CLIENT_ID}/{DEMO_PERIOD_LABEL} only."
             ),
         )
-    return build_review_payload(shared_artifacts())
+    # t-decision-persistence: persisted adjudications RE-APPLY on every read. Loaded
+    # per-request (NEVER cached — the lru_cache holds only the frozen artifacts); an
+    # absent/empty store is a structural no-op, leaving the frozen payload byte-identical.
+    persisted = load_decision_entries(DEMO_CLIENT_ID)
+    return build_review_payload(shared_artifacts(), extra_decision_entries=persisted or None)
+
+
+@app.post("/decision")
+def post_decision(req: DecisionRequest) -> dict:
+    """Durably record ONE reviewer adjudication (t-decision-persistence).
+
+    Appends to AgentAssist's OWN per-client append-only DecisionLedger store
+    (``agent.decision_store`` — the gitignored ``decisions/`` root). READ-NEVER-WRITE-ON-
+    SOURCE: this endpoint's only write is that append; it imports no SAP/MCP/executor
+    surface and cannot reach client data. A change of mind is a NEW appended record —
+    history is never rewritten. The decision RE-APPLIES on the next read of the same
+    data (GET /review, or re-upload) via the existing demoted/annotation/
+    prior_dispositions/fingerprint queue keys — present-but-demoted, never suppressed.
+    """
+    action = req.action
+    if action not in _ACTION_TO_DISPOSITION:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Unknown action {action!r}. "
+                f"Valid actions: {sorted(_ACTION_TO_DISPOSITION)}."
+            ),
+        )
+    note = (req.note or "").strip()
+    if action in _NOTE_REQUIRED_ACTIONS and not note:
+        raise HTTPException(
+            status_code=422,
+            detail=f"A reviewer note is required for {action!r} (Accept alone needs none).",
+        )
+    reviewer = (req.reviewer_name or "").strip()
+    if not reviewer:
+        raise HTTPException(status_code=422, detail="reviewer_name must not be empty.")
+    if not _CLIENT_ID_RE.fullmatch(req.client_id or ""):
+        raise HTTPException(
+            status_code=422,
+            detail="client_id must match ^[a-z0-9_]+$ (it keys the decision store).",
+        )
+    if not req.fingerprint or not req.fingerprint.startswith("sha256:"):
+        raise HTTPException(
+            status_code=422,
+            detail="fingerprint must be the finding's deterministic 'sha256:…' fingerprint.",
+        )
+
+    disposition = _ACTION_TO_DISPOSITION[action]
+    # The UI verb rides verbatim in the append-only record ("[Mark known] <note>") so the
+    # two KNOWN_ACCEPTED-mapped verbs stay distinguishable forever.
+    reason = f"[{action}] {note}".rstrip()
+    try:
+        entry = append_decision(
+            req.client_id,
+            fingerprint=req.fingerprint,
+            disposition=disposition,
+            reviewer=reviewer,
+            reason=reason,
+            period=req.period,
+        )
+    except ValueError as exc:  # store-level guard (client_id / disposition vocabulary)
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    return {
+        "client_id": req.client_id,
+        "finding_id": req.finding_id,
+        "action": action,
+        "disposition": disposition,
+        "fingerprint": req.fingerprint,
+        "entry_id": entry["entry_id"],
+        "entry_hash": entry["entry_hash"],
+        "chain_length": len(load_decision_entries(req.client_id)),
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": DISCLAIMER,
+    }
 
 
 @app.post("/review/upload")
@@ -461,8 +586,13 @@ def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = 
     # (degraded/unavailable), NEVER fabricated into this queue. T2.24: the ledger-recon rows
     # (Signal A + B) merge in via serialize_ledger_recon_queue — [] when no ledger, both
     # emit QUEUE_ITEM_KEYS, ungated.
-    queue = serialize_xero_queue(result.compile_output["detect"]["issues"]) + \
-        serialize_ledger_recon_queue(result.compile_output)
+    # t-decision-persistence: persisted adjudications for this config's client_id RE-APPLY
+    # here (loaded per-request; [] → falsy → today's stub rows byte-identical). Ledger-recon
+    # rows stay un-fingerprinted (different finding shape; noted in docs).
+    queue = serialize_xero_queue(
+        result.compile_output["detect"]["issues"],
+        decision_entries=load_decision_entries(cfg.client_id),
+    ) + serialize_ledger_recon_queue(result.compile_output)
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
     return {
         "source_kind": "xero_f5_upload",
@@ -528,7 +658,10 @@ def _extract_review_response(reader) -> dict:
             detail="Review could not complete over this export (reconciliation halted).",
         )
 
-    queue = serialize_xero_queue(result.compile_output["detect"]["issues"])
+    queue = serialize_xero_queue(
+        result.compile_output["detect"]["issues"],
+        decision_entries=load_decision_entries(cfg.client_id),
+    )
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
     return {
         "source_kind": "extract_review",
@@ -601,7 +734,10 @@ def _xero_sales_review_response(reader) -> dict:
             detail="Review could not complete over this export (reconciliation halted).",
         )
 
-    queue = serialize_xero_queue(result.compile_output["detect"]["issues"])
+    queue = serialize_xero_queue(
+        result.compile_output["detect"]["issues"],
+        decision_entries=load_decision_entries(cfg.client_id),
+    )
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
     return {
         "source_kind": "xero_sales_upload",
