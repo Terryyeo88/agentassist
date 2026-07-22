@@ -118,7 +118,11 @@ def sign_working_paper(
         analytical_review_data=review_result.get("analytical_review_data"),
     )
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    # %f (t-seal-run-ts-collision, ruling b): seconds resolution silently OVERWROTE a
+    # signed working paper when two signs landed in the same second — worse than the
+    # loud seal-dir PermissionError sibling. now()-based, so microseconds are always
+    # genuinely present; no consumer parses this filename.
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     out_dir = Path(out_dir)
     out_path = out_dir / f"working-paper-{cfg.client_id}-{_slug(reviewer_name)}-{ts}.pdf"
     return render_pdf(model, out_path)
