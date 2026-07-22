@@ -31,7 +31,10 @@ export const REVIEW_FIXTURE: ReviewPayload = {
       demoted: false,
       annotation: null,
       prior_dispositions: [],
-      fingerprint: null,
+      // B3a-2 fixture refresh (authorized, item f): the server fingerprints detect rows;
+      // this is E1/SG Electronics' real computed value — a null here would falsely render
+      // the row non-adjudicable under the no-silent-dead-buttons rule.
+      fingerprint: "sha256:fcc8439a400439ad83b7299b57c5ad45f761cc1435d7269e573a3df9f8e5cd73",
       candidate_framing_text: "Candidate for review: possible export treatment mismatch.",
       completeness: { required: [], present: [], missing: [], satisfied: true },
       inputs_hash: "sha256:abc",
