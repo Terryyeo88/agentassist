@@ -1,12 +1,20 @@
 import { useState } from "react";
 import { postSign, type SignResponse } from "../api";
 
+// The subset of the sign response the modal renders — satisfied structurally by BOTH
+// SignResponse (POST /sign, frozen SAP review) and SignUploadResponse (POST /sign/upload).
+type SignResult = Pick<SignResponse, "reviewer_name" | "firm_name" | "working_paper_path">;
+
 interface Props {
   onClose: () => void;
   onSigned: (reviewerName: string) => void;
   // t-xero-signoff (M3): pre-fill from the up-front reviewer-of-record capture so the
   // signature and the persisted decisions share ONE identity. Still editable here.
   initialReviewer?: string;
+  // B3a-2: pluggable sign transport. Default = postSign (the frozen SAP review); the
+  // upload panel injects a postSignUpload closure over its RETAINED workbook. Same modal,
+  // same identity semantics — only the wire call differs.
+  sign?: (reviewer: string, firm: string) => Promise<SignResult>;
 }
 
 /**
@@ -14,11 +22,11 @@ interface Props {
  * reproduces ui.sign.sign_working_paper, carries the reviewer name onto the working paper,
  * and is box-isolated (F5 boxes are never recomputed). Sign refuses an empty reviewer.
  */
-export function SignModal({ onClose, onSigned, initialReviewer }: Props) {
+export function SignModal({ onClose, onSigned, initialReviewer, sign: signTransport }: Props) {
   const [reviewer, setReviewer] = useState(initialReviewer ?? "");
   const [firm, setFirm] = useState("");
   const [err, setErr] = useState("");
-  const [result, setResult] = useState<SignResponse | null>(null);
+  const [result, setResult] = useState<SignResult | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function sign() {
@@ -29,7 +37,7 @@ export function SignModal({ onClose, onSigned, initialReviewer }: Props) {
     setErr("");
     setBusy(true);
     try {
-      const res = await postSign(reviewer.trim(), firm.trim());
+      const res = await (signTransport ?? postSign)(reviewer.trim(), firm.trim());
       setResult(res);
       onSigned(res.reviewer_name);
     } catch (e) {

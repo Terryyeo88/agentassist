@@ -9,7 +9,8 @@ import type { QueueItem } from "../api";
  *
  * The defect: a real Xero F5 upload computes findings server-side, but the panel dropped
  * them (coverage-only). A1 reshapes the response to carry `queue: QueueItem[]` and the panel
- * mounts the shared <ReviewScreen> (review-only — no sign store for uploads).
+ * mounts the shared <ReviewScreen>. (B3a-2/R5: FT1's review-only pin was REPLACED by Terry's
+ * authorization — the panel is now adjudicable and Sign is present on the F5 source_kind.)
  *
  *   FT1  — a xero_f5_upload response with a queue renders findings AS CANDIDATES.
  *   FT2  — Decision-4 honesty: an absent companion sheet surfaces the degraded/unavailable
@@ -24,7 +25,9 @@ const XERO_E2: QueueItem = {
   check_id: "E2",
   finding_type: "deterministic",
   group: "needs_review",
-  vendor: "Overseas Buyer Pte Ltd",
+  // Matches the counterparty the fingerprint below is computed from (the real
+  // xero-real-format E2 row) — vendor and fingerprint must describe the same finding.
+  vendor: "Cresco Pte Ltd",
   severity: null,
   description: "Tax 700.00 charged on non-taxable supply (VatGroup=ZR)",
   recommendation: null,
@@ -37,7 +40,9 @@ const XERO_E2: QueueItem = {
   demoted: false,
   annotation: null,
   prior_dispositions: [],
-  fingerprint: null,
+  // B3a-2 fingerprint-always: detect rows arrive fingerprinted (this is E2/Cresco's real
+  // computed value) — the enabler that makes upload findings adjudicable.
+  fingerprint: "sha256:5cd691d294bd411f03cc3036ada3f3b0766d37308a293f4d85434acc296ac39d",
   candidate_framing_text: "",
   completeness: { required: [], present: [], missing: [], satisfied: false },
   inputs_hash: "—",
@@ -101,9 +106,13 @@ describe("Xero → shared central review screen (BUILD 2 A1)", () => {
     expect(await screen.findByText(/candidate for review only/i)).toBeInTheDocument();
     expect(await screen.findByText(/AgentAssist flags/i)).toBeInTheDocument();
     expect(await screen.findByText(XERO_E2.display_name!)).toBeInTheDocument();
-    // Review-only (no sign store for uploads) — no dead sign/decision controls.
-    expect(screen.queryByRole("button", { name: /Sign working paper/i })).toBeNull();
-    expect(screen.getByText(/sign-off for uploads not yet available/i)).toBeInTheDocument();
+    // B3a-2 (R5 amendment — assertions REPLACED, not deleted; coverage preserved with the
+    // expectations inverted to the new behaviour): the panel is now adjudicable. On a Xero
+    // F5 upload the Sign control IS present (POST /sign/upload serves this source_kind),
+    // the decision controls render, and the retired review-only note is GONE.
+    expect(screen.queryByRole("button", { name: /Sign working paper/i })).not.toBeNull();
+    expect(screen.queryByText(/sign-off for uploads not yet available/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Mark known$/ })).not.toBeNull();
   });
 
   it("caveat: the Xero QueueItem supplies the constant iras_basis_caveat (never bare)", async () => {

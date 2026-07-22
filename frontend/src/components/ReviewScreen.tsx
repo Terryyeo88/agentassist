@@ -11,7 +11,10 @@ import { FindingDetail } from "./FindingDetail";
 export interface Adjudication {
   decided: Record<string, { action: string; note: string }>;
   onRecord: (findingId: string, action: string, note: string) => void;
-  onOpenSign: () => void;
+  /** Sign capability, gated separately (B3a-2): the SAP path always passes it; the upload
+   *  panel passes it only for Xero F5 (POST /sign/upload serves no other source_kind).
+   *  Omitted → decisions render without a Sign button — no dead control. */
+  onOpenSign?: () => void;
 }
 
 interface Props {
