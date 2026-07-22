@@ -1,20 +1,43 @@
 import { useState, type ChangeEvent } from "react";
-import { uploadExtract, type Group, type UploadCoverageResponse } from "../api";
-import { ReviewScreen } from "./ReviewScreen";
+import {
+  postDecision,
+  postSignUpload,
+  uploadExtract,
+  type Group,
+  type UploadCoverageResponse,
+} from "../api";
+import { ReviewScreen, type Adjudication } from "./ReviewScreen";
+import { SignModal } from "./SignModal";
 
-const REVIEW_ONLY_NOTE = "Review-only — sign-off for uploads not yet available.";
+// B3a-2: decisions persist via POST /decision keyed on the backend config's client_id for
+// each engine branch (mirrors api/app.py's load_decision_entries call sites — app.py runs
+// xero_f5 uploads under xero_demo, general extracts under extract_demo, sales exports under
+// xero_sales_demo). The upload response deliberately carries NO client_id (its top-level key
+// set is frozen), so this map is the frontend half of that contract. An unmapped source_kind
+// gets no adjudication capability — review-only, never a dead control.
+const CLIENT_ID_BY_SOURCE_KIND: Record<string, string> = {
+  xero_f5_upload: "xero_demo",
+  extract_review: "extract_demo",
+  xero_sales_upload: "xero_sales_demo",
+};
+
+const REVIEW_ONLY_NOTE = "Review-only — decisions are not persistable for this export.";
 
 /**
  * XeroUploadPanel — the source-selector's Xero branch. Upload a client .xlsx GST export; a
  * real Xero IRAS-F5 export runs the engine and its findings render in the SHARED central
  * review screen as CANDIDATES (BUILD 2, A1), alongside a per-check DATA-COVERAGE preview.
  *
- * REVIEW-ONLY by capability: there is no server-side store to sign an uploaded review
- * against, so the shared screen omits the decision/sign controls and surfaces an honest
- * review-only note (no dead controls). This panel only ever hits POST /review/upload — never
- * GET /review and never POST /command — so choosing Xero never touches the frozen B1 review
- * (box-isolation). Everything is honestly framed (validation_status unvalidated); findings
- * are candidates, never a validated review or a compliance verdict.
+ * ADJUDICABLE (B3a-2): the reviewer of record can Accept / Decline / Not an issue /
+ * Mark known on upload findings; decisions persist via POST /decision to AgentAssist's OWN
+ * append-only store (read-never-write-on-source) and re-apply when the retained workbook is
+ * re-submitted. Un-fingerprinted rows (ledger-reconciliation findings) render DISABLED with
+ * an honest reason — never a silent dead button. Sign-off routes to POST /sign/upload and is
+ * gated to Xero F5 exports ONLY (the endpoint serves no other source_kind); a human signs —
+ * the paper carries the reviewer's identity above an empty ruled line, never a system
+ * signature. This panel never hits GET /review or POST /command — choosing Xero never
+ * touches the frozen B1 review (box-isolation). Everything stays honestly framed
+ * (validation_status unvalidated); findings are candidates, never a compliance verdict.
  */
 export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void }) {
   const [coverage, setCoverage] = useState<UploadCoverageResponse | null>(null);
@@ -26,6 +49,17 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // export to run the ledger↔declared-return reconciliation (T2.24). Stored, not submitted;
   // the primary upload carries it. Only used when the primary is a Xero F5 export.
   const [ledgerFile, setLedgerFile] = useState<File | null>(null);
+  // B3a-2: the primary workbook is RETAINED so a decision can re-apply (re-upload the same
+  // file) and sign-off can re-POST it to /sign/upload — the server is stateless per upload.
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  // B3a-2 adjudication state — mirrors App's: the local map drives immediate button state;
+  // persistence is the POST + re-upload round trip.
+  const [decided, setDecided] = useState<Record<string, { action: string; note: string }>>({});
+  // Reviewer of record — panel-local input, SAME identity concept as App's (B4/M3): one
+  // free-text name attributed to decisions AND the sign-off. The SAP surface and this panel
+  // never co-exist (Root switches sources), so the two input sites cannot diverge live.
+  const [reviewerName, setReviewerName] = useState<string>("");
+  const [signOpen, setSignOpen] = useState(false);
 
   function onLedger(event: ChangeEvent<HTMLInputElement>) {
     setLedgerFile(event.target.files?.[0] ?? null);
@@ -36,6 +70,8 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
     if (!file) return;
     setBusy(true);
     setErr("");
+    setUploadedFile(file);
+    setDecided({});
     uploadExtract(file, ledgerFile)
       .then((resp) => {
         setCoverage(resp);
@@ -56,6 +92,61 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   const isExtractReview =
     coverage?.source_kind === "extract_review" || coverage?.config_scope === "default_demo";
 
+  const clientId = coverage ? CLIENT_ID_BY_SOURCE_KIND[coverage.source_kind] : undefined;
+  // Sign is F5-only: POST /sign/upload 422s on any other export format. Decisions and sign
+  // have DIFFERENT eligibility — extract/sales get decisions, never a Sign button.
+  const canSign = coverage?.source_kind === "xero_f5_upload" && uploadedFile !== null;
+
+  const adjudication: Adjudication | undefined =
+    findings.length > 0 && clientId
+      ? {
+          decided,
+          onRecord: (id, action, note) => {
+            setDecided((d) => ({ ...d, [id]: { action, note } }));
+            const row = findings.find((it) => it.finding_id === id);
+            // Defensive only: un-fingerprinted rows render DISABLED controls in
+            // FindingDetail (no-silent-dead-buttons), so this cannot swallow a
+            // persistable decision.
+            if (!row?.fingerprint) return;
+            const reviewer = reviewerName.trim();
+            if (!reviewer) {
+              setErr(
+                "Decision recorded locally only — enter the reviewer of record above " +
+                  "to persist decisions under a real name."
+              );
+              return;
+            }
+            postDecision({
+              client_id: clientId,
+              finding_id: id,
+              fingerprint: row.fingerprint,
+              action,
+              note,
+              reviewer_name: reviewer,
+            })
+              .then(() =>
+                // Re-apply: re-submit the retained workbook so the persisted demotion /
+                // annotation re-renders from the server (decisions survive refresh).
+                uploadedFile ? uploadExtract(uploadedFile, ledgerFile) : null
+              )
+              .then((resp) => {
+                if (resp) setCoverage(resp);
+              })
+              .catch((e) => setErr(String(e)));
+          },
+          ...(canSign ? { onOpenSign: () => setSignOpen(true) } : {}),
+        }
+      : undefined;
+
+  const persistNote = adjudication
+    ? canSign
+      ? "Decisions persist to AgentAssist's own append-only store and re-apply when this " +
+        "workbook is re-submitted. Sign-off re-runs the review over the retained workbook " +
+        "and emits the signed working paper — a human signs; the system never does."
+      : "Decisions persist to AgentAssist's own append-only store and re-apply on " +
+        "re-upload. Sign-off is available for Xero F5 exports only in this slice."
+    : undefined;
+
   return (
     <div className="xero-upload">
       <img className="aa-logo" src="/agentassist-logo.png" alt="AgentAssist" />
@@ -67,6 +158,16 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
         Upload a client .xlsx GST export. A real IRAS-F5 export is reviewed and its findings are
         shown below as candidates — unvalidated, for a human to adjudicate.
       </p>
+
+      <label className="xero-file-label reviewer-label">
+        Reviewer of record
+        <input
+          className="reviewer-input"
+          value={reviewerName}
+          onChange={(e) => setReviewerName(e.target.value)}
+          placeholder="Your name — decisions and sign-off are attributed to this reviewer"
+        />
+      </label>
 
       <label className="xero-file-label">
         Optional — 820 account-transactions (ledger) export
@@ -113,13 +214,15 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
 
       {findings.length > 0 && (
         <section className="xero-findings findings-view" aria-label="Review findings">
+          {persistNote && <p className="xero-persist-note">{persistNote}</p>}
           <ReviewScreen
             queue={findings}
             selectedId={selectedId}
             onSelect={setSelectedId}
             activeTab={activeTab}
             setActiveTab={setActiveTab}
-            reviewOnlyNote={REVIEW_ONLY_NOTE}
+            adjudication={adjudication}
+            reviewOnlyNote={adjudication ? undefined : REVIEW_ONLY_NOTE}
           />
         </section>
       )}
@@ -156,6 +259,15 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           )}
           <footer className="xero-disclaimer">{coverage.disclaimer}</footer>
         </section>
+      )}
+
+      {signOpen && uploadedFile && (
+        <SignModal
+          onClose={() => setSignOpen(false)}
+          onSigned={(name) => setReviewerName(name)}
+          initialReviewer={reviewerName}
+          sign={(reviewer, firm) => postSignUpload(uploadedFile, ledgerFile, reviewer, firm)}
+        />
       )}
     </div>
   );

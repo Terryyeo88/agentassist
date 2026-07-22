@@ -602,8 +602,10 @@ def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = 
     # (Signal A + B) merge in via serialize_ledger_recon_queue — [] when no ledger, both
     # emit QUEUE_ITEM_KEYS, ungated.
     # t-decision-persistence: persisted adjudications for this config's client_id RE-APPLY
-    # here (loaded per-request; [] → falsy → today's stub rows byte-identical). Ledger-recon
-    # rows stay un-fingerprinted (different finding shape; noted in docs).
+    # here (loaded per-request; [] → falsy → demoted/annotation/prior_dispositions stay at
+    # defaults). B3a-2: detect rows ALWAYS carry their fingerprint (store-independent), so
+    # the panel can persist a first-ever decision. Ledger-recon rows stay un-fingerprinted
+    # (different finding shape, no counterparty; #46 territory) and render non-adjudicable.
     queue = serialize_xero_queue(
         result.compile_output["detect"]["issues"],
         decision_entries=load_decision_entries(cfg.client_id),

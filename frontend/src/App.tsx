@@ -216,15 +216,18 @@ export function App() {
                 // t-decision-persistence: a decision PERSISTS via POST /decision (append-only
                 // server store), then the review is re-fetched so the persisted demotion /
                 // annotation re-renders from the server — decisions survive refresh. The
-                // local `decided` map still drives immediate button state. A row without a
-                // fingerprint (probabilistic/unjoinable) records locally only — nothing to
-                // key persistence on; a failed POST surfaces in the error banner.
+                // local `decided` map still drives immediate button state; a failed POST
+                // surfaces in the error banner.
                 // t-xero-signoff (M3): the decision is attributed to the reviewer of record
                 // the user entered — never a placeholder. No name entered → local-only
                 // record with a visible hint (persistence needs a real attributable name).
                 onRecord: (id, action, note) => {
                   setDecided((d) => ({ ...d, [id]: { action, note } }));
                   const row = review.queue.find((it) => it.finding_id === id);
+                  // B3a-2: un-fingerprinted rows (here: the probabilistic finding — no
+                  // deterministic fingerprint) render DISABLED controls in the shared
+                  // FindingDetail (no-silent-dead-buttons), so this guard is defensive
+                  // only — it can no longer swallow a reviewer's decision silently.
                   if (!row?.fingerprint) return;
                   const reviewer = reviewerName.trim();
                   if (!reviewer) {

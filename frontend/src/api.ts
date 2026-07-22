@@ -168,6 +168,44 @@ export async function postSign(reviewer_name: string, firm_name: string): Promis
   return (await resp.json()) as SignResponse;
 }
 
+// POST /sign/upload (B4; wired to the panel in B3a-2). Xero F5 ONLY — the endpoint 422s
+// on any other export format, so the panel gates the Sign affordance on
+// source_kind === "xero_f5_upload". Mirrors api/app.py SIGN_UPLOAD_KEYS.
+export interface SignUploadResponse {
+  source_kind: string;
+  reviewer_name: string;
+  firm_name: string;
+  working_paper_path: string;
+  bundle_dir: string;
+  validation_status: string;
+  disclaimer: string;
+}
+
+/**
+ * postSignUpload — re-POST the RETAINED workbook (+ optional ledger) with the reviewer's
+ * identity to /sign/upload. Stateless on the server: review() re-runs over the workbook and
+ * its OWN full-arg render emits the signed working paper. The system never signs — the
+ * paper carries the reviewer's identity above an empty ruled line.
+ */
+export async function postSignUpload(
+  file: File,
+  ledger: File | null | undefined,
+  reviewer_name: string,
+  firm_name: string,
+): Promise<SignUploadResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  if (ledger) form.append("ledger", ledger);
+  form.append("reviewer_name", reviewer_name);
+  form.append("firm_name", firm_name);
+  const resp = await fetch(`${BASE}/sign/upload`, { method: "POST", body: form });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail || `Sign failed: ${resp.status}`);
+  }
+  return (await resp.json()) as SignUploadResponse;
+}
+
 // Persist one reviewer adjudication (t-decision-persistence). Mirrors the postSign
 // pattern: JSON POST, throws the server's `detail` on non-2xx — a failed persist is
 // surfaced, never a silent success.

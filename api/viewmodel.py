@@ -19,7 +19,11 @@ import yaml
 
 # Pure hermetic core (stdlib-only): fingerprint + append-only ledger + annotate/demote.
 # Used here READ-ONLY — this module never writes the ledger (serialisers stay pure).
-from agent.decision_ledger import DecisionLedger, annotate_and_demote
+from agent.decision_ledger import (
+    DecisionLedger,
+    annotate_and_demote,
+    compute_finding_fingerprint,
+)
 from ui.artifacts import (
     DemoArtifacts,
     VALIDATION_STATUS,
@@ -253,12 +257,20 @@ def serialize_xero_queue(
 
     t-decision-persistence: ``decision_entries`` (persisted adjudications from
     ``agent.decision_store``, keyed on the upload's config client_id) RE-APPLIES prior
-    reviewer decisions to this queue. Falsy (None or [] — no store / empty store) is a
-    STRUCTURAL no-op: rows keep today's stubs (fingerprint None, demoted False) byte-for-
-    byte. Non-empty entries run ``annotate_and_demote`` over the detect issues — the same
-    cardinality-preserving read the frozen /review path uses — so a prior KNOWN_ACCEPTED
-    renders the row demoted-but-PRESENT (never suppressed), and every row gains its
-    deterministic fingerprint. VALUES change, KEYS never do (QUEUE_ITEM_KEYS intact).
+    reviewer decisions to this queue. Falsy (None or [] — no store / empty store) leaves
+    the decision-memory keys at their defaults (demoted False, annotation None,
+    prior_dispositions []). Non-empty entries run ``annotate_and_demote`` over the detect
+    issues — the same cardinality-preserving read the frozen /review path uses — so a
+    prior KNOWN_ACCEPTED renders the row demoted-but-PRESENT (never suppressed).
+    VALUES change, KEYS never do (QUEUE_ITEM_KEYS intact).
+
+    B3a-2 (fingerprint-always): every DETECT row carries its deterministic fingerprint
+    REGARDLESS of store contents — computed here from the raw issue, and provably
+    identical to the value ``annotate_and_demote`` stamps on the non-empty path (same
+    ``compute_finding_fingerprint`` call on the same issue dict). This is what lets the
+    panel POST a first-ever decision on a finding. Ledger-recon rows are NOT produced
+    here and deliberately stay un-fingerprinted (no counterparty in their shape — a
+    counterparty-free composition is #46 migration territory, not this build).
 
     Surfaces, never asserts: every row carries ``validation_status="unvalidated"``; no verdict,
     no auto-correction, no write. The dark checks a Xero export cannot run are surfaced in
@@ -281,6 +293,10 @@ def serialize_xero_queue(
             # flatten_finding_card picks the payload bearing description/error_code (the issue).
             "evidence": {"detect_issue": issue},
         }
+        # B3a-2 fingerprint-always: unconditional, store-independent. The annotated branch
+        # below overwrites with af.fingerprint — the identical value (annotate_and_demote
+        # computes compute_finding_fingerprint(finding) on this same issue dict).
+        item["fingerprint"] = compute_finding_fingerprint(issue)
         if annotated is not None:
             af = annotated[pos]
             item["fingerprint"] = af.fingerprint
