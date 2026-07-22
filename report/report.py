@@ -163,6 +163,13 @@ class ReportModel:
     # ClientConfig.source_system via config.source_labels). Defaulted so legacy
     # callers that construct ReportModel directly keep the pre-existing SAP wording.
     source_label: str = "SAP B1"
+    # #43 signable-render guard (t-xero-signoff): True IFF the source config had
+    # show_ai_candidates=True. Gates the report-level UNVALIDATED banner and the
+    # SUPPRESSED signature block in render.py. Keys on show_ai_candidates ONLY —
+    # never on validation_status: the deterministic working paper is human-signed
+    # regardless of T2.11; it is the AI-candidate PREVIEW render that is not
+    # signable. Default False → every legacy/committed-config render byte-identical.
+    show_ai_candidates: bool = False
 
 
 def build_report(
@@ -337,4 +344,7 @@ def build_report(
         source_label=source_display_name(
             getattr(client_config, "source_system", None)
         ),
+        # #43 guard: carried onto the model so the renderer never reaches into
+        # ClientConfig. show_ai was computed above from client_config.show_ai_candidates.
+        show_ai_candidates=show_ai,
     )
