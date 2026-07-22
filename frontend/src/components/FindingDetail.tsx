@@ -4,9 +4,10 @@ import type { QueueItem } from "../api";
 interface Props {
   item: QueueItem;
   decision?: { action: string; note: string };
-  // The adjudication capability. When BOTH are provided → decision + sign controls render
-  // (the SAP path). When omitted → the card is review-only and `reviewOnlyNote` is surfaced
-  // instead — never a dead control (no-fake-affordances rule).
+  // The adjudication capability, DECOUPLED (B3a-2): `onRecord` alone renders the decision
+  // controls; `onOpenSign` alone gates the Sign button (the upload panel passes it only for
+  // Xero F5 — POST /sign/upload serves no other source_kind). Neither → review-only with
+  // `reviewOnlyNote` — never a dead control (no-fake-affordances rule).
   onRecord?: (action: string, note: string) => void;
   onOpenSign?: () => void;
   reviewOnlyNote?: string;
@@ -34,7 +35,23 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
   const [note, setNote] = useState<string>(decision?.note ?? "");
   const [err, setErr] = useState<string>("");
 
+  // No-silent-dead-buttons (B3a-2): a row without a deterministic fingerprint cannot be
+  // persisted (POST /decision keys on the fingerprint), so its decision controls render
+  // DISABLED with an honest per-cause reason — never hidden, never a button whose decision
+  // evaporates into local state. Ledger-recon findings have no counterparty (a
+  // counterparty-free fingerprint composition is #46 territory); probabilistic findings
+  // are not detect-joinable. Shared component → the rule holds on BOTH the SAP surface
+  // and the upload panel.
+  const notPersistable = item.fingerprint
+    ? null
+    : item.finding_id.startsWith("ledger_recon:")
+      ? "Not persistable — a ledger-reconciliation finding carries no deterministic fingerprint, so a decision cannot be recorded against it."
+      : item.finding_type === "probabilistic"
+        ? "Not persistable — a probabilistic finding carries no deterministic fingerprint, so a decision cannot be recorded against it."
+        : "Not persistable — this finding carries no deterministic fingerprint, so a decision cannot be recorded against it.";
+
   function record() {
+    if (notPersistable) return;
     if (NOTE_REQUIRED.has(action) && !note.trim()) {
       setErr(`“${action}” requires a non-empty reviewer note.`);
       return;
@@ -81,10 +98,14 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
       {onRecord ? (
         <>
           <h4>Your decision</h4>
+          {notPersistable && (
+            <div className="callout warn not-persistable">{notPersistable}</div>
+          )}
           <div className="decide">
             {DECISIONS.map((d) => (
               <button
                 key={d}
+                disabled={!!notPersistable}
                 className={action === d ? "selected" : ""}
                 onClick={() => setAction(d)}
               >
@@ -92,7 +113,7 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
               </button>
             ))}
           </div>
-          {NOTE_REQUIRED.has(action) && (
+          {!notPersistable && NOTE_REQUIRED.has(action) && (
             <textarea
               placeholder={`Record your reasoning (required for “${action}”). Attaches to the finding, not to box values.`}
               value={note}
@@ -101,10 +122,14 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
           )}
           {err && <div className="callout warn">{err}</div>}
           <div className="decide">
-            <button onClick={record}>Record decision</button>
-            <button className="primary" onClick={onOpenSign}>
-              Sign working paper
+            <button disabled={!!notPersistable} onClick={record}>
+              Record decision
             </button>
+            {onOpenSign && (
+              <button className="primary" onClick={onOpenSign}>
+                Sign working paper
+              </button>
+            )}
           </div>
           {decision && (
             <div className="recorded">
