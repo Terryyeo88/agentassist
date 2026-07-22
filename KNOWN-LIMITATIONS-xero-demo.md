@@ -69,7 +69,7 @@ the SAP path, NOT manufactured — and `finding_id` uses SAP semantics `detect:{
 (extracted `Queue` + `FindingDetail`) the SAP path uses; decision/sign is an INJECTED capability —
 the SAP path injects it (behaviour-preserving), the Xero upload path OMITS it (no server-side store
 to sign an uploaded review against) and shows an honest review-only note *"sign-off for uploads not
-yet available"* — no dead controls. **B1 (companion-sheet ask):** the panel surfaces a
+yet available"* — no dead controls **(SUPERSEDED by B3a-2 — see the UPDATE box after this paragraph)**. **B1 (companion-sheet ask):** the panel surfaces a
 supplier-master (companion) sheet ask when a check is degraded/unavailable — a **COVERAGE FACT ONLY**
 (no IRAS rationale); providing/ingesting the sheet is NOT built (deferred, net-new). **Dark checks
 unchanged:** NO_GST_REG (unavailable), DUP_CLAIM/SEQ_GAP (degraded) and the doc-pre-pass
@@ -88,6 +88,28 @@ did NOT edit it. Terry authors its amendment as a SEPARATE commit onto this bran
 **SHAPE-only** (queue vs findings key-set), finding VALUES unchanged and re-locked by the new BT1 —
 once the amendment lands the suite is fully green. This branch is **UNMERGED**; Build 2 closes NONE
 of the debts below.
+
+> **UPDATE — B3a-2 upload-panel adjudication (`D-2026-07-22-b3a2-xero-adjudication`, branch `t-b3a2-xero-adjudication`, code commit `a68655f` (base: t-b3a2-test-amendment `9e23a53` = master `ec2dc7f` + the hand-amended test), UNMERGED; built + suite-verified ≠ validated).**
+> Build 2's *"sign-off for uploads not yet available"* review-only state is **SUPERSEDED**. The Xero upload panel now **injects the
+> shared adjudication capability**: Accept / Decline / Not-an-issue / Mark-known **persist** via the EXISTING `POST /decision`
+> (per-config store keyed by a frontend `source_kind → client_id` map — `xero_f5_upload → xero_demo`, `extract_review →
+> extract_demo`, `xero_sales_upload → xero_sales_demo`; the upload response's frozen key set carries no `client_id`, so the map is
+> the frontend half of the contract) and **RE-APPLY** on re-upload of the retained workbook. **Sign is enabled for
+> `xero_f5_upload` ONLY** (`POST /sign/upload` **422s** any other format); **sales / extract uploads get decisions but NOT sign**
+> (stated in the panel copy). **No silent dead buttons:** a row **without a deterministic fingerprint** — a ledger-reconciliation
+> finding or a probabilistic finding — renders **DISABLED** decision controls with a **visible per-cause reason** (never hidden,
+> never a button recording into evaporating state), on BOTH the upload panel and the SAP `/review` surface. The enabler is
+> **fingerprint-always** in `api/viewmodel.serialize_xero_queue` (every DETECT row stamps its deterministic fingerprint regardless of
+> store contents; **ledger-recon rows stay un-fingerprinted** — #46 migration territory). **Reviewer identity** is a panel-local
+> **free-text "Reviewer of record"** input — the same free-text concept as the SAP surface, so spelling can vary across sessions
+> (a **data-quality note, not a correctness claim**). **Open item #45 (multi-tenant ship-blocker) is UNCHANGED** — panel decisions
+> write to the **SHARED** per-config stores (`decisions/xero_demo/` etc.), so it is now more reachable from the UI, but is not
+> resolved and not made worse. **+7 pytest** (new `tests/test_b3a2_fingerprint_always_uploads.py`; Terry's red baseline
+> `tests/test_decision_reapply_upload.py` flipped green): branch full suite **2759 passed, 1 skipped, 6 xfailed, 2 xpassed**
+> (+7 over master `ec2dc7f`'s 2752/1/6/2); frontend **vitest 55 pass across 16 files**. Real-Xero-FORMAT over SYNTHETIC data —
+> **NOT real-client-validated, NOT accuracy-validated** (routing/persistence working is not a GST-accuracy claim);
+> `validation_status="unvalidated"` + `show_ai_candidates=False` UNCHANGED; offline-replay byte-identical; T2.11 unmoved;
+> closes NONE of the debts below.
 
 **XERO-SALES INBOUND status (branch `t-xero-sales-feeder`, built ≠ validated, UNMERGED).** A NEW,
 SEPARATE inbound path — an INBOUND Xero **sales-invoice** feeder — now EXISTS alongside the F5
