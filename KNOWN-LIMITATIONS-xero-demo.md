@@ -111,6 +111,41 @@ of the debts below.
 > `validation_status="unvalidated"` + `show_ai_candidates=False` UNCHANGED; offline-replay byte-identical; T2.11 unmoved;
 > closes NONE of the debts below.
 
+> **UPDATE — dossier content on the Xero upload surface (`D-2026-07-23-dossier-xero`, branch `t-dossier-xero`, code commit `5c588c2` on base `064b2fb`, UNMERGED; built + suite-verified ≠ validated).**
+> The Xero UPLOAD paths (F5 + sales) now carry hermetic **case-file DOSSIER content** on their detect rows: the three ALREADY-PRESENT
+> `QUEUE_ITEM_KEYS` fields `candidate_framing_text` / `completeness` / `inputs_hash` — which defaulted to `""`/empty/`—` on these paths
+> before — are now populated by running the REAL `agent.loop.run_casefile_loop` over the upload's `ReviewResult` with a **deterministic
+> AUTHORED template transport (NO model, NO network, $0)**; the framing string derives from the check's `CHECK_REGISTRY` `display_name`
+> (the only tax language on it), is candidate-shaped, and is language-lint-pinned. **Cage stays PENDING-only** (a request-scoped
+> `StagingStore` that is discarded — nothing approves/seals/emits). New module `agent/upload_dossiers.py`; `serialize_xero_queue` gained
+> an OPTIONAL `dossiers=` kwarg (**VALUE-only, ZERO key churn** — `QUEUE_ITEM_KEYS` and the 5-key upload literals unchanged, absent/falsy
+> dossiers → byte-identical defaults).
+> - **FULL (satisfied) on Xero: E2 / E3 / E4** — every required slot is engine-seeded, so completeness is `{required==present per registry
+>   `inputs_needed`, missing [], satisfied True}` and the row carries a real `sha256:` inputs_hash.
+> - **INCOMPLETE-if-they-ran (both DARK on Xero today):** NO_GST_REG (needs `supplier_catalog`) and the document checks (need
+>   `document_pdfs`) — surfaced only in `coverage_status`, never fabricated into the queue.
+> - **DEFERRED — the EXTRACT branch is deliberately NOT wired** (Terry's "do F5 and REPORT why" fallback). Extract uploads yield NO_GST_REG
+>   findings whose `supplier_catalog` slot is agent-gathered, and the extract SOURCE genuinely carries the supplier data (`FederalTaxID`
+>   sheet) — so for an unwired gather neither R5 reason would be honest ("not gatherable" is false; "gathering failed" is false); the
+>   reader's canonical BP projection also carries no `CardName` to key an honest catalog. Extract rows keep today's defaults, PINNED by a
+>   test so a dishonest half-wiring cannot slip in. Catalog plumbing = follow-up.
+> - **R5 note (Terry's condition, stated honestly):** completeness `missing` entries render as reason-suffixed plain strings
+>   (`"<slot> - not gatherable on this source (…)"` for `supplier_catalog`/`document_pdfs`, else `"<slot> - gathering failed"`), but this
+>   qualifier fires for **ZERO finding types on the wired upload paths** — its presence is NOT evidence anything is incomplete; it is
+>   pinned before any finding type needs it.
+> - **Bounded work (R2):** a finding count above `_MAX_DOSSIER_FINDINGS=1000` skips generation and APPENDS an honest degraded
+>   `{"check":"case_file_dossiers","level":"degraded",…}` coverage row; queue fields stay at defaults.
+> - **Sales endpoint population is serializer-exercised only** — the committed clean sales fixture yields no findings; a finding-bearing
+>   sales fixture is a follow-up. The sales-route DEMO work (crafted ES33 + captured live exempt run) is DEMO-PREP, out of this build.
+> - **Provider deferred (open item #47 in `AGENTASSIST_TECHNICAL_STATE.md`)** with the recorded **INV-INV trap**: `documents/provider.py`
+>   hardcodes `INV-{doc_num}.pdf`, which against Xero STRING doc_nums (`INV-2003`, `BILL-3002`) would form `INV-INV-2003.pdf` — a future
+>   Xero directory provider must key `{doc_num}.pdf`. E2/E3/E4 don't request `document_pdfs`, so this changes no current Xero dossier.
+> - **DEBT-3 restated:** NO real Xero export has ever been read — all fixtures are real-FORMAT / SYNTHETIC; the dossier content is
+>   **real-mechanism over synthetic data**, NOT real-client-validated and NOT accuracy-validated. **+8 pytest**
+>   (`tests/test_dossier_xero_uploads.py`) → branch full suite **2774 passed, 1 skipped, 6 xfailed, 2 xpassed** (+8 over base
+>   `064b2fb`'s 2766/1/6/2); offline-replay byte-identical; `validation_status="unvalidated"` + `show_ai_candidates=False` UNCHANGED;
+>   T2.11 unmoved; closes NONE of the debts below.
+
 **XERO-SALES INBOUND status (branch `t-xero-sales-feeder`, built ≠ validated, UNMERGED).** A NEW,
 SEPARATE inbound path — an INBOUND Xero **sales-invoice** feeder — now EXISTS alongside the F5
 reader: `feeders/xero_sales_reader.py` (`XeroSalesInvoiceChainReader`) parses a flat,
