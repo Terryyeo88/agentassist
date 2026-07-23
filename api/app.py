@@ -66,6 +66,9 @@ from api.viewmodel import (
     serialize_xero_queue,
     upload_disclaimer,
 )
+# t-dossier-xero: hermetic case-file dossiers on the upload paths. agent.upload_dossiers
+# is stdlib+agent/ only (no anthropic, no SDK) — api/ stays anthropic-free at import.
+from agent.upload_dossiers import generate_upload_dossiers
 # Shared with the CLI (run_agent) — assembles the T2.24 gst_ledger side-input from the
 # uploaded Xero F5 workbook + optional 820 account-transactions export. Calls only feeder
 # leaves (no anthropic/engine drag); the web layer must NOT import run_agent (the CLI).
@@ -606,17 +609,46 @@ def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = 
     # defaults). B3a-2: detect rows ALWAYS carry their fingerprint (store-independent), so
     # the panel can persist a first-ever decision. Ledger-recon rows stay un-fingerprinted
     # (different finding shape, no counterparty; #46 territory) and render non-adjudicable.
+    # t-dossier-xero: hermetic case-file dossiers over the SAME ReviewResult (no model,
+    # no network — the loop runs an authored template transport; cage stays PENDING-only
+    # and the staging store is discarded with the request). Cap fired → no dossiers, an
+    # honest degraded coverage row below, queue fields stay at their defaults.
+    upload_dossiers = generate_upload_dossiers(result)
     queue = serialize_xero_queue(
         result.compile_output["detect"]["issues"],
         decision_entries=load_decision_entries(cfg.client_id),
+        dossiers=upload_dossiers.dossiers,
     ) + serialize_ledger_recon_queue(result.compile_output)
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
+    if upload_dossiers.capped:
+        log.warning("dossier cap exceeded on xero_f5_upload — generation skipped")
+        coverage_status.append(_dossier_cap_coverage_row())
     return {
         "source_kind": "xero_f5_upload",
         "validation_status": VALIDATION_STATUS,
         "disclaimer": upload_disclaimer("xero_f5_upload"),
         "coverage_status": coverage_status,
         "queue": queue,
+    }
+
+
+def _dossier_cap_coverage_row() -> dict:
+    """The honest degraded row appended when the bounded dossier cap fires (R2).
+
+    coverage_status is the surface that says what ran and what degraded — the
+    disclaimer stays legal framing. Same {check, level, reason} shape as every
+    other row; appended, never replacing the reader's rows.
+    """
+    from agent.upload_dossiers import _MAX_DOSSIER_FINDINGS
+
+    return {
+        "check": "case_file_dossiers",
+        "level": "degraded",
+        "reason": (
+            f"finding count exceeds the {_MAX_DOSSIER_FINDINGS}-finding dossier "
+            "cap — case-file dossier generation was skipped for this upload; "
+            "queue rows carry no framing/completeness/inputs_hash content."
+        ),
     }
 
 
@@ -676,6 +708,13 @@ def _extract_review_response(reader) -> dict:
             detail="Review could not complete over this export (reconciliation halted).",
         )
 
+    # t-dossier-xero DEFERRAL (reported, not silent): the extract branch is NOT wired for
+    # dossiers in this build. Extract uploads yield NO_GST_REG findings whose required
+    # supplier_catalog slot is agent-gathered; the extract SOURCE genuinely carries the
+    # supplier data (FederalTaxID sheet), so neither R5 reason ("not gatherable on this
+    # source" / "gathering failed") would be honest for an unwired gather — and the
+    # reader's canonical BP projection carries no CardName to key an honest catalog.
+    # Rows keep today's ""/empty/"—" defaults until the catalog plumbing follow-up.
     queue = serialize_xero_queue(
         result.compile_output["detect"]["issues"],
         decision_entries=load_decision_entries(cfg.client_id),
@@ -753,11 +792,20 @@ def _xero_sales_review_response(reader) -> dict:
             detail="Review could not complete over this export (reconciliation halted).",
         )
 
+    # t-dossier-xero: same hermetic dossier pass as the F5 branch (symmetric wiring —
+    # any sales detect finding is an E-check whose slots are engine-seeded). The
+    # committed clean sales fixture yields no findings, so this is exercised at the
+    # serializer level in tests; a finding-bearing sales fixture is a filed follow-up.
+    upload_dossiers = generate_upload_dossiers(result)
     queue = serialize_xero_queue(
         result.compile_output["detect"]["issues"],
         decision_entries=load_decision_entries(cfg.client_id),
+        dossiers=upload_dossiers.dossiers,
     )
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
+    if upload_dossiers.capped:
+        log.warning("dossier cap exceeded on xero_sales_upload — generation skipped")
+        coverage_status.append(_dossier_cap_coverage_row())
     return {
         "source_kind": "xero_sales_upload",
         "validation_status": VALIDATION_STATUS,

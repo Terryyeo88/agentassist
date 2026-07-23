@@ -24,6 +24,7 @@ from agent.decision_ledger import (
     annotate_and_demote,
     compute_finding_fingerprint,
 )
+from agent.upload_dossiers import dossier_queue_fields
 from ui.artifacts import (
     DemoArtifacts,
     VALIDATION_STATUS,
@@ -241,15 +242,22 @@ def serialize_queue_item(item: dict) -> dict[str, Any]:
 def serialize_xero_queue(
     issues: list[dict],
     decision_entries: list[dict] | None = None,
+    dossiers: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Project engine detect-issues from an uploaded Xero F5 export into the SHARED
     ``QueueItem`` rows the central review screen consumes (BUILD 2, A1 — same screen).
 
     REUSES ``serialize_queue_item`` / ``check_reference`` — so the Xero E-checks (E2/E3/E4)
     resolve to their REAL ``CHECK_REGISTRY`` ``iras_basis`` (the SAME citation the SAP path
-    shows for the same check), never manufactured. The Xero-only enrichments the agent-loop
-    dossier builder would add (``candidate_framing_text``, ``completeness``, decision-ledger
-    memory) are ABSENT here and render gracefully as ""/empty/"—" — nothing is invented.
+    shows for the same check), never manufactured.
+
+    t-dossier-xero: ``dossiers`` (finding_id → DossierArtifact from
+    ``agent.upload_dossiers.generate_upload_dossiers``) populates the three ALREADY-PRESENT
+    queue fields ``candidate_framing_text`` / ``completeness`` / ``inputs_hash`` with real
+    hermetic-loop content — a VALUE-only change (the keys were already in QUEUE_ITEM_KEYS,
+    previously defaulted to ""/empty/"—"). Falsy/absent dossiers (None, {}, or a finding
+    with no matching dossier — e.g. the cap fired, or a branch not yet wired) leaves those
+    fields at today's defaults — nothing is invented.
 
     ``finding_id`` uses the SAME semantics as the SAP path (``agent/dossier.py``):
     ``detect:{error_code}:{doc_num}``. A same-(code, doc_num) collision collides IDENTICALLY
@@ -297,6 +305,13 @@ def serialize_xero_queue(
         # below overwrites with af.fingerprint — the identical value (annotate_and_demote
         # computes compute_finding_fingerprint(finding) on this same issue dict).
         item["fingerprint"] = compute_finding_fingerprint(issue)
+        # t-dossier-xero: thread the three dossier-derived fields when this finding has a
+        # dossier (1:1 join on the identical detect:{code}:{doc_num} id; string doc_nums
+        # preserved). Absent → serialize_queue_item's defaults, exactly as before.
+        if dossiers:
+            dossier = dossiers.get(item["finding_id"])
+            if dossier is not None:
+                item.update(dossier_queue_fields(dossier))
         if annotated is not None:
             af = annotated[pos]
             item["fingerprint"] = af.fingerprint
