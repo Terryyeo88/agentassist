@@ -257,6 +257,24 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
               (companion) sheet at onboarding.
             </div>
           )}
+          {coverage.out_of_scope && coverage.out_of_scope.count > 0 && (
+            <div className="xero-out-of-scope callout info" aria-label="Out-of-scope lines">
+              <strong>
+                {coverage.out_of_scope.count} line
+                {coverage.out_of_scope.count === 1 ? "" : "s"} set aside (out of scope).
+              </strong>{" "}
+              {coverage.out_of_scope.reason}
+              {Object.keys(coverage.out_of_scope.by_code).length > 0 && (
+                <>
+                  {" "}
+                  · by code:{" "}
+                  {Object.entries(coverage.out_of_scope.by_code)
+                    .map(([code, n]) => `${code} (${n})`)
+                    .join(", ")}
+                </>
+              )}
+            </div>
+          )}
           <footer className="xero-disclaimer">{coverage.disclaimer}</footer>
         </section>
       )}
