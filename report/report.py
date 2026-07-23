@@ -170,6 +170,10 @@ class ReportModel:
     # regardless of T2.11; it is the AI-candidate PREVIEW render that is not
     # signable. Default False → every legacy/committed-config render byte-identical.
     show_ai_candidates: bool = False
+    # t-accumulated-sign: the accumulated-review evidence section (non-primary slices'
+    # STORED findings + per-source coverage matrix + visible supersession/vintage).
+    # None for every per-slice/legacy render → byte-identical output.
+    accumulated: "object | None" = None
 
 
 def build_report(
@@ -184,6 +188,7 @@ def build_report(
     extra_judgment_artefacts: dict[str, dict] | None = None,
     partial_exemption_findings: list | None = None,
     scheme_status_findings: list | None = None,
+    accumulated=None,
 ) -> ReportModel:
     """Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
@@ -282,6 +287,9 @@ def build_report(
         }
 
     return ReportModel(
+        # t-accumulated-sign: pass-through of the accumulated evidence section (None
+        # for every per-slice/legacy caller — render byte-identical).
+        accumulated=accumulated,
         cover=build_cover_section(
             compile_output, client_config, generated_at=generated_at
         ),

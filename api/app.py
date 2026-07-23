@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -428,7 +429,8 @@ _SLICE_CLIENT_IDS = {
 
 
 def _attach_review_slice(
-    review_id: str, resp: dict, file_bytes: bytes, period: Optional[dict]
+    review_id: str, resp: dict, file_bytes: bytes, period: Optional[dict],
+    ledger_bytes: Optional[bytes] = None,
 ) -> None:
     """Attach one upload's serialized results to a review session (R2 semantics).
 
@@ -444,6 +446,13 @@ def _attach_review_slice(
     source_kind = resp.get("source_kind", "")
     if review_store.sha_already_attached(review_id, source_kind, sha256):
         return
+    # t-accumulated-sign (R1): RETAIN the upload bytes so an accumulated sign can
+    # re-run review() over the primary slice's exact bytes — the bounding invariant
+    # (primary boxes byte-identical, never merged) true by construction. Retention is
+    # forward-only; older sessions refuse loudly at sign time.
+    review_store.save_upload_bytes(review_id, sha256, file_bytes)
+    if ledger_bytes:
+        review_store.save_upload_bytes(review_id, sha256, ledger_bytes, suffix=".ledger.xlsx")
     slice_record = {
         "source_kind": source_kind,
         "sha256": sha256,
@@ -606,7 +615,13 @@ async def post_review_upload(
                 # record None (provenance field, not a merge key).
                 if rid:
                     _attach_review_slice(
-                        rid, resp, body, period=xero_period if is_xero else None
+                        rid, resp, body, period=xero_period if is_xero else None,
+                        # Ledger companion bytes retained alongside (F5 path only) so an
+                        # accumulated sign re-runs with the same reconciliation inputs.
+                        ledger_bytes=(
+                            ledger_dest.read_bytes()
+                            if (is_xero and ledger_dest is not None) else None
+                        ),
                     )
                 return resp
             coverage_status = [status.as_dict() for status in reader.coverage_status()]
@@ -666,6 +681,232 @@ def post_review_session(req: Optional[ReviewSessionRequest] = None) -> dict:
 def get_review_sessions() -> dict:
     """List review sessions (summaries only — id, label, slice count, source kinds)."""
     return {"reviews": review_store.list_reviews()}
+
+
+class ReviewSessionSignRequest(BaseModel):
+    """POST /review-session/{id}/sign body — the human sign action over a session."""
+    reviewer_name: str = Field(..., description="Reviewer of record (required, non-empty).")
+    firm_name: str = Field("", description="Optional firm name.")
+
+
+@app.post("/review-session/{review_id}/sign")
+def post_review_session_sign(review_id: str, req: ReviewSessionSignRequest) -> dict:
+    """Sign ONE working paper over an accumulated review session (t-accumulated-sign).
+
+    BOUNDING INVARIANT: the paper's boxes/structure/period come from the DESIGNATED
+    PRIMARY slice ALONE (the active F5 slice, re-executed over its RETAINED bytes at
+    sign time — byte-identical by construction, never merged arithmetic). Every other
+    slice contributes FINDINGS ONLY, rendered from the #136 STORED rows (Terry R6:
+    the reviewer signs what the merged view showed them) with visible provenance and
+    attach timestamps (mixed vintage shown, never hidden). Refusals are LOUD and
+    ordered: unknown session -> 404; empty / no-F5 / missing-retained-bytes / period
+    disagreement / empty reviewer -> 422 with the reason named. THE SYSTEM NEVER
+    SIGNS: the paper carries the reviewer identity above an empty ruled line, and the
+    #43 guard applies exactly as on per-slice papers.
+    """
+    try:
+        review_store._validated_review_id(review_id)
+    except review_store.ReviewStoreError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not review_store.review_exists(review_id):
+        raise HTTPException(status_code=404, detail=f"No review session {review_id!r}.")
+
+    reviewer = (req.reviewer_name or "").strip()
+    if not reviewer:
+        raise HTTPException(status_code=422, detail="reviewer_name must not be empty.")
+    firm = (req.firm_name or "").strip()
+
+    view = review_store.merged_view(review_id)
+    active = view.get("slices") or []
+    if not active:
+        raise HTTPException(
+            status_code=422,
+            detail="This review session has no attached uploads — nothing to sign.",
+        )
+
+    # R2: F5-required primary — the F5 export carries the actual return figures.
+    primary = next(
+        (s for s in active if s.get("source_kind") == "xero_f5_upload"), None
+    )
+    if primary is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "This session has no F5 slice. The F5 export carries the return "
+                "figures, so an accumulated paper cannot honestly claim F5 boxes "
+                "without one — attach the F5 export, or sign per-slice."
+            ),
+        )
+
+    # R1 (loud, forward-only): EVERY active slice must have retained bytes.
+    for s in active:
+        p = review_store.upload_bytes_path(review_id, s.get("sha256") or "")
+        if not p.is_file():
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Slice {s.get('source_kind')} (sha {str(s.get('sha256'))[:8]}) has "
+                    "no retained upload bytes — this session predates byte retention; "
+                    "re-attach its exports to sign the accumulated review."
+                ),
+            )
+
+    # R3: hard refusal on any non-None period disagreement — never a silent union.
+    periods = [
+        (s.get("source_kind"), s["period"]) for s in active
+        if isinstance(s.get("period"), dict)
+    ]
+    distinct = {(p["start"], p["end"]) for _, p in periods}
+    if len(distinct) > 1:
+        detail = "; ".join(
+            f"{kind}: {p['start']} to {p['end']}" for kind, p in periods
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Slices disagree on the review period — refusing to sign one paper "
+                f"over conflicting periods ({detail}). Resolve the disagreement first."
+            ),
+        )
+
+    # --- Re-run the PRIMARY over its retained bytes (persist_artifacts=False; the
+    # accumulated render/seal below is THE persist event for this sign). -------------
+    from config.loader import load_client_config
+    from engine.review import ReviewInputs, review
+    import engine.review as _rev
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="aa-accum-sign-"))
+    try:
+        primary_sha = primary.get("sha256") or ""
+        dest = tmp_dir / "primary.xlsx"
+        dest.write_bytes(review_store.upload_bytes_path(review_id, primary_sha).read_bytes())
+        ledger_path = review_store.upload_bytes_path(
+            review_id, primary_sha, suffix=".ledger.xlsx"
+        )
+        try:
+            reader = XeroF5ChainReader(dest)
+            xero_period = parse_review_period(dest)
+            gst_ledger = None
+            if ledger_path.is_file():
+                ledger_dest = tmp_dir / "ledger.xlsx"
+                ledger_dest.write_bytes(ledger_path.read_bytes())
+                gst_ledger = build_gst_ledger_input(ledger_dest, dest, xero_period)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=422, detail=f"Could not re-read retained primary: {exc}"
+            ) from exc
+
+        try:
+            cfg = _dc_replace(
+                load_client_config("xero_demo", check_connectivity=False),
+                reviewer_name=reviewer,
+                firm_name=firm,
+            )
+            inputs = ReviewInputs(
+                line_source=lambda: [], provider=None, reader=reader,
+                gst_ledger=gst_ledger,
+            )
+            result = review(cfg, xero_period, inputs, persist_artifacts=False)
+            if result.status != "completed" or result.compile_output is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Primary review could not complete (reconciliation halted).",
+                )
+
+            # Accumulated render: primary boxes/structure + non-primary STORED rows.
+            from report.report import build_report
+            from report.render import render_pdf
+            from report.sections import build_accumulated_section
+            from audit_bundle.seal import seal_bundle
+
+            sign_run_at = result.run_completed_at
+            accumulated = build_accumulated_section(
+                view,
+                primary_source_kind="xero_f5_upload",
+                primary_sha256=primary_sha,
+                sign_run_at=sign_run_at,
+            )
+            extra_artefacts = (
+                {"exempt-supply": result.exempt_artefact}
+                if result.exempt_artefact is not None else None
+            )
+            model = build_report(
+                result.compile_output,
+                cfg,
+                generated_at=result.compile_output["fetch_manifest"]["fetched_at"],
+                judgment_artefact=result.reasoning_artefact,
+                document_candidates=result.document_candidates,
+                extra_judgment_artefacts=extra_artefacts,
+                accumulated=accumulated,
+            )
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+            safe_reviewer = re.sub(r"[^a-z0-9]+", "-", reviewer.lower()).strip("-") or "reviewer"
+            pdf_path = render_pdf(
+                model,
+                Path(_rev._REPORTS_DIR)
+                / f"accumulated-working-paper-{review_id}-{safe_reviewer}-{ts}.pdf",
+            )
+            signed_at = datetime.now(timezone.utc).isoformat()
+            accumulated_json = {
+                "review": view,
+                "signed": {
+                    "signed_at": signed_at,
+                    "reviewer_name": reviewer,
+                    "firm_name": firm,
+                    "primary_source_kind": "xero_f5_upload",
+                    "primary_sha256": primary_sha,
+                    "sign_run_at": sign_run_at,
+                },
+            }
+            bundle_dir = seal_bundle(
+                client_config=cfg,
+                period=xero_period,
+                compile_output=result.compile_output,
+                gate_results=result.gate_results,
+                report_pdf_path=pdf_path,
+                run_started_at=result.run_started_at,
+                run_completed_at=result.run_completed_at,
+                reasoning_artefact=result.reasoning_artefact,
+                extra_reasoning_artefacts=extra_artefacts,
+                extra_json_artefacts={"accumulated-review": accumulated_json},
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            log.exception("engine-internal failure on POST /review-session/{id}/sign")
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Internal error while signing this review session — an "
+                    "application error, not a problem with your session data."
+                ),
+            ) from exc
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    review_store.append_signed(review_id, {
+        "signed_at": signed_at,
+        "reviewer_name": reviewer,
+        "firm_name": firm,
+        "primary_source_kind": "xero_f5_upload",
+        "primary_sha256": primary_sha,
+        "working_paper_path": str(pdf_path),
+        "bundle_dir": str(bundle_dir),
+        "slices_signed": len(active),
+    })
+    return {
+        "source_kind": "review_session_signed",
+        "review_id": review_id,
+        "reviewer_name": reviewer,
+        "firm_name": firm,
+        "working_paper_path": str(pdf_path),
+        "bundle_dir": str(bundle_dir),
+        "primary_source_kind": "xero_f5_upload",
+        "primary_sha256": primary_sha,
+        "slices_signed": len(active),
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": DISCLAIMER,
+    }
 
 
 @app.get("/review-session/{review_id}")

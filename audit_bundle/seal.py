@@ -176,6 +176,7 @@ def seal_bundle(
     declared_f5: dict | None = None,
     agent_ledger=None,
     extra_reasoning_artefacts: "dict[str, dict] | None" = None,
+    extra_json_artefacts: "dict[str, dict] | None" = None,
 ) -> Path:
     """Write a sealed, tamper-evident audit bundle and return the bundle directory.
 
@@ -399,6 +400,19 @@ def seal_bundle(
     # when present so the tamper-evidence chain covers permission decisions.
     if agent_ledger is not None:
         artefact_paths.append(bundle_dir / "steps" / "agent-ledger.json")
+    # t-accumulated-sign: NEUTRAL deterministic extra artefacts (e.g. the accumulated
+    # review JSON). Deliberately a SEPARATE seam from extra_reasoning_artefacts: these
+    # files get NO llm provenance block (they are deterministic data, not an AI stream)
+    # and a plain <stem>.json name at the bundle root. Zero manifest-schema change —
+    # build_manifest hashes whatever artefact_paths carries.
+    extra_json_paths: list = []
+    for stem, payload in (extra_json_artefacts or {}).items():
+        if not _SAFE_SKILL_ID.fullmatch(stem):
+            raise ValueError(f"extra_json_artefacts stem not filename-safe: {stem!r}")
+        extra_path = bundle_dir / f"{stem}.json"
+        _write_canonical(extra_path, payload)
+        extra_json_paths.append(extra_path)
+
     # Build per-artefact llm metadata for reasoning artefacts only.
     # Deterministic artefacts carry no llm key (absence ≡ false).
     llm_meta: dict = {}
@@ -411,6 +425,8 @@ def seal_bundle(
         llm_meta[f"steps/{filename}"] = _reasoning_llm_meta(
             extra_reasoning_artefacts[skill_id]
         )
+    # t-accumulated-sign: neutral extras are hashed WITHOUT an llm entry (deterministic).
+    artefact_paths.extend(extra_json_paths)
     # Pass None (not an empty dict) when there are no reasoning artefacts, so a
     # fully deterministic bundle is byte-identical to the pre-T2.27 manifest.
     manifest = build_manifest(
