@@ -59,6 +59,12 @@ log = logging.getLogger(__name__)
 # Module-level so tests can redirect via monkeypatch without changing function signature.
 _AUDIT_ROOT = Path(__file__).resolve().parent.parent / "audit"
 
+# Bound on the -N same-run_ts suffix fallback (t-seal-run-ts-collision). Exceeding it
+# means a runaway caller is re-sealing the identical run_started_at in a loop — refuse
+# LOUDLY (RuntimeError) rather than filling the audit root; never hang, never reuse a
+# sealed dir. Module-level so tests can shrink it via monkeypatch.
+_MAX_SAME_TS_SEALS = 100
+
 # T2.27: a second (or Nth) reasoning stream seals to steps/<skill_id>-candidates.json.
 # skill_id must be filename-safe and must not collide with reg2627's fixed key
 # (steps/judgment-candidates.json), which is reserved for the reasoning_artefact
@@ -189,8 +195,11 @@ def seal_bundle(
             report.pdf
 
     All JSON written via canonical_json for stable, deterministic hashing.
-    run_ts is derived from run_started_at (UTC, YYYYMMDD-HHMMSS) so the
-    directory name and engagement.run_ts are always consistent.
+    run_ts is derived from run_started_at (UTC, YYYYMMDD-HHMMSS-ffffff — fixed-width
+    microseconds keep it collision-resistant and lexicographically sortable); on a
+    true name collision (identical run_started_at) a bounded -N suffix is appended.
+    The CHOSEN name — suffix included — is used for both the directory name and
+    engagement.run_ts, so the two are always consistent.
     reasoning_artefact, when provided, is always written (status may be "errored")
     so the bundle records whether the pass ran and what happened.
 
@@ -237,12 +246,16 @@ def seal_bundle(
 
     Returns:
         Path: Absolute path to the sealed bundle directory
-              (e.g. audit/sbodemosg/2024-07-01_2024-09-30/20240930-120000/).
+              (e.g. audit/sbodemosg/2024-07-01_2024-09-30/20240930-120000-000000/;
+              a same-run_ts collision appends -2, -3, ...).
 
     Raises:
         OSError: If the bundle directory or any artefact file cannot be created
                  or written.  Read-only marking failures are logged but do not
                  raise.
+        RuntimeError: If _MAX_SAME_TS_SEALS bundles already exist for the same
+                 run_ts (runaway re-sealing of one run_started_at) — loud
+                 refusal, never a hang or a write into a sealed dir.
     """
     # --- 0. Validate second-stream skill_ids up front (before any write) ---
 
@@ -259,14 +272,38 @@ def seal_bundle(
     # Convert to UTC before formatting so the directory name is timezone-agnostic
     # and sortable regardless of the host machine's local timezone.
     dt = datetime.fromisoformat(run_started_at).astimezone(timezone.utc)
-    # YYYYMMDD-HHMMSS: no colons (illegal in Windows paths), lexicographically
-    # sortable, and matches the PDF filename format used in run_agent.py.
-    run_ts = dt.strftime("%Y%m%d-%H%M%S")
+    # YYYYMMDD-HHMMSS-ffffff: no colons (illegal in Windows paths), fixed-width
+    # microseconds so the name stays lexicographically sortable. Production callers
+    # pass isoformat() strings that already carry microseconds (engine/review.py);
+    # the old seconds-resolution format DISCARDED them, so two engine runs in the
+    # same second mapped to ONE read-only bundle dir and the second seal died on
+    # Windows with PermissionError overwriting config.json.
+    run_ts = dt.strftime("%Y%m%d-%H%M%S-%f")
     # Underscore separator between dates avoids ambiguity with the hyphens
     # already present inside each YYYY-MM-DD date string.
     period_tag = f"{period['start']}_{period['end']}"
-    bundle_dir = _AUDIT_ROOT / client_config.client_id / period_tag / run_ts
-    bundle_dir.mkdir(parents=True, exist_ok=True)
+    run_root = _AUDIT_ROOT / client_config.client_id / period_tag
+    run_root.mkdir(parents=True, exist_ok=True)
+    # Collision-free arbiter: mkdir(exist_ok=False) is atomic, so an identical
+    # run_started_at (second-resolution caller strings, replays) falls back to a
+    # bounded -N suffix instead of writing into an existing READ-ONLY bundle.
+    # The chosen name — suffix included — becomes run_ts, keeping the directory
+    # name and engagement.run_ts equal (the documented invariant).
+    candidate = run_ts
+    for _n in range(2, _MAX_SAME_TS_SEALS + 2):
+        try:
+            (run_root / candidate).mkdir(exist_ok=False)
+            break
+        except FileExistsError:
+            candidate = f"{run_ts}-{_n}"
+    else:
+        raise RuntimeError(
+            f"seal_bundle: {_MAX_SAME_TS_SEALS} sealed bundles already exist for "
+            f"run_ts {run_ts!r} under {run_root} — refusing to seal another. "
+            "A runaway caller appears to be re-sealing the same run_started_at."
+        )
+    run_ts = candidate
+    bundle_dir = run_root / run_ts
 
     # --- b. Core JSON artefacts and PDF ---
 
