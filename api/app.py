@@ -23,6 +23,7 @@ and token-free.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -69,6 +70,10 @@ from api.viewmodel import (
 # t-dossier-xero: hermetic case-file dossiers on the upload paths. agent.upload_dossiers
 # is stdlib+agent/ only (no anthropic, no SDK) — api/ stays anthropic-free at import.
 from agent.upload_dossiers import generate_upload_dossiers
+# t-review-accumulation (D-2026-07-23-review-accumulation): uploads may ATTACH to an
+# explicit review session (request-only review_id — upload responses stay byte-identical).
+# agent.review_store is stdlib-only (decision_store pattern); api/ stays anthropic-free.
+import agent.review_store as review_store
 # Shared with the CLI (run_agent) — assembles the T2.24 gst_ledger side-input from the
 # uploaded Xero F5 workbook + optional 820 account-transactions export. Calls only feeder
 # leaves (no anthropic/engine drag); the web layer must NOT import run_agent (the CLI).
@@ -409,10 +414,71 @@ def post_decision(req: DecisionRequest) -> dict:
     }
 
 
+# Provenance map for review-session slices (t-review-accumulation): the DEMO config
+# client_id each upload branch runs under. RECORD-ONLY on the slice — never a storage
+# key (keying accumulation on client_id would merge different clients' uploads; the
+# review keys on the explicit review_id alone). Mirrors the load_decision_entries call
+# sites in the three branch builders.
+_SLICE_CLIENT_IDS = {
+    "xero_f5_upload": "xero_demo",
+    "xero_sales_upload": "xero_sales_demo",
+    "extract_review": "extract_demo",
+    "extract_upload": "extract_demo",
+}
+
+
+def _attach_review_slice(
+    review_id: str, resp: dict, file_bytes: bytes, period: Optional[dict]
+) -> None:
+    """Attach one upload's serialized results to a review session (R2 semantics).
+
+    Identity is (source_kind, sha256 of the uploaded primary): the same bytes re-uploaded
+    are an IDEMPOTENT SKIP (no duplicate slice, no double-counting); different bytes with
+    the same source_kind APPEND a superseding slice — the store never rewrites history and
+    merged_view surfaces the supersession visibly. The slice stores the ALREADY-SERIALIZED
+    response pieces (plain JSON — queue rows incl. dossier fields, coverage rows, branch
+    extras), so the merged view rebuilds without re-running review(). The upload RESPONSE
+    is never modified — review_id is request-only (no key churn on any upload literal).
+    """
+    sha256 = hashlib.sha256(file_bytes).hexdigest()
+    source_kind = resp.get("source_kind", "")
+    if review_store.sha_already_attached(review_id, source_kind, sha256):
+        return
+    slice_record = {
+        "source_kind": source_kind,
+        "sha256": sha256,
+        "client_id": _SLICE_CLIENT_IDS.get(source_kind),
+        "period": period,
+        "queue": resp.get("queue", []),
+        "coverage_status": resp.get("coverage_status", []),
+    }
+    for extra in ("config_scope", "out_of_scope"):
+        if extra in resp:
+            slice_record[extra] = resp[extra]
+    review_store.append_slice(review_id, slice_record)
+
+
+def _validated_upload_review_id(review_id: Optional[str]) -> Optional[str]:
+    """Normalize + guard the optional review_id form field (422 bad shape, 404 unknown)."""
+    rid = (review_id or "").strip()
+    if not rid:
+        return None
+    try:
+        review_store._validated_review_id(rid)
+    except review_store.ReviewStoreError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not review_store.review_exists(rid):
+        raise HTTPException(
+            status_code=404, detail=f"No review session {rid!r} — create one via POST /review-session."
+        )
+    return rid
+
+
 @app.post("/review/upload")
 async def post_review_upload(
     file: UploadFile = File(...),
     ledger: Optional[UploadFile] = File(None),
+    review_id: Optional[str] = Form(None),
 ) -> dict:
     """View over an UPLOADED client GST export (source-selector Xero branch).
 
@@ -450,6 +516,11 @@ async def post_review_upload(
     body = await file.read()
     if not body:
         raise HTTPException(status_code=422, detail="Empty upload.")
+
+    # t-review-accumulation: guard the OPTIONAL review_id up front (422 malformed,
+    # 404 unknown) BEFORE any store write can happen. Absent → None → the stateless
+    # path below is byte-identical to today (R1 pin).
+    rid = _validated_upload_review_id(review_id)
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="aa-extract-upload-"))
     try:
@@ -521,12 +592,23 @@ async def post_review_upload(
         # byte-identical to before. The helpers' deliberate reconciliation-halt
         # HTTPException(422)s re-raise unchanged (they are a client-input signal, not our bug).
         try:
+            resp: Optional[dict] = None
             if is_xero:
-                return _xero_f5_review_response(reader, xero_period, gst_ledger)
-            if is_xero_sales:
-                return _xero_sales_review_response(reader)
-            if _extract_engine_enabled():
-                return _extract_review_response(reader)
+                resp = _xero_f5_review_response(reader, xero_period, gst_ledger)
+            elif is_xero_sales:
+                resp = _xero_sales_review_response(reader)
+            elif _extract_engine_enabled():
+                resp = _extract_review_response(reader)
+            if resp is not None:
+                # t-review-accumulation: attach AFTER the branch built its response —
+                # the response itself is returned unchanged (review_id never enters it).
+                # period is recorded when cheaply known (F5 title block); other branches
+                # record None (provenance field, not a merge key).
+                if rid:
+                    _attach_review_slice(
+                        rid, resp, body, period=xero_period if is_xero else None
+                    )
+                return resp
             coverage_status = [status.as_dict() for status in reader.coverage_status()]
         except HTTPException:
             raise
@@ -542,12 +624,71 @@ async def post_review_upload(
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    return {
+    coverage_only = {
         "source_kind": "extract_upload",
         "validation_status": VALIDATION_STATUS,
         "disclaimer": upload_disclaimer("extract_upload"),
         "coverage_status": coverage_status,
     }
+    # Coverage-only uploads attach too (uniform slice shape, queue []) — coverage facts
+    # are evidence about the review's period even when the engine did not run.
+    if rid:
+        _attach_review_slice(rid, coverage_only, body, period=None)
+    return coverage_only
+
+
+# ── Review sessions (t-review-accumulation) — accumulate uploads into ONE review ──────
+
+class ReviewSessionRequest(BaseModel):
+    """POST /review-session body — the deliberate create action (R1)."""
+    label: str = Field("", description="Optional human label for the review session.")
+
+
+@app.post("/review-session")
+def post_review_session(req: Optional[ReviewSessionRequest] = None) -> dict:
+    """Create an explicit review session; uploads then attach via the review_id form field.
+
+    The id is server-generated (never client-derived — see agent/review_store.py's keying
+    note). Local-files store under a gitignored root; append-only. Candidates-not-verdicts
+    framing carries to every accumulated view.
+    """
+    record = review_store.create_review(label=(req.label if req is not None else ""))
+    return {
+        "review_id": record["review_id"],
+        "created_at": record["created_at"],
+        "label": record["label"],
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": DISCLAIMER,
+    }
+
+
+@app.get("/review-session")
+def get_review_sessions() -> dict:
+    """List review sessions (summaries only — id, label, slice count, source kinds)."""
+    return {"reviews": review_store.list_reviews()}
+
+
+@app.get("/review-session/{review_id}")
+def get_review_session(review_id: str) -> dict:
+    """The grouped-slices merged view of one review session (R6; 404 on unknown).
+
+    Slices are grouped, never flattened (two sightings of one document from two export
+    types are two evidentiary rows); supersession is VISIBLE (R2); coverage_matrix
+    carries per-source attribution so one slice's level never masks another's. Honest
+    limits (R3/R5, stated in docs): the signed working paper remains PER-SLICE, and a
+    decision recorded on one slice does not carry to a same-fingerprint finding on a
+    slice under a different config client_id (#45 territory).
+    """
+    try:
+        review_store._validated_review_id(review_id)
+    except review_store.ReviewStoreError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not review_store.review_exists(review_id):
+        raise HTTPException(status_code=404, detail=f"No review session {review_id!r}.")
+    view = review_store.merged_view(review_id)
+    view["validation_status"] = VALIDATION_STATUS
+    view["disclaimer"] = DISCLAIMER
+    return view
 
 
 def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = None) -> dict:
