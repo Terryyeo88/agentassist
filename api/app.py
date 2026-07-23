@@ -877,20 +877,35 @@ async def post_sign_upload(
                 ledger_dest.write_bytes(ledger_body)
 
         # --- PARSE BOUNDARY (mirrors post_review_upload) -------------------------------
+        # t-demo-prep-xero (D-2026-07-23-demo-prep-xero): sign-off now FORMAT-ROUTES,
+        # mirroring post_review_upload — F5 keeps precedence, then the sales-invoice
+        # workbook (B4's filed extract/sales-sign follow-up, sales half). Anything
+        # else stays a 422; both detectors self-guard False on garbage uploads, so
+        # the existing rejects-non-Xero pin holds unamended.
         gst_ledger: Optional[dict] = None
+        source_kind = None
         try:
-            if not is_xero_f5_workbook(dest):
+            if is_xero_f5_workbook(dest):
+                source_kind = "xero_f5_signed"
+                reader = XeroF5ChainReader(dest)
+                xero_period = parse_review_period(dest)
+                if ledger_dest is not None:
+                    gst_ledger = build_gst_ledger_input(ledger_dest, dest, xero_period)
+            elif is_xero_sales_invoice_workbook(dest):
+                source_kind = "xero_sales_signed"
+                reader = _build_xero_sales_reader(dest)
+                # A sales export carries no "for the period ..." line — derive from
+                # the documents' own DocDate range (same as the sales review branch).
+                xero_period = _derive_extract_period(reader)
+            else:
                 raise HTTPException(
                     status_code=422,
                     detail=(
-                        "Sign-off supports Xero IRAS-F5 exports only in this slice. "
-                        "Upload the 'Transactions by box number' F5 workbook."
+                        "Sign-off supports Xero IRAS-F5 and Xero sales-invoice exports "
+                        "only in this slice. Upload the 'Transactions by box number' F5 "
+                        "workbook or the sales-invoice export."
                     ),
                 )
-            reader = XeroF5ChainReader(dest)
-            xero_period = parse_review_period(dest)
-            if ledger_dest is not None:
-                gst_ledger = build_gst_ledger_input(ledger_dest, dest, xero_period)
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -908,15 +923,32 @@ async def post_sign_upload(
             # Reviewer identity stamped BEFORE the run: review()'s own render carries it
             # into the signature block. NEVER reads shared_artifacts() (that is the
             # frozen SBODEMOSG demo) — this signs the uploaded review, nothing else.
+            config_id = "xero_demo" if source_kind == "xero_f5_signed" else "xero_sales_demo"
             cfg = _dc_replace(
-                load_client_config("xero_demo", check_connectivity=False),
+                load_client_config(config_id, check_connectivity=False),
                 reviewer_name=reviewer,
                 firm_name=firm,
             )
-            inputs = ReviewInputs(
-                line_source=lambda: [], provider=None, reader=reader,
-                gst_ledger=gst_ledger,
-            )
+            if source_kind == "xero_f5_signed":
+                inputs = ReviewInputs(
+                    line_source=lambda: [], provider=None, reader=reader,
+                    gst_ledger=gst_ledger,
+                )
+            else:
+                # Sales sign runs the SAME inputs as the sales review branch — including
+                # sales_line_source, so the exempt pass runs and its artefact seals into
+                # the bundle (steps/exempt-supply-candidates.json). Over a fixture with
+                # no ES33/ESN33 line the pass short-circuits ok/0-candidates with NO
+                # model call — the signed paper stays hermetic by default.
+                from feeders.xero_sales_lines import xero_sales_lines
+
+                sales_reader = reader
+                inputs = ReviewInputs(
+                    line_source=lambda: [], provider=None, reader=sales_reader,
+                    sales_line_source=lambda: xero_sales_lines(
+                        sales_reader, xero_period["start"], xero_period["end"]
+                    ),
+                )
             # persist_artifacts default True — signing IS the persist event.
             result = review(cfg, xero_period, inputs)
             if result.status != "completed" or result.compile_output is None:
@@ -939,13 +971,15 @@ async def post_sign_upload(
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return {
-        "source_kind": "xero_f5_signed",
+        "source_kind": source_kind,
         "reviewer_name": reviewer,
         "firm_name": firm,
         "working_paper_path": str(result.report_pdf_path),
         "bundle_dir": str(result.bundle_dir),
         "validation_status": VALIDATION_STATUS,
-        "disclaimer": upload_disclaimer("xero_f5_upload"),
+        "disclaimer": upload_disclaimer(
+            "xero_f5_upload" if source_kind == "xero_f5_signed" else "xero_sales_upload"
+        ),
     }
 
 

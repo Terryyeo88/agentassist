@@ -32,6 +32,12 @@ config/clients/*.yaml
 
 # Generated outputs
 audit/
+# Demo kit (D-2026-07-23-demo-prep-xero): crafted fixture copy, ONE-time captured
+# live exempt artefact + provenance, offline replay server, rehearsal doc. NEVER
+# committed — the crafted line and captured output are demo artefacts (transient
+# show_ai_candidates flip lives in the kit's process memory, committed configs
+# keep False).
+demo-kit/
 # Durable per-client decision store (t-decision-persistence) — runtime data, never
 # committed. LOAD-BEARING: the frozen /review tests assume this store is absent in a
 # fresh checkout/CI; committing a ledger would change frozen-demo test output.

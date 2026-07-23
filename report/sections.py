@@ -256,7 +256,11 @@ class AICandidateRow:
         confidence:         Model's self-reported confidence level string.
         phrasing:           Verbatim reviewer-prompt text from the judgment artefact.
     """
-    doc_num: int
+    # int for SAP-sourced candidates; str for Xero-sourced ones (e.g. "INV-9001") —
+    # the row is only ever FORMATTED into table text, never used arithmetically
+    # (t-demo-prep-xero; same tolerant-doc_num class as orchestrator/steps.py's
+    # _coerce_doc_num from PR-B).
+    doc_num: int | str
     line_index: int
     doc_date: str
     card_name: str
@@ -1343,11 +1347,23 @@ def build_ai_candidates_section(
         )
 
     raw_candidates: list = judgment_artefact.get("candidates") or []
+
+    def _coerce_doc_num(value) -> int | str:
+        # Tolerant doc_num (t-demo-prep-xero): SAP candidates carry ints; Xero-sourced
+        # candidates carry string doc_nums ("INV-9001") verbatim. int() here crashed the
+        # first Xero-candidate render — keep numerics ints, pass strings through.
+        if value is None:
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return str(value)
+
     # Defensive str()/int() conversions throughout: AI-generated JSON may have
     # numeric fields as strings or None, so coerce rather than trust the types.
     candidates: list[AICandidateRow] = [
         AICandidateRow(
-            doc_num=int(c.get("doc_num") or 0),
+            doc_num=_coerce_doc_num(c.get("doc_num")),
             line_index=int(c.get("line_index") or 0),
             doc_date=str(c.get("doc_date") or ""),
             card_name=str(c.get("card_name") or ""),
