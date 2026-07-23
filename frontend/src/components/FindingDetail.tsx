@@ -50,6 +50,17 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
         ? "Not persistable — a probabilistic finding carries no deterministic fingerprint, so a decision cannot be recorded against it."
         : "Not persistable — this finding carries no deterministic fingerprint, so a decision cannot be recorded against it.";
 
+  // Dossier completeness (bucket-B wiring): surface the {required, present, missing, satisfied}
+  // status as reviewer-facing UI instead of burying it in the technical block. Honest by rule —
+  // an incomplete dossier reads "incomplete" and names what is missing; it is never hidden.
+  // Value-only field already in QUEUE_ITEM_KEYS (populated on Xero uploads by #133); no contract
+  // change. Empty on the frozen path → the block is omitted rather than shown as noise.
+  const comp = item.completeness;
+  const completenessHasData =
+    comp.required.length > 0 || comp.present.length > 0 || comp.missing.length > 0;
+  const completenessIncomplete =
+    completenessHasData && (!comp.satisfied || comp.missing.length > 0);
+
   function record() {
     if (notPersistable) return;
     if (NOTE_REQUIRED.has(action) && !note.trim()) {
@@ -85,6 +96,21 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
         <strong>AgentAssist flags — you decide.</strong> Candidate framing:{" "}
         {item.candidate_framing_text || "—"}
       </div>
+
+      {completenessHasData &&
+        (completenessIncomplete ? (
+          <div className="callout warn completeness">
+            <strong>Completeness: incomplete.</strong> {comp.present.length} of{" "}
+            {comp.required.length} required inputs present
+            {comp.missing.length > 0 && <> · missing: {comp.missing.join(", ")}</>}. Shown
+            honestly — an incomplete dossier is surfaced, never hidden.
+          </div>
+        ) : (
+          <div className="callout info completeness">
+            <strong>Completeness: complete.</strong> All {comp.required.length} required inputs
+            present.
+          </div>
+        ))}
 
       {item.demoted && (
         <div className="callout known">
@@ -142,6 +168,12 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
         reviewOnlyNote && (
           <div className="callout warn review-only">{reviewOnlyNote}</div>
         )
+      )}
+
+      {item.inputs_hash && item.inputs_hash !== "—" && item.inputs_hash !== "-" && (
+        <div className="meta provenance">
+          Inputs hash <span className="mono">{item.inputs_hash}</span>
+        </div>
       )}
 
       <details className="tech">
