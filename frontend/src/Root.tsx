@@ -15,8 +15,11 @@ export type Source = "b1_demo" | "xero_upload";
  *   - source === "b1_demo"    → mounts the EXISTING <App/> (the frozen SBODEMOSG review
  *                               surface, unchanged — it fetches GET /review + POST /command
  *                               on its own mount).
- *   - source === "xero_upload"→ mounts the COVERAGE-ONLY <XeroUploadPanel/> (upload → coverage;
- *                               the engine is never run here).
+ *   - source === "xero_upload"→ mounts <XeroUploadPanel/> (upload → the engine RUNS on the
+ *                               Xero-F5 / extract branches; findings render as candidates in the
+ *                               shared review screen with adjudication, and Xero-F5 sign-off).
+ *                               Sales/extract get decisions but no Sign button; a data-coverage
+ *                               preview accompanies every upload.
  *
  * Box-isolation: the source choice only gates which surface mounts. The B1 F5 boxes still come
  * straight from the frozen GET /review and are never recomputed by the selector.
