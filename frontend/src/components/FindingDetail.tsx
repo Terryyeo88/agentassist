@@ -61,6 +61,12 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
   const completenessIncomplete =
     completenessHasData && (!comp.satisfied || comp.missing.length > 0);
 
+  // Prior-decision history (bucket-B): the decision-ledger memory (annotation + prior_dispositions)
+  // was previously shown ONLY on demoted rows. Surface it on ANY row that carries prior history, so
+  // a non-demoted finding still shows what was decided before — while staying an active candidate.
+  const hasPriorHistory =
+    (item.prior_dispositions?.length ?? 0) > 0 || !!item.annotation;
+
   function record() {
     if (notPersistable) return;
     if (NOTE_REQUIRED.has(action) && !note.trim()) {
@@ -78,8 +84,20 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
       <div className="title serif">{item.display_name || item.check_id}</div>
       <div className="meta">
         Vendor <span className="mono">{item.vendor || "—"}</span> · Document{" "}
-        <span className="mono">{item.doc_num ?? "—"}</span> · Severity{" "}
-        <span className="mono">{item.severity || "—"}</span>
+        <span className="mono">{item.doc_num ?? "—"}</span>
+        {item.doc_date ? (
+          <>
+            {" "}
+            (<span className="mono">{item.doc_date}</span>)
+          </>
+        ) : null}{" "}
+        · Severity <span className="mono">{item.severity || "—"}</span>
+        {item.error_code ? (
+          <>
+            {" "}
+            · Code <span className="mono">{item.error_code}</span>
+          </>
+        ) : null}
       </div>
 
       <h4>What we found</h4>
@@ -118,6 +136,15 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
           {item.annotation || "previously accepted"} · prior dispositions:{" "}
           {(item.prior_dispositions || []).join(", ") || "—"}. Still surfaced for review —
           demotion lowers prominence, it never drops a finding.
+        </div>
+      )}
+
+      {!item.demoted && hasPriorHistory && (
+        <div className="callout info prior-decisions">
+          Prior decisions on file:{" "}
+          {(item.prior_dispositions || []).join(", ") || "—"}
+          {item.annotation ? <> · {item.annotation}</> : null}. Surfaced for context — this
+          finding is still an active candidate for review.
         </div>
       )}
 
