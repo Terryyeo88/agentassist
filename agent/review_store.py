@@ -99,6 +99,7 @@ def load_review(review_id: str) -> dict:
         raise FileNotFoundError(f"no review session {review_id!r}")
     create: dict = {}
     slices: list[dict] = []
+    signed: list[dict] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -107,7 +108,44 @@ def load_review(review_id: str) -> dict:
             create = record
         elif record.get("type") == "slice":
             slices.append(record)
-    return {"create": create, "slices": slices}
+        elif record.get("type") == "signed":
+            signed.append(record)
+    return {"create": create, "slices": slices, "signed": signed}
+
+
+def upload_bytes_path(review_id: str, sha256: str, suffix: str = ".xlsx") -> Path:
+    """Path of a slice's RETAINED upload bytes (t-accumulated-sign, Terry R1).
+
+    reviews/<review_id>/uploads/<sha256><suffix>. Retention is what lets an accumulated
+    sign re-run review() over the PRIMARY slice's exact bytes — the bounding invariant
+    (boxes byte-identical, never merged) true BY CONSTRUCTION. Forward-only: sessions
+    accumulated before retention landed have no bytes file, and the sign path refuses
+    LOUDLY rather than producing a partial paper.
+    """
+    if not re.fullmatch(r"[0-9a-f]{64}", sha256 or ""):
+        raise ReviewStoreError(f"sha256 must be 64 lowercase hex chars; got {sha256!r}")
+    if suffix not in (".xlsx", ".ledger.xlsx"):
+        raise ReviewStoreError(f"unsupported retained-bytes suffix {suffix!r}")
+    return _REVIEWS_ROOT / _validated_review_id(review_id) / "uploads" / f"{sha256}{suffix}"
+
+
+def save_upload_bytes(
+    review_id: str, sha256: str, data: bytes, suffix: str = ".xlsx"
+) -> Path:
+    """Retain an upload's bytes for later accumulated signing (idempotent by sha)."""
+    path = upload_bytes_path(review_id, sha256, suffix)
+    if not path.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    return path
+
+
+def append_signed(review_id: str, signed_record: dict) -> None:
+    """Append a type=="signed" event (append-only, like slices; history never rewritten)."""
+    record = dict(signed_record)
+    record["type"] = "signed"
+    record.setdefault("signed_at", _now_iso())
+    _append(_slices_path(review_id), record)
 
 
 def sha_already_attached(review_id: str, source_kind: str, sha256: str) -> bool:
@@ -179,6 +217,11 @@ def merged_view(review_id: str) -> dict:
         "slices": slices_out,
         "superseded": superseded,
         "coverage_matrix": coverage_matrix,
+        # t-accumulated-sign: sign events surface ADDITIVELY (existing keys unchanged).
+        "signed": [
+            {k: v for k, v in rec.items() if k != "type"}
+            for rec in data.get("signed", [])
+        ],
     }
 
 

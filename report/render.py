@@ -1835,6 +1835,77 @@ def _signature(m: ReportModel, story: list) -> None:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+def _accumulated(m: ReportModel, story: list) -> None:
+    """Accumulated review evidence (t-accumulated-sign) — rendered before sign-off.
+
+    BOUNDING INVARIANT made visible: the paper's boxes/structure come from the PRIMARY
+    slice alone (re-executed at signing); every non-primary slice below contributes
+    FINDINGS ONLY, rendered AS STORED at attach time with per-slice provenance
+    (source_kind, short sha, attach timestamp). Mixed vintage is shown via the
+    timestamps, never hidden. Coverage renders per-source so one slice's "examined"
+    never masks another's "unavailable". Supersession is listed visibly (Terry R2).
+    No-op when m.accumulated is None (every per-slice/legacy render byte-identical).
+    """
+    sec = m.accumulated
+    if sec is None or not getattr(sec, "show", False):
+        return
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(Paragraph(
+        f"Accumulated review evidence — session {sec.review_id}", _H1
+    ))
+    story.append(Paragraph(
+        (
+            f"Primary slice: {sec.primary_source_kind} (sha {sec.primary_sha256_short}), "
+            f"re-executed at signing on {sec.sign_run_at}. The F5 boxes and report "
+            "structure above derive from the primary slice ALONE — figures from other "
+            "exports are never merged into them. Each slice below contributes findings "
+            "only, rendered as stored at its attach timestamp (mixed vintages are "
+            "visible by these timestamps)."
+        ),
+        _BODY,
+    ))
+    for note in sec.superseded_notes:
+        story.append(Paragraph(f"Superseded: {note}", _BODY))
+    for group in sec.groups:
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph(
+            (
+                f"Evidence slice: {group.source_kind} · sha {group.sha256_short} · "
+                f"attached {group.uploaded_at[:10]} · {group.period_label}"
+            ),
+            _BODY,
+        ))
+        if not group.rows:
+            story.append(Paragraph("No findings stored for this slice.", _BODY))
+            continue
+        rows = [
+            [
+                _p(r.check_id), _p(r.display_name), _p(r.doc_num), _p(r.vendor),
+                _p(r.severity), _p(f"{r.description} [from {group.source_kind}]"),
+            ]
+            for r in group.rows
+        ]
+        story.append(_table(
+            [0.09 * _UW, 0.21 * _UW, 0.10 * _UW, 0.14 * _UW, 0.08 * _UW, 0.38 * _UW],
+            ["Check", "Display name", "Document", "Vendor", "Sev.", "Description · source"],
+            rows,
+        ))
+    if sec.coverage_rows:
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph(
+            "Coverage across slices (per-source attribution — one export's "
+            "'examined' never masks another's 'unavailable'):", _BODY,
+        ))
+        story.append(_table(
+            [0.20 * _UW, 0.18 * _UW, 0.12 * _UW, 0.50 * _UW],
+            ["Check", "Source", "Level", "Reason"],
+            [
+                [_p(c), _p(sk), _p(lv), _p(rs or "—")]
+                for (c, sk, lv, rs) in sec.coverage_rows
+            ],
+        ))
+
+
 def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     """Render a ReportModel to a PDF file and return the output Path.
 
@@ -1913,6 +1984,9 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _cross_findings(model, story)
     _judgment(model, story)
     _not_examined(model, story)
+    # t-accumulated-sign: accumulated evidence renders LAST before sign-off (no-op
+    # when model.accumulated is None — every per-slice render byte-identical).
+    _accumulated(model, story)
     _signature(model, story)
 
     NC = _make_numbered_canvas(model.cover.client_name)

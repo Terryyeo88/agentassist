@@ -1457,3 +1457,109 @@ def build_unified_candidates_section(
         documents_status=documents_status,
         disclaimer=disclaimer,
     )
+
+
+# ── Accumulated review evidence (t-accumulated-sign, D-2026-07-23-accumulated-sign) ──
+
+
+@dataclass
+class AccumulatedSliceRow:
+    """One NON-primary finding row, rendered AS STORED at attach time (Terry R6)."""
+    finding_id: str
+    check_id: str
+    display_name: str
+    vendor: str
+    doc_num: str
+    severity: str
+    description: str
+
+
+@dataclass
+class AccumulatedSliceGroup:
+    """One non-primary evidence slice: provenance header + its stored finding rows."""
+    source_kind: str
+    sha256_short: str
+    uploaded_at: str
+    period_label: str
+    rows: list
+
+
+@dataclass
+class AccumulatedReviewSection:
+    """The accumulated-review evidence section of ONE working paper over a session.
+
+    BOUNDING INVARIANT (rendered, never violated here): boxes and structure come from
+    the PRIMARY slice alone; the groups below contribute FINDINGS ONLY, each with
+    visible provenance (source_kind, short sha, attach timestamp). Mixed vintage is
+    VISIBLE: the primary is re-executed at sign time (sign_run_at) while groups render
+    as stored at their attach timestamps.
+    """
+    show: bool
+    review_id: str
+    primary_source_kind: str
+    primary_sha256_short: str
+    sign_run_at: str
+    groups: list
+    coverage_rows: list      # (check, source_kind, level, reason) — per-source, never masked
+    superseded_notes: list   # visible supersession (Terry R2)
+
+
+def build_accumulated_section(
+    view: dict,
+    *,
+    primary_source_kind: str,
+    primary_sha256: str,
+    sign_run_at: str,
+) -> AccumulatedReviewSection:
+    """Build the accumulated section from the #136 merged view (STORED rows, no re-run)."""
+    groups: list = []
+    for s in view.get("slices") or []:
+        if s.get("source_kind") == primary_source_kind:
+            continue
+        rows = [
+            AccumulatedSliceRow(
+                finding_id=str(r.get("finding_id") or ""),
+                check_id=str(r.get("check_id") or ""),
+                display_name=str(r.get("display_name") or r.get("check_id") or ""),
+                vendor=str(r.get("vendor") or "—"),
+                doc_num=str(r.get("doc_num") or "—"),
+                severity=str(r.get("severity") or "—"),
+                description=str(r.get("description") or "—"),
+            )
+            for r in (s.get("queue") or [])
+        ]
+        period = s.get("period")
+        period_label = (
+            f"{period.get('start')} to {period.get('end')}"
+            if isinstance(period, dict) else "no declared period"
+        )
+        groups.append(AccumulatedSliceGroup(
+            source_kind=str(s.get("source_kind") or ""),
+            sha256_short=str(s.get("sha256") or "")[:8],
+            uploaded_at=str(s.get("uploaded_at") or ""),
+            period_label=period_label,
+            rows=rows,
+        ))
+    coverage_rows = [
+        (check, str(e.get("source_kind") or ""), str(e.get("level") or ""),
+         str(e.get("reason") or ""))
+        for check, entries in sorted((view.get("coverage_matrix") or {}).items())
+        for e in entries
+    ]
+    superseded_notes = [
+        (
+            f"{x.get('source_kind')} export superseded {str(x.get('superseded_at') or '')[:10]} "
+            f"(sha {str(x.get('sha256') or '')[:8]}, attached {str(x.get('uploaded_at') or '')[:10]})"
+        )
+        for x in (view.get("superseded") or [])
+    ]
+    return AccumulatedReviewSection(
+        show=True,
+        review_id=str(view.get("review_id") or ""),
+        primary_source_kind=primary_source_kind,
+        primary_sha256_short=str(primary_sha256 or "")[:8],
+        sign_run_at=sign_run_at,
+        groups=groups,
+        coverage_rows=coverage_rows,
+        superseded_notes=superseded_notes,
+    )
