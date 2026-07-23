@@ -516,10 +516,11 @@ def test_t8_cross_slice_decision_non_carry_structural(client, hermetic):
     HONEST DRIVE (R5): a decision recorded under client_id ``xero_demo`` (the F5 slice) must not
     demote a same-fingerprint row on the ``xero_sales_demo`` sales slice -- they read DIFFERENT
     decision stores (decision_store keys on client_id, review_store keys on review_id, and the
-    slice records the client_id as PROVENANCE ONLY). The committed sales fixture yields zero
-    findings, so there is no finding-bearing row to exercise the non-carry directly; the
-    STRUCTURAL fact behind it is asserted instead -- the two slices in ONE session carry DISTINCT
-    client_id values (xero_demo vs xero_sales_demo). UX consequence (the reason this is pinned):
+    slice records the client_id as PROVENANCE ONLY). The committed sales fixture yields no
+    E-CHECK findings (its only row is the COMPLETENESS purchase-volume check, whose fingerprint
+    counterparty differs from any F5 vendor row), so there is no same-fingerprint pair to
+    exercise the non-carry directly; the STRUCTURAL fact behind it is asserted instead -- the
+    two slices in ONE session carry DISTINCT client_id values (xero_demo vs xero_sales_demo). UX consequence (the reason this is pinned):
     adjudicating a finding on the F5 slice does NOT ripple to the sales slice; unifying
     adjudication across an entity's slices is #45 territory, named per Terry R5.
 
