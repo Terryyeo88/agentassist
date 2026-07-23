@@ -122,6 +122,15 @@ export interface CoverageStatusRow {
   reason: string;
 }
 
+// Present only on the Xero sales-invoice branch ("xero_sales_upload"): lines carrying an
+// accepted-but-set-aside TaxType (e.g. "No Tax") held OUT OF SCOPE. Shape mirrors the backend
+// OUT_OF_SCOPE_KEYS (api/app.py). Reading it is frontend-only — the backend already returns it.
+export interface OutOfScope {
+  count: number;
+  by_code: Record<string, number>;
+  reason: string;
+}
+
 export interface UploadCoverageResponse {
   source_kind: string;
   validation_status: string;
@@ -133,6 +142,8 @@ export interface UploadCoverageResponse {
   // that the run used a DEFAULT DEMO config (not the uploader's). Drives the LOUD default-config
   // caveat. Value: "default_demo".
   config_scope?: string;
+  // Present only on the Xero sales-invoice branch: the visible out-of-scope-lines note.
+  out_of_scope?: OutOfScope;
 }
 
 // Same-origin in dev: Vite proxies `/api/*` → the uvicorn backend (see vite.config.ts).
