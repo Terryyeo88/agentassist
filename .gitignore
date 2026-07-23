@@ -42,6 +42,9 @@ demo-kit/
 # committed. LOAD-BEARING: the frozen /review tests assume this store is absent in a
 # fresh checkout/CI; committing a ledger would change frozen-demo test output.
 decisions/
+# Review-session accumulation store (t-review-accumulation) — runtime data, never
+# committed. Same CI-absence rationale as decisions/ above.
+reviews/
 exploration-notes/t1.4-reports/
 exploration-notes/t1.6-tool-outputs/*.json
 *.pdf
