@@ -11,6 +11,16 @@ row unconditionally (store-independent), across all three upload ``source_kind``
 (``serialize_ledger_recon_queue``, finding_id ``ledger_recon:*``) DELIBERATELY keep
 fingerprint None -- no counterparty; #46 territory.
 
+RULE-AUTHOR AMENDMENT (t-fingerprint-v1, hand-authored -- separation of duties).
+The fingerprint key WIDENED from (error_code, counterparty) to
+(error_code, counterparty, doc_num) under D-2026-07-24-fingerprint-v1. The v0 pair was
+DEGENERATE: two documents from one supplier carrying the same error hashed identically, so one
+adjudication swept both. ``_assert_fingerprint_always`` -- the single recompute site in this
+file, which every test below routes through -- now carries ``doc_num``. Nothing else in this
+file changes: the enabler property (fingerprint-always, store-independent) is orthogonal to the
+key's composition, and the ledger-recon-rows-stay-None assertion is unaffected (those rows have
+no counterparty and are still deliberately un-fingerprinted).
+
 THREE-TIMES RULE (prompt + code + THIS test): the "every detect row carries its deterministic
 fingerprint regardless of store contents" invariant is pinned in the panel prompt/spec, will be
 enforced in ``serialize_xero_queue`` code, and is asserted here. Ledger-recon rows staying
@@ -133,9 +143,18 @@ def _ledger_rows(queue: list[dict]) -> list[dict]:
 
 def _assert_fingerprint_always(row: dict) -> None:
     """The B3a-2 enabler, asserted on ONE detect row. Reads ``vendor`` as the counterparty
-    (flatten_finding_card lifts card_name -> vendor), exactly as Terry's file does."""
+    (flatten_finding_card lifts card_name -> vendor), exactly as Terry's file does.
+
+    t-fingerprint-v1: ``doc_num`` joined the key, so it is recomputed here too. It is passed
+    RAW -- the normaliser inside decision_ledger does the canonicalisation, and duplicating
+    that here would hide a regression in the normaliser.
+    """
     expected = compute_finding_fingerprint(
-        {"error_code": row["error_code"], "card_name": row["vendor"]}
+        {
+            "error_code": row["error_code"],
+            "card_name": row["vendor"],
+            "doc_num": row["doc_num"],
+        }
     )
     # FAILS TODAY: the row carries fingerprint None on an empty store (None != "sha256:...").
     assert row["fingerprint"] == expected, (
@@ -227,7 +246,8 @@ def test_a2_mixed_f5_plus_ledger_detect_fingerprinted_ledger_none(client, hermet
         _assert_fingerprint_always(row)
 
     # Backend half of no-silent-dead-buttons: ledger-recon rows are NOT persistable -> None.
-    # (True both today and after B3a-2; asserted so a future widening cannot pass silently.)
+    # (True both today and after B3a-2; asserted so a future widening cannot pass silently.
+    # t-fingerprint-v1 did NOT change this: recon rows still have no counterparty.)
     for row in ledger:
         assert row["fingerprint"] is None, (
             "ledger-recon rows carry no counterparty -> deliberately un-fingerprinted (#46)"

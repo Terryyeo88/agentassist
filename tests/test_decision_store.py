@@ -42,9 +42,12 @@ _FP_A = "sha256:" + "a" * 64
 _FP_B = "sha256:" + "b" * 64
 
 #: The dataclasses.asdict shape append_decision returns / persists (one JSON line).
+#: t-fingerprint-v1 (hand-authored): fingerprint_version is the 10th key. It records the
+#: algorithm the entry's fingerprint was computed under; ABSENT == v0 by definition.
 _ENTRY_KEYS = {
     "entry_id",
     "fingerprint",
+    "fingerprint_version",
     "disposition",
     "reviewer",
     "reason",
