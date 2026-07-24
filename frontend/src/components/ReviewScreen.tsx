@@ -1,6 +1,8 @@
+import { useState } from "react";
 import type { Group, QueueItem } from "../api";
 import { Queue, type FacetProps } from "./Queue";
 import { FindingDetail } from "./FindingDetail";
+import { DocumentViewer } from "./DocumentViewer";
 
 /**
  * The adjudication capability the review surface needs to let a reviewer decide + sign.
@@ -52,6 +54,12 @@ export function ReviewScreen({
 }: Props) {
   const selected = queue.find((it) => it.finding_id === selectedId) ?? null;
 
+  // C1 source-document viewer: opened by the FindingDetail trigger, rendered as a THIRD pane
+  // BESIDE the detail (a flex column inside the grid's detail cell) — never a full-page
+  // takeover, and the queue stays visible in its own grid column. Reset when the finding
+  // changes so the viewer never shows a stale doc for a different finding.
+  const [openDoc, setOpenDoc] = useState<number | null>(null);
+
   return (
     <>
       <Queue
@@ -63,21 +71,27 @@ export function ReviewScreen({
         onSelect={onSelect}
         facets={facets}
       />
-      {selected ? (
-        <FindingDetail
-          item={selected}
-          decision={adjudication?.decided[selected.finding_id]}
-          onRecord={
-            adjudication
-              ? (action, note) => adjudication.onRecord(selected.finding_id, action, note)
-              : undefined
-          }
-          onOpenSign={adjudication?.onOpenSign}
-          reviewOnlyNote={reviewOnlyNote}
-        />
-      ) : (
-        <div className="panel detail">Select a finding from the queue.</div>
-      )}
+      <div className="detail-col">
+        {selected ? (
+          <FindingDetail
+            item={selected}
+            decision={adjudication?.decided[selected.finding_id]}
+            onRecord={
+              adjudication
+                ? (action, note) => adjudication.onRecord(selected.finding_id, action, note)
+                : undefined
+            }
+            onOpenSign={adjudication?.onOpenSign}
+            reviewOnlyNote={reviewOnlyNote}
+            onViewDocument={setOpenDoc}
+          />
+        ) : (
+          <div className="panel detail">Select a finding from the queue.</div>
+        )}
+        {openDoc != null && (
+          <DocumentViewer docNum={openDoc} onClose={() => setOpenDoc(null)} />
+        )}
+      </div>
     </>
   );
 }
