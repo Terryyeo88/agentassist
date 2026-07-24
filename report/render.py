@@ -1906,6 +1906,78 @@ def _accumulated(m: ReportModel, story: list) -> None:
         ))
 
 
+def _adjudications(m: ReportModel, story: list) -> None:
+    """Reviewer adjudications (t-decision-render) — rendered before sign-off.
+
+    Renders the decision view handed in AS DATA (api builds it; this module imports
+    nothing from agent/ — tests/test_leaf_import_purity.py). R3: DISPOSITIONS only,
+    never the UI verb (the free-text reason is never rendered). R4: the FULL ordered
+    history per finding — a reviewer changing their mind is exactly what a working
+    paper must show. R5b: additive — this section annotates; it never removes a
+    finding from the paper, so the paper cannot contradict its sealed detect.issues.
+    R2: superseded (pre-current-version) decisions surface as an aggregate count line
+    only — per-finding attribution of a superseded entry is structurally impossible.
+    No-op when m.adjudications is None/hidden (decision-free renders byte-identical).
+    Wording deliberately avoids the unamendable negative text pins (R5c).
+    """
+    sec = m.adjudications
+    if sec is None or not getattr(sec, "show", False):
+        return
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(Paragraph("Reviewer adjudications (recorded decisions)", _H1))
+    story.append(Paragraph(
+        (
+            "The entries below are reviewer decisions read from AgentAssist's "
+            "append-only decision ledger, reported AS STORED. They record what a "
+            "human decided and assert nothing about the correctness of the "
+            "underlying findings. Every finding remains shown on this paper — a "
+            "set-aside decision demotes a finding, it never removes it."
+        ),
+        _BODY,
+    ))
+    for block in sec.clients:
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph(
+            f"Decision store: {block.get('client_id') or '—'}", _BODY
+        ))
+        for f in block.get("findings") or []:
+            marker = (
+                " — SET ASIDE (demoted by prior adjudication; still shown above)"
+                if f.get("demoted") else ""
+            )
+            doc_num = f.get("doc_num") or "—"
+            story.append(Paragraph(
+                f"{f.get('check_id')} · {f.get('vendor') or '—'} · document "
+                f"{doc_num}{marker}",
+                _BODY,
+            ))
+            rows = [
+                [
+                    _p(str(i + 1)),
+                    _p(h.get("disposition") or "—"),
+                    _p(h.get("reviewer") or "—"),
+                    _p(h.get("timestamp") or "—"),
+                    _p(h.get("period") or "—"),
+                ]
+                for i, h in enumerate(f.get("history") or [])
+            ]
+            story.append(_table(
+                [0.05 * _UW, 0.22 * _UW, 0.28 * _UW, 0.30 * _UW, 0.15 * _UW],
+                ["#", "Disposition", "Reviewer", "Recorded at", "Period"],
+                rows,
+            ))
+        count = block.get("superseded_count") or 0
+        if count > 0:
+            story.append(Paragraph(
+                (
+                    f"{count} stored adjudication(s) for this client do not apply to "
+                    "this review because they were recorded under a superseded "
+                    "finding-identity version."
+                ),
+                _BODY,
+            ))
+
+
 def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     """Render a ReportModel to a PDF file and return the output Path.
 
@@ -1987,6 +2059,10 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     # t-accumulated-sign: accumulated evidence renders LAST before sign-off (no-op
     # when model.accumulated is None — every per-slice render byte-identical).
     _accumulated(model, story)
+    # t-decision-render: reviewer adjudications render between the evidence and the
+    # sign-off block (no-op when model.adjudications is None/hidden — every
+    # decision-free render byte-identical).
+    _adjudications(model, story)
     _signature(model, story)
 
     NC = _make_numbered_canvas(model.cover.client_name)
