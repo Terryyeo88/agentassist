@@ -24,17 +24,24 @@ finding surface, via agent.dossier.extract_findings) carries only
 in ``classify.issues`` and would require the deferred classify<->detect reconciliation
 noted in orchestrator/steps.py:438-440).
 
-So the v0 key is the minimal STABLE recurrence key over fields the finding ACTUALLY
-carries:
+The v0 key was the minimal recurrence key over (error_code, counterparty) — and it
+proved DEGENERATE: two documents from one supplier with the same error shared one key,
+so one adjudication swept both (the modal real-world defect: a wrong tax code on a
+supplier master propagating to every invoice from that supplier). v1 therefore widens
+the key (D-2026-07-24-fingerprint-v1):
 
-    FINGERPRINT_KEYS = ("error_code", "counterparty")   # counterparty = card_name, normalized
+    FINGERPRINT_KEYS = ("error_code", "counterparty", "doc_num")
 
-``doc_num`` is deliberately EXCLUDED (too specific — it would defeat cross-period
-recurrence matching, the whole point of a fingerprint). The key is one explicit
-documented constant so widening it later is a localized, tested change — not a rewrite.
+``doc_num`` now JOINS the key, canonicalized str(doc_num).strip() (absent -> "" — see
+_normalize_doc_num; never int()-coerced, never casefolded). Cross-period recurrence of
+the SAME document still matches (amount excluded); different documents no longer sweep
+each other. v0 entries (fingerprint_version absent) are INERT under v1 — by
+construction, not by gate — and the non-application is surfaced via
+count_superseded_entries().
 
-Rationale for erring COARSE: given never-suppress + mandatory human adjudication, an
-over-broad demote (still fully visible, human still adjudicates) is safer than a narrow
+Rationale for the v0 coarse posture (historical): given never-suppress + mandatory
+human adjudication, an over-broad demote (still fully visible, human still adjudicates)
+was judged safer than a narrow
 key (e.g. amount-in-key -> cross-band brittleness -> MISSED recurrences). Enrichment
 priority for the specialist: (1) VatGroup — clean categorical discriminator, needs the
 reconciliation built first; (2) CardCode replacing card_name; (3) amount_band — last and
