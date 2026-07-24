@@ -58,7 +58,7 @@ export function ReviewScreen({
   // BESIDE the detail (a flex column inside the grid's detail cell) — never a full-page
   // takeover, and the queue stays visible in its own grid column. Reset when the finding
   // changes so the viewer never shows a stale doc for a different finding.
-  const [openDoc, setOpenDoc] = useState<number | null>(null);
+  const [openDoc, setOpenDoc] = useState<string | number | null>(null);
 
   return (
     <>
