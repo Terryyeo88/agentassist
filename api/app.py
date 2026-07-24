@@ -95,6 +95,7 @@ from feeders.xero_sales_reader import (
 )
 from ui.artifacts import VALIDATION_STATUS, DemoArtifacts, load_demo_artifacts
 from ui.sign import DEFAULT_OUTPUT_DIR, sign_working_paper
+from documents.provider import FixtureDocumentProvider
 
 log = logging.getLogger(__name__)
 
@@ -235,6 +236,13 @@ _WORKING_PAPER_ROOTS = tuple(p.resolve() for p in (
     _REPO / "audit",                               # sealed bundles (durable report.pdf)
 ))
 
+# C1: source-document viewer backing. Offline-safe fixture provider (INV-<doc_num>.pdf under
+# tests/fixtures/documents). Terry can swap for CompositeProvider([UploadProvider,
+# B1AttachmentProvider]) for real deployments; the route shape is unchanged. Reuses _REPO
+# (defined above for C2) rather than recomputing the repo root.
+_DOC_FIXTURE_DIR = _REPO / "tests" / "fixtures" / "documents"
+_DOC_PROVIDER = FixtureDocumentProvider(_DOC_FIXTURE_DIR)
+
 
 # --------------------------------------------------------------------------- #
 # Single artifacts source — load ONCE, share the same dicts everywhere (T6.2).
@@ -349,6 +357,17 @@ def get_working_paper(path: str) -> FileResponse:
     if not any(candidate.is_relative_to(r) for r in _WORKING_PAPER_ROOTS):
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(candidate, media_type="application/pdf", filename=candidate.name)
+
+
+@app.get("/document/{doc_num}")
+def get_document(doc_num: int) -> FileResponse:
+    """Serve the source invoice PDF for a document number, or 404 if none on file.
+    Read-only. doc_num is an int (FastAPI-validated → no traversal); the provider maps it
+    to a known fixtures dir. The 404 is the UI's honest 'no source document on file' signal."""
+    path = _DOC_PROVIDER.get_document(doc_num)
+    if path is None or not Path(path).is_file():
+        raise HTTPException(status_code=404, detail="No source document on file")
+    return FileResponse(Path(path), media_type="application/pdf", filename=f"INV-{doc_num}.pdf")
 
 
 @app.get("/review/{client}/{period}")
