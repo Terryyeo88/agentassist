@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 
-export function DocumentViewer({ docNum, onClose }: { docNum: number; onClose: () => void }) {
+export function DocumentViewer({ docNum, onClose }: { docNum: string | number; onClose: () => void }) {
   const [state, setState] = useState<"loading" | "ready" | "absent" | "error">("loading");
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let objUrl: string | null = null;
     let cancelled = false;
     setState("loading"); setUrl(null);
-    fetch(`/api/document/${docNum}`)
+    fetch(`/api/document/${encodeURIComponent(String(docNum))}`)
       .then(async (r) => {
         if (cancelled) return;
         if (r.status === 404) return setState("absent");
@@ -23,14 +23,14 @@ export function DocumentViewer({ docNum, onClose }: { docNum: number; onClose: (
   return (
     <aside className="doc-viewer" aria-label="Source document">
       <div className="doc-viewer-head">
-        Source document · <span className="mono">Doc {docNum}</span>
+        Source document · <span className="mono">Doc {String(docNum)}</span>
         <button className="link" onClick={onClose}>Close</button>
       </div>
       {state === "loading" && <div className="loading">Loading source document…</div>}
       {state === "absent" && <div className="callout warn">No source document on file for this finding.</div>}
       {state === "error" && <div className="callout warn">Couldn’t load the source document.</div>}
       {state === "ready" && url && (
-        <object data={url} type="application/pdf" className="doc-frame" aria-label={`Invoice ${docNum}`} />
+        <object data={url} type="application/pdf" className="doc-frame" aria-label={`Invoice ${String(docNum)}`} />
       )}
     </aside>
   );
