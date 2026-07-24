@@ -76,9 +76,19 @@ DISPOSITIONS = frozenset({ACCEPTED, REJECTED, KNOWN_ACCEPTED})
 #: Disposition(s) that trigger DEMOTE on recurrence (Invariant 5). v0: KNOWN_ACCEPTED only.
 DEMOTE_DISPOSITIONS = frozenset({KNOWN_ACCEPTED})
 
-#: The fingerprint key set (v0/PROVISIONAL). One explicit documented constant so
-#: widening it later is a localized, tested change. See module docstring for rationale.
-FINGERPRINT_KEYS = ("error_code", "counterparty")
+#: The fingerprint key set — v1 (D-2026-07-24-fingerprint-v1). doc_num joined the key
+#: because the v0 pair (error_code, counterparty) was DEGENERATE: two documents from
+#: one supplier carrying the same error shared one key, so one adjudication swept
+#: both — the modal real-world defect (a wrong tax code defaulted on a supplier
+#: master propagates to every invoice from that supplier). Proven at the fingerprint
+#: layer 2026-07-24; the engine-path double-proof was honestly skipped.
+FINGERPRINT_KEYS = ("error_code", "counterparty", "doc_num")
+
+#: The CURRENT fingerprint algorithm version, stamped on every NEW AdjudicationEntry
+#: (Terry R4: HASHED into entry_hash for new entries). Records with the field ABSENT
+#: are v0 by definition — see entry_fingerprint_version(), the one place that rule
+#: is named.
+FINGERPRINT_VERSION = "v1"
 
 _GENESIS_HASH = "sha256:" + "0" * 64
 
@@ -109,8 +119,34 @@ def _compute_entry_hash(entry_fields: dict, prev_hash: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _normalize_counterparty(card_name: Any) -> str:
-    """Normalize a counterparty name for stable matching: strip + casefold."""
-    return ("" if card_name is None else str(card_name)).strip().casefold()
+    """Normalize a counterparty name: collapse ALL whitespace runs + casefold.
+
+    R2b (t-fingerprint-v1): v0 only strip()ed the ends, so "OldRate  Supplies"
+    (two internal spaces) keyed differently from "OldRate Supplies" — same defect
+    class as the doc_num degeneracy, fixed in the same key change. " ".join(split())
+    collapses internal runs AND strips ends.
+    """
+    return " ".join(("" if card_name is None else str(card_name)).split()).casefold()
+
+
+#: R2 (t-fingerprint-v1): the EXPLICIT canonical form for an ABSENT doc_num — the
+#: empty string, NEVER str(None). Named so absence is a deliberate value, not an
+#: accident of coercion.
+_ABSENT_DOC_NUM = ""
+
+
+def _normalize_doc_num(doc_num: Any) -> str:
+    """Canonical doc_num for the v1 key: str(doc_num).strip(); absent -> "".
+
+    R2 (Terry): document numbers are IDENTIFIERS — no casefold (failing-to-reapply
+    is the honest failure; wrongly-reapplying is the defect) and NEVER int()-coerced
+    (the #34 pattern silently changes hash inputs). str-canonical means the same
+    document reached via the extract path (int 605) and a string path ("605")
+    produces one key.
+    """
+    if doc_num is None:
+        return _ABSENT_DOC_NUM
+    return str(doc_num).strip()
 
 
 def _fingerprint_fields(finding: Any) -> dict:
@@ -134,16 +170,19 @@ def _fingerprint_fields(finding: Any) -> dict:
     return {
         "error_code": "" if error_code is None else str(error_code).strip(),
         "counterparty": _normalize_counterparty(payload.get("card_name")),
+        "doc_num": _normalize_doc_num(payload.get("doc_num")),
     }
 
 
 def compute_finding_fingerprint(finding: Any) -> str:
-    """Return "sha256:..." over the canonical v0 key for *finding*.
+    """Return "sha256:..." over the canonical v1 key for *finding*.
 
     DETERMINISTIC, not AI. The key is exactly ``FINGERPRINT_KEYS`` — error_code +
-    normalized counterparty — anchored via the shared ``compute_inputs_hash`` primitive
-    (sha256 over canonical JSON). Same finding -> same fingerprint; findings differing
-    only in doc_num or amount share a fingerprint (cross-period recurrence, by design).
+    normalized counterparty + canonical doc_num — anchored via the shared
+    ``compute_inputs_hash`` primitive (sha256 over canonical JSON). Same finding ->
+    same fingerprint; two documents from one supplier with the same error now key
+    SEPARATELY (the v0 degeneracy is dead). Findings differing only in amount still
+    share a key (cross-period recurrence of the SAME document, by design).
     """
     fields = _fingerprint_fields(finding)
     keyed = {k: fields[k] for k in FINGERPRINT_KEYS}
@@ -168,6 +207,11 @@ class AdjudicationEntry:
         timestamp:   ISO-8601 timestamp of the adjudication.
         prev_hash:   entry_hash of the previous entry (genesis for the first).
         entry_hash:  sha256 over the entry fields + prev_hash (the chain link).
+        fingerprint_version: The fingerprint algorithm version this entry's key was
+                     computed under. None means the entry predates versioning — v0
+                     BY DEFINITION (see entry_fingerprint_version()). Stamped
+                     FINGERPRINT_VERSION on every new append; HASHED for versioned
+                     entries (Terry R4).
     """
     entry_id: str
     fingerprint: str
@@ -178,11 +222,47 @@ class AdjudicationEntry:
     timestamp: str
     prev_hash: str
     entry_hash: str
+    fingerprint_version: Optional[str] = None
+
+
+def entry_fingerprint_version(entry: Any) -> str:
+    """THE absent==v0 rule, named in one place (Terry R1/R4: explicit, never implicit).
+
+    A record with no ``fingerprint_version`` field (or None) was written before
+    versioning existed — its key was computed under the superseded v0 composition.
+    Accepts an AdjudicationEntry or a stored record dict.
+    """
+    if isinstance(entry, dict):
+        version = entry.get("fingerprint_version")
+    else:
+        version = getattr(entry, "fingerprint_version", None)
+    return "v0" if version is None else str(version)
+
+
+def count_superseded_entries(entries: Any) -> int:
+    """Count stored adjudications whose fingerprint version is SUPERSEDED (Terry R1).
+
+    These entries are INERT: their keys were computed under an older composition, so
+    they can never match a finding keyed under FINGERPRINT_VERSION — deliberately
+    (applying a v0 entry forward would re-import the very sweep-collision v1 fixes).
+    The count is surfaced as DATA (nothing renders) so the non-application is never
+    silent: a reviewer can see how many stored decisions no longer apply.
+    """
+    return sum(
+        1 for e in entries
+        if entry_fingerprint_version(e) != FINGERPRINT_VERSION
+    )
 
 
 def _entry_fields_without_hash(entry: AdjudicationEntry) -> dict:
-    """Return the entry fields that are inputs to entry_hash (excludes entry_hash)."""
-    return {
+    """Return the entry fields that are inputs to entry_hash (excludes entry_hash).
+
+    ABSENCE-AWARE HASHING (Terry R4): a v0 entry (fingerprint_version None) hashes
+    over the HISTORICAL field-set WITHOUT the version key, so historical entry_hash
+    values remain UNCHANGED LITERALS. A versioned entry includes the field, making
+    the version itself tamper-evident.
+    """
+    fields = {
         "disposition": entry.disposition,
         "entry_id": entry.entry_id,
         "fingerprint": entry.fingerprint,
@@ -192,6 +272,9 @@ def _entry_fields_without_hash(entry: AdjudicationEntry) -> dict:
         "reviewer": entry.reviewer,
         "timestamp": entry.timestamp,
     }
+    if entry.fingerprint_version is not None:
+        fields["fingerprint_version"] = entry.fingerprint_version
+    return fields
 
 
 class DecisionLedgerVerificationError(Exception):
@@ -235,6 +318,10 @@ class DecisionLedger:
             "disposition": disposition,
             "entry_id": str(uuid.uuid4()),
             "fingerprint": fingerprint,
+            # R4: every NEW entry is stamped with the current algorithm version, and
+            # the field is HASHED (tamper-evident). v0 entries hash without it —
+            # see _entry_fields_without_hash's absence-aware rule.
+            "fingerprint_version": FINGERPRINT_VERSION,
             "period": period,
             "prev_hash": prev_hash,
             "reason": reason,
@@ -253,6 +340,7 @@ class DecisionLedger:
             timestamp=fields["timestamp"],
             prev_hash=fields["prev_hash"],
             entry_hash=entry_hash,
+            fingerprint_version=FINGERPRINT_VERSION,
         )
         self.entries.append(entry)
         return entry
@@ -301,6 +389,9 @@ class DecisionLedger:
                 timestamp=d["timestamp"],
                 prev_hash=d["prev_hash"],
                 entry_hash=d["entry_hash"],
+                # ABSENCE PRESERVED (R4): a legacy line without the key stays None
+                # (== v0), so its historical entry_hash re-derives unchanged.
+                fingerprint_version=d.get("fingerprint_version"),
             ))
         return ledger
 
@@ -357,6 +448,13 @@ def annotate_and_demote(
     out: list[AnnotatedFinding] = []
     for finding in findings:
         fp = compute_finding_fingerprint(finding)
+        # THE INERT RULE (Terry R1, explicit — never an implicit fallthrough): the
+        # lookup joins the CURRENT-version recomputed key against stored keys. A v0
+        # entry's stored key was computed under the superseded 2-field composition,
+        # so it can never equal a v1 key — v0 entries are INERT BY DESIGN. Applying
+        # them forward would re-import the sweep-collision v1 exists to kill. The
+        # non-application is surfaced as data via count_superseded_entries(), never
+        # silently swallowed. History is untouched — the entries remain in the chain.
         priors = ledger.lookup(fp)
         dispositions = tuple(e.disposition for e in priors)
         demoted = any(d in DEMOTE_DISPOSITIONS for d in dispositions)
