@@ -701,6 +701,44 @@
         "MEDIUM": 5
       }
     },
+    "document_dup_findings": [
+      {
+        "card_name": "Acme Associates",
+        "check": "DUP_SAME_DAY",
+        "description": "Consider reviewing whether DocNums 605 and 608 (same supplier, same total, same day) represent the same purchase entered twice.",
+        "doc_date": "2024-07-15",
+        "doc_nums": [
+          605,
+          608
+        ],
+        "doc_total": 856.0,
+        "note": "candidate for reviewer attention"
+      },
+      {
+        "card_name": "Acme Associates",
+        "check": "DUP_SAME_DAY",
+        "description": "Consider reviewing whether DocNums 606 and 609 (same supplier, same total, same day) represent the same purchase entered twice.",
+        "doc_date": "2024-07-15",
+        "doc_nums": [
+          606,
+          609
+        ],
+        "doc_total": 4815.0,
+        "note": "candidate for reviewer attention"
+      },
+      {
+        "card_name": "Acme Associates",
+        "check": "DUP_SAME_DAY",
+        "description": "Consider reviewing whether DocNums 607 and 610 (same supplier, same total, same day) represent the same purchase entered twice.",
+        "doc_date": "2024-07-15",
+        "doc_nums": [
+          607,
+          610
+        ],
+        "doc_total": 1284.0,
+        "note": "candidate for reviewer attention"
+      }
+    ],
     "e1_reconciliation": {
       "calc_doc_nums": [
         958,
