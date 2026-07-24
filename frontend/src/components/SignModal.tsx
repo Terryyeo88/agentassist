@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { postSign, type SignResponse } from "../api";
 
 // The subset of the sign response the modal renders — satisfied structurally by BOTH
@@ -28,6 +28,23 @@ export function SignModal({ onClose, onSigned, initialReviewer, sign: signTransp
   const [err, setErr] = useState("");
   const [result, setResult] = useState<SignResult | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // C2 download: the signed working paper is served read-only by GET /working-paper?path=…
+  // (path-safe, allowlisted roots). Covers BOTH sign transports — /sign and /sign/upload
+  // each return working_paper_path. Best-effort auto-download once; the visible button below
+  // is the honest fallback when the browser blocks the programmatic click.
+  const autoDownloaded = useRef(false);
+  const downloadUrl = result
+    ? `/api/working-paper?path=${encodeURIComponent(result.working_paper_path)}`
+    : null;
+  useEffect(() => {
+    if (downloadUrl && !autoDownloaded.current) {
+      autoDownloaded.current = true;                 // best-effort auto-download, once
+      const a = document.createElement("a");
+      a.href = downloadUrl; a.download = "";
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+  }, [downloadUrl]);
 
   async function sign() {
     if (!reviewer.trim()) {
@@ -81,6 +98,9 @@ export function SignModal({ onClose, onSigned, initialReviewer, sign: signTransp
             <p style={{ fontSize: 12 }} className="mono">
               {result.working_paper_path}
             </p>
+            {downloadUrl && (
+              <a className="button primary" href={downloadUrl} download>Download working paper (PDF)</a>
+            )}
             <div className="actions">
               <button className="primary" onClick={onClose}>
                 Done
