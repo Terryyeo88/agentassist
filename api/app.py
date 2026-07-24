@@ -927,6 +927,19 @@ def get_review_session(review_id: str) -> dict:
     if not review_store.review_exists(review_id):
         raise HTTPException(status_code=404, detail=f"No review session {review_id!r}.")
     view = review_store.merged_view(review_id)
+    # t-fingerprint-v1 (Terry R1): surface, AS DATA, how many stored adjudications do
+    # NOT apply to this session's findings because their fingerprint version is
+    # superseded (v0 entries are INERT under the v1 key — see decision_ledger's
+    # named inert rule). Additive key, per distinct active-slice client_id; nothing
+    # renders; non-application is never silent.
+    from agent.decision_ledger import count_superseded_entries
+
+    superseded: dict[str, int] = {}
+    for s in view.get("slices") or []:
+        cid = s.get("client_id")
+        if cid and cid not in superseded:
+            superseded[cid] = count_superseded_entries(load_decision_entries(cid))
+    view["superseded_decisions"] = superseded
     view["validation_status"] = VALIDATION_STATUS
     view["disclaimer"] = DISCLAIMER
     return view
