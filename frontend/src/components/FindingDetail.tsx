@@ -11,6 +11,10 @@ interface Props {
   onRecord?: (action: string, note: string) => void;
   onOpenSign?: () => void;
   reviewOnlyNote?: string;
+  // C1 source-document viewer: when supplied AND the finding carries a doc_num, render a
+  // trigger that opens the split-pane viewer. When there is no doc_num, the meta shows an
+  // honest "No source document" note instead of a dead control (no-fake-affordances rule).
+  onViewDocument?: (docNum: number) => void;
 }
 
 // "Decline" is a distinct adjudication from "Not an issue": Decline disputes the
@@ -30,7 +34,7 @@ const NOTE_REQUIRED = new Set(["Decline", "Not an issue", "Mark known"]);
  * path supplies it; the Xero upload path (no server-side sign store) omits it and the card
  * shows an honest review-only note. The candidate framing above is identical on both paths.
  */
-export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnlyNote }: Props) {
+export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnlyNote, onViewDocument }: Props) {
   const [action, setAction] = useState<string>(decision?.action ?? "Accept");
   const [note, setNote] = useState<string>(decision?.note ?? "");
   const [err, setErr] = useState<string>("");
@@ -97,7 +101,17 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
             {" "}
             · Code <span className="mono">{item.error_code}</span>
           </>
-        ) : null}
+        ) : null}{" "}
+        ·{" "}
+        {item.doc_num != null && onViewDocument ? (
+          <button className="link" onClick={() => onViewDocument(Number(item.doc_num))}>
+            View source document
+          </button>
+        ) : (
+          <span className="muted" title="No document reference on this finding">
+            No source document
+          </span>
+        )}
       </div>
 
       <h4>What we found</h4>
