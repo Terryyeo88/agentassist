@@ -5,8 +5,17 @@ Proves the four Invariant-5 properties STRUCTURALLY (not by convention):
   (a) Append-only / tamper-evident   — verify() clean; any mutation breaks it; no edit/delete API.
   (b) Never-suppress (cardinality)   — annotate_and_demote output length == input length, always.
   (c) Never-train (pure read)        — same input -> same output; ledger untouched during read.
-  (d) Deterministic fingerprint      — same finding -> same fp; band-coarse (v0 excludes amount).
+  (d) Deterministic fingerprint      — same finding -> same fp; v1 key is
+                                       (error_code, counterparty, doc_num); amount still excluded.
 PLUS agent-cannot-write (Tier-3/absent) and box-isolation (presentation metadata only).
+
+RULE-AUTHOR AMENDMENT (t-fingerprint-v1, hand-authored — separation of duties).
+The v0 key was (error_code, counterparty) ONLY, which was DEGENERATE: two documents from
+one supplier carrying the same error hashed identically, so one adjudication swept both.
+That is the modal real-world defect (a wrong tax code defaulted on a supplier master
+propagates to every invoice from that supplier). doc_num joined the key under
+D-2026-07-24-fingerprint-v1. The former defect-asserting test below is INVERTED, not
+retired — it is now the fix-witness.
 
 No SDK, no SAP, no network. Fully hermetic.
 """
@@ -67,14 +76,26 @@ class TestFingerprintDeterminism:
     def test_fp_is_sha256_prefixed(self):
         assert compute_finding_fingerprint(_finding("E1", "SG Electronics")).startswith("sha256:")
 
-    def test_doc_num_excluded_recurrence_matches(self):
-        # Different doc_num, same (error_code, counterparty) -> SAME fp (cross-period recurrence).
+    def test_doc_num_included_documents_key_separately(self):
+        # t-fingerprint-v1 (INVERTED from test_doc_num_excluded_recurrence_matches).
+        # Different doc_num, same (error_code, counterparty) -> DIFFERENT fp. Under v0
+        # these collided, so a single adjudication on one document silently swept the
+        # other — the defect this build exists to kill. Cross-period recurrence of the
+        # SAME document still matches (same doc_num -> same key).
         a = _finding("E1", "SG Electronics", 974)
         b = _finding("E1", "SG Electronics", 958)
+        assert compute_finding_fingerprint(a) != compute_finding_fingerprint(b)
+
+    def test_same_doc_num_recurrence_still_matches(self):
+        # The property v0 was reaching for, correctly scoped: the SAME document seen
+        # again (e.g. next period's export) keys identically, so a standing
+        # adjudication on that document still re-applies.
+        a = _finding("E1", "SG Electronics", 974)
+        b = _finding("E1", "SG Electronics", 974, line_total=99.0)
         assert compute_finding_fingerprint(a) == compute_finding_fingerprint(b)
 
     def test_amount_excluded_same_fp(self):
-        # v0 key excludes amount: two different magnitudes -> SAME fp (coarse, by design).
+        # v1 key still excludes amount: two different magnitudes -> SAME fp (by design).
         a = _finding("E1", "SG Electronics", 974, line_total=35310.0)
         b = _finding("E1", "SG Electronics", 974, line_total=8.03)
         assert compute_finding_fingerprint(a) == compute_finding_fingerprint(b)
@@ -83,6 +104,12 @@ class TestFingerprintDeterminism:
         a = _finding("E1", "SG Electronics")
         b = _finding("E1", "  sg electronics  ")
         assert compute_finding_fingerprint(a) == compute_finding_fingerprint(b)
+        # R2b (t-fingerprint-v1): INTERNAL whitespace runs collapse too, not just the
+        # ends. Under v0 "SG   Electronics" keyed differently from "SG Electronics",
+        # so one stray space in next quarter's export orphaned every standing
+        # adjudication for that supplier.
+        c = _finding("E1", "SG   Electronics")
+        assert compute_finding_fingerprint(a) == compute_finding_fingerprint(c)
 
     def test_different_error_code_different_fp(self):
         a = _finding("E1", "SG Electronics")
@@ -95,7 +122,7 @@ class TestFingerprintDeterminism:
         assert compute_finding_fingerprint(a) != compute_finding_fingerprint(b)
 
     def test_fp_keys_are_the_documented_constant(self):
-        assert FINGERPRINT_KEYS == ("error_code", "counterparty")
+        assert FINGERPRINT_KEYS == ("error_code", "counterparty", "doc_num")
 
     def test_fp_accepts_plain_payload_dict(self):
         f = _finding("E1", "SG Electronics", 974)
@@ -175,6 +202,9 @@ class TestNeverSuppress:
             _adjudicate(led, f, KNOWN_ACCEPTED)
         out = annotate_and_demote(findings, led)
         # Cardinality preserved AND every output is demoted but still present.
+        # Note (t-fingerprint-v1): under v1 the first two findings key SEPARATELY, so
+        # all three demote because all three were individually adjudicated — not
+        # because one adjudication swept two documents.
         assert len(out) == len(findings)
         assert all(a.demoted for a in out)
         assert all(isinstance(a, AnnotatedFinding) for a in out)
