@@ -30,6 +30,8 @@ export function AuditTrail() {
                 <th>Tool</th>
                 <th>Outcome</th>
                 <th>Justification</th>
+                <th>Blocked reason</th>
+                <th>When</th>
                 <th>Hash</th>
               </tr>
             </thead>
@@ -41,6 +43,8 @@ export function AuditTrail() {
                   <td className="mono">{r.tool_name}</td>
                   <td>{r.outcome}</td>
                   <td>{r.justification}</td>
+                  <td>{r.blocked_reason || "—"}</td>
+                  <td className="mono">{r.timestamp}</td>
                   <td className="mono">{r.entry_hash}</td>
                 </tr>
               ))}
