@@ -281,30 +281,43 @@ def test_t4_fingerprint_version_constant_and_stamp(tmp_path):
 
 # -- T5 (A7 + R4) -- historical literals UNCHANGED; mixed-chain verify; new entry is v1 -------
 
+# The REAL pre-regen v0 entry, frozen as a LITERAL (A7). Provenance: this is
+# tests/fixtures/demo-artifacts/decision-ledger.json exactly as committed at 082703d,
+# BEFORE the Terry-directed E regen reseeded the fixture under v1 (commit 89ee218).
+# The on-disk fixture is now a v1 chain, so the historical v0 entry lives here as the
+# unchanged-literal witness. A hand-copied hash cannot silently drift: verify() below
+# RECOMPUTES the chain from these very fields and must reproduce entry_hash.
+_HISTORICAL_V0_ENTRY = {
+    "disposition": "KNOWN_ACCEPTED",
+    "entry_hash": "sha256:3c4ff0c15286ffe0794bda49e1ac6d4c394a03878e390c2f670c367a23cd631d",
+    "entry_id": "b986d57f-57ac-46fa-bed7-eeed032111f3",
+    "fingerprint": "sha256:3d87ffc03f96938b1dbf236e133515595b514b099397deabae8e8ec1d15ed715",
+    "period": "2024Q2",
+    "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "reason": "Standing treatment: supplier confirmed not GST-registered; input tax correctly not claimed.",
+    "reviewer": "Prior-Period Reviewer",
+    "timestamp": "2024-06-30T00:00:00+00:00",
+}
+
+
 def test_t5_historical_entry_hash_frozen_and_mixed_chain(tmp_path):
-    """The REAL frozen v0 entry keeps its entry_hash literal; a new v1 entry chains cleanly.
+    """The historical v0 entry keeps its entry_hash LITERAL; a new v1 entry chains cleanly.
 
-    v0 PARTS (pass TODAY): the frozen fixture is a valid v0 chain, so from_entries -> verify()
-    passes and entries[0].entry_hash equals the frozen file's own stored literal (self-referential
-    -- both sides read from the file, so no algorithm change can hide behind a hand-copied hash).
+    The v0 witness is the EMBEDDED literal above (the frozen fixture entry as it stood
+    before the R3-sequence regen): the regenerated on-disk fixture is now a v1 chain, so
+    the literal here carries the A7 unchanged-history assertion. verify() recomputes the
+    chain from the literal's own fields, so no algorithm change can hide behind it.
 
-    v1 PARTS (FAIL TODAY -- the failing-first signal): AdjudicationEntry has no fingerprint_version
-    field, so the frozen entry's version reads absent (should be None) and a newly appended entry
-    has no "v1" stamp. R4 absence-aware hashing must keep the OLD entry_hash byte-identical while
-    the NEW v1 entry hashes over its version-bearing field-set, and verify() must pass over the
-    MIXED chain.
+    R4 absence-aware hashing must keep the OLD entry_hash byte-identical (a version-less
+    entry hashes over the historical field-set WITHOUT the version key) while a NEWLY
+    appended entry hashes over its version-bearing field-set, and verify() must pass over
+    the MIXED chain.
     """
-    frozen = json.loads(_FROZEN_LEDGER.read_text(encoding="utf-8"))
-    assert frozen, "the frozen decision-ledger fixture must carry at least one entry"
-    v0_dict = frozen[0]
-    frozen_hash = v0_dict["entry_hash"]  # self-referential literal source (A7)
-
-    ledger = DecisionLedger.from_entries([dict(v0_dict)])
-    ledger.verify()  # v0 chain -- passes today and (absence-aware) after
-    assert ledger.entries[0].entry_hash == frozen_hash, (
-        "the historical v0 entry_hash must be byte-identical to the frozen fixture literal"
+    ledger = DecisionLedger.from_entries([dict(_HISTORICAL_V0_ENTRY)])
+    ledger.verify()  # absence-aware: the v0 chain still verifies under v1 code
+    assert ledger.entries[0].entry_hash == _HISTORICAL_V0_ENTRY["entry_hash"], (
+        "the historical v0 entry_hash must be byte-identical to the frozen literal (A7)"
     )
-    # v1 field-detect on the historical entry: absent today (sentinel), None after the field lands.
     assert getattr(ledger.entries[0], "fingerprint_version", "__ABSENT__") is None, (
         "a v0 (pre-version) entry must expose fingerprint_version is None"
     )
@@ -318,8 +331,14 @@ def test_t5_historical_entry_hash_frozen_and_mixed_chain(tmp_path):
         "a newly appended entry must be stamped v1"
     )
     # The historical literal is STILL unchanged after the append -- widening never rewrites history.
-    assert ledger.entries[0].entry_hash == frozen_hash, (
+    assert ledger.entries[0].entry_hash == _HISTORICAL_V0_ENTRY["entry_hash"], (
         "appending a v1 entry must not mutate the historical v0 entry_hash"
+    )
+
+    # And the ON-DISK fixture has pivoted: the regenerated frozen ledger is a v1 chain now.
+    frozen = json.loads(_FROZEN_LEDGER.read_text(encoding="utf-8"))
+    assert frozen and frozen[0].get("fingerprint_version") == "v1", (
+        "the regenerated frozen fixture must carry fingerprint_version 'v1'"
     )
 
 
