@@ -27,7 +27,10 @@ export interface QueueItem {
   severity: string | null;
   description: string | null;
   recommendation: string | null;
-  doc_num: number | null;
+  // Xero findings carry a non-numeric DocNum (e.g. "BILL-3003"); the SAP path sends an int.
+  // Widened to match reality — no contract/key change, the backend already returns whatever
+  // the source provides. The /document/{doc_ref} route accepts either form.
+  doc_num: number | string | null;
   doc_date: string | null;
   error_code: string | null;
   display_name: string | null;

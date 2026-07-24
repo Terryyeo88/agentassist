@@ -359,11 +359,22 @@ def get_working_paper(path: str) -> FileResponse:
     return FileResponse(candidate, media_type="application/pdf", filename=candidate.name)
 
 
-@app.get("/document/{doc_num}")
-def get_document(doc_num: int) -> FileResponse:
-    """Serve the source invoice PDF for a document number, or 404 if none on file.
-    Read-only. doc_num is an int (FastAPI-validated → no traversal); the provider maps it
-    to a known fixtures dir. The 404 is the UI's honest 'no source document on file' signal."""
+_DOC_REF_DIGITS = re.compile(r"\d+")
+
+
+@app.get("/document/{doc_ref}")
+def get_document(doc_ref: str) -> FileResponse:
+    """Serve the source invoice PDF for a finding's document reference. Read-only.
+
+    Accepts a numeric SAP doc_num (e.g. "3005") OR a Xero-style reference string
+    (e.g. "BILL-3003"); the LAST run of digits selects the INV-<n>.pdf fixture. 404 (the UI's
+    honest 'no source document on file') when there is no numeric part or no matching file.
+    Path-safety: only extracted digits (an int) reach the provider — the raw string never
+    builds a path, and a str path-param does not match "/"."""
+    digits = _DOC_REF_DIGITS.findall(doc_ref)
+    if not digits:
+        raise HTTPException(status_code=404, detail="No source document on file")
+    doc_num = int(digits[-1])
     path = _DOC_PROVIDER.get_document(doc_num)
     if path is None or not Path(path).is_file():
         raise HTTPException(status_code=404, detail="No source document on file")
