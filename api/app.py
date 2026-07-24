@@ -38,6 +38,7 @@ from dataclasses import replace as _dc_replace
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from agent.classifier_factory import (
@@ -222,6 +223,19 @@ def _extract_engine_enabled() -> bool:
     return os.environ.get(_EXTRACT_ENGINE_FLAG, "").strip().lower() not in {"0", "off", "false", "no"}
 
 
+# GET /working-paper allowlist (C2) — the ONLY directories a signed working-paper PDF may be
+# served from. Path-safety is a containment check against these resolved roots (see
+# get_working_paper): DEFAULT_OUTPUT_DIR is the frozen /sign output; t1.4-reports holds the
+# engine intermediate PDF that sign returns as working_paper_path; audit/ holds the sealed
+# bundles' durable report.pdf. Read-only: this route serves bytes, it never signs.
+_REPO = DEFAULT_OUTPUT_DIR.resolve().parent.parent
+_WORKING_PAPER_ROOTS = tuple(p.resolve() for p in (
+    DEFAULT_OUTPUT_DIR,                             # frozen /sign output
+    _REPO / "exploration-notes" / "t1.4-reports",  # engine intermediate PDF (working_paper_path)
+    _REPO / "audit",                               # sealed bundles (durable report.pdf)
+))
+
+
 # --------------------------------------------------------------------------- #
 # Single artifacts source — load ONCE, share the same dicts everywhere (T6.2).
 # --------------------------------------------------------------------------- #
@@ -320,6 +334,21 @@ def health() -> dict:
         "classifier_mode": _classifier_mode(),
         "disclaimer": DISCLAIMER,
     }
+
+
+@app.get("/working-paper")
+def get_working_paper(path: str) -> FileResponse:
+    """Serve a signed working-paper PDF for download. Read-only, path-safe: the file must
+    end in .pdf, exist, and resolve INSIDE one of the allowlisted output roots — three
+    independent guards. Any ../ traversal is neutralized by resolve() + the containment
+    check. 404 for anything else. Serves the PDF produced by any of the sign routes; it
+    does not sign anything itself."""
+    candidate = Path(path).resolve()
+    if candidate.suffix.lower() != ".pdf" or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    if not any(candidate.is_relative_to(r) for r in _WORKING_PAPER_ROOTS):
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(candidate, media_type="application/pdf", filename=candidate.name)
 
 
 @app.get("/review/{client}/{period}")
