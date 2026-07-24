@@ -1,9 +1,10 @@
 [
   {
     "disposition": "KNOWN_ACCEPTED",
-    "entry_hash": "sha256:3c4ff0c15286ffe0794bda49e1ac6d4c394a03878e390c2f670c367a23cd631d",
-    "entry_id": "b986d57f-57ac-46fa-bed7-eeed032111f3",
-    "fingerprint": "sha256:3d87ffc03f96938b1dbf236e133515595b514b099397deabae8e8ec1d15ed715",
+    "entry_hash": "sha256:a35e268a9aa21b081cadb4519b05eae6797094ee6e22f80f4fc9291a9b75426b",
+    "entry_id": "25ac601f-04f3-43e7-a2e4-e96b71e5c6b1",
+    "fingerprint": "sha256:46b42541e1587163c55990ff6d9064afe3855fb1cb2b081549e56495f4063f1d",
+    "fingerprint_version": "v1",
     "period": "2024Q2",
     "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
     "reason": "Standing treatment: supplier confirmed not GST-registered; input tax correctly not claimed.",
