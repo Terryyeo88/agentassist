@@ -48,7 +48,7 @@ from agent.intent import IntentError
 
 # A doc-592 anchor from the seeded decision-ledger fixture (KNOWN_ACCEPTED).
 _DOC592_FINGERPRINT = (
-    "sha256:3d87ffc03f96938b1dbf236e133515595b514b099397deabae8e8ec1d15ed715"
+    "sha256:46b42541e1587163c55990ff6d9064afe3855fb1cb2b081549e56495f4063f1d"
 )
 
 
