@@ -143,6 +143,13 @@ class ReviewInputs:
     reader: "sap_b1_server.ChainReader | None" = None
     gst_ledger: dict | None = None
     sales_line_source: "Callable[[], list[dict]] | None" = None
+    # t-decision-render (Terry R1 Branch B, STRICTLY BOUNDED): the reviewer-adjudication
+    # view, built in api/ (api.viewmodel.build_adjudication_view) and threaded VERBATIM
+    # into build_report — a pure data pass-through carrying ZERO logic, structurally
+    # identical to the gst_ledger/declared_f5 side-inputs. engine/ never imports the
+    # decision layer (tests/test_leaf_import_purity.py). Default None → every existing
+    # construction and every decision-free render byte-identical.
+    adjudications: dict | None = None
 
 
 @dataclass
@@ -366,6 +373,9 @@ def review(
             extra_judgment_artefacts=extra_artefacts,
             partial_exemption_findings=(partial_exemption_findings or None),
             scheme_status_findings=(scheme_status_findings or None),
+            # t-decision-render: verbatim pass-through of the api-built decision view
+            # (ZERO logic here — Terry R1 Branch B bounded seam). None → byte-identical.
+            adjudications=inputs.adjudications,
         )
         render_pdf(model, pdf_path)
 

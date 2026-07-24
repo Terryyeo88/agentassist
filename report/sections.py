@@ -1563,3 +1563,39 @@ def build_accumulated_section(
         coverage_rows=coverage_rows,
         superseded_notes=superseded_notes,
     )
+
+
+@dataclass
+class AdjudicationSection:
+    """Reviewer adjudications rendered on a signed paper (D-2026-07-24-decision-render).
+
+    PATH-AGNOSTIC (Terry R6): consumes the decision view handed in AS DATA (built by
+    api.viewmodel.build_adjudication_view) and knows nothing about which endpoint
+    produced it. NO-FILTERING (R5b): the section is ADDITIVE — it annotates findings
+    that already render elsewhere on the paper; nothing is ever dropped, so the paper
+    can never contradict the sealed unfiltered detect.issues. The section reports what
+    a human decided; it asserts nothing about correctness (R5d).
+
+    clients: plain-dict blocks {"client_id", "superseded_count", "findings"} — each
+    finding carries its FULL ordered disposition history (R4: append-ordered, last =
+    most recent, reviewer + timestamp + period as structured fields). The renderer
+    prints DISPOSITIONS only, never the UI verb (R3 — the two set-aside verbs collapse
+    to KNOWN_ACCEPTED in the store and are not reconstructable from structured fields).
+    """
+    show: bool
+    clients: list = field(default_factory=list)
+
+
+def build_adjudication_section(view: dict | None) -> AdjudicationSection:
+    """Build the adjudication section from the decision view (data in, section out).
+
+    show derives ONLY from content — findings present, or a superseded count > 0 (R2:
+    "inert, but not silently" needs an artefact line once a paper exists) — NEVER from
+    show_ai_candidates: adjudications are human decisions, not reasoning-layer output.
+    None / empty view → hidden section → every decision-free render byte-identical.
+    """
+    blocks = [
+        b for b in ((view or {}).get("clients") or [])
+        if (b.get("findings") or (b.get("superseded_count") or 0) > 0)
+    ]
+    return AdjudicationSection(show=bool(blocks), clients=blocks)
