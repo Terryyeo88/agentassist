@@ -242,6 +242,14 @@ The regex matches:
 This gate is **automated in CI** (`.github/workflows/ci.yml` — "Import-scan" step). A local
 pre-merge run is still required to catch violations before pushing.
 
+**Note (leaf purity for `report/` and `engine/` — test-enforced, not grepped; `t-decision-render`, 2026-07-24):**
+the CI Gate-a grep covers **`orchestrator/` only**. Leaf purity for `report/` and `engine/` is now
+enforced by a test — `tests/test_leaf_import_purity.py` (an AST scan **including lazy / function-body
+imports**) pins that `report/` imports none of `agent`/`reasoning`/`documents`/`anthropic` and that
+`engine/` imports neither `agent` nor `anthropic` (`engine/` **legally** imports `reasoning`+`documents`
+— the T5.1 composition seam). This closes the grep's blind spot for those two packages. It is a **test,
+not a new CI grep** — the gate structure is unchanged.
+
 ---
 
 ## Gate b — Full suite green + flake8 clean
