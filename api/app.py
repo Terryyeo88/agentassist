@@ -64,6 +64,7 @@ from api.viewmodel import (
     DISCLAIMER,
     build_adjudication_view,
     build_audit_payload,
+    build_client_coded_f5_boxes,
     build_review_payload,
     f5_summary,
     serialize_ledger_recon_queue,
@@ -663,7 +664,16 @@ async def post_review_upload(
         try:
             resp: Optional[dict] = None
             if is_xero:
-                resp = _xero_f5_review_response(reader, xero_period, gst_ledger)
+                # D-2026-07-26-xero-f5-basis (R6): the box object identifies the SOURCE
+                # FILE (filename + sha256 of the uploaded bytes) — the identity a
+                # reviewer can verify; never a synthesised company_db.
+                source_file = {
+                    "filename": primary_name,
+                    "sha256": f"sha256:{hashlib.sha256(body).hexdigest()}",
+                }
+                resp = _xero_f5_review_response(
+                    reader, xero_period, gst_ledger, source_file=source_file
+                )
             elif is_xero_sales:
                 resp = _xero_sales_review_response(reader)
             elif _extract_engine_enabled():
@@ -1036,7 +1046,30 @@ def get_review_session(review_id: str) -> dict:
     return view
 
 
-def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = None) -> dict:
+def _export_stated_currency(reader, period: dict) -> Optional[str]:
+    """The export's OWN uniformly-stated currency, or None (R5: omit-never-default).
+
+    Reads the reader's RAW ``DocCurrency`` values — the export's "Source currency"
+    column verbatim (an empty cell stays "" = unstated). Deliberately NOT
+    compile_output's ``doc_currency``, which orchestrator/steps.py normalises with an
+    "SGD" default at fetch time — a defaulted value is not an export-stated fact, and
+    a defaulted "SGD" on a non-SGD org would be a false statement about money.
+    Exactly one distinct stated value across every fetched document → that value;
+    none stated, or mixed → None (the response key is omitted entirely).
+    """
+    stated: set[str] = set()
+    for entity in ("Invoices", "PurchaseInvoices", "CreditNotes", "PurchaseCreditNotes"):
+        for doc in reader.fetch_invoices(entity, period["start"], period["end"]) or []:
+            value = str(doc.get("DocCurrency") or "").strip().upper()
+            if value:
+                stated.add(value)
+    return stated.pop() if len(stated) == 1 else None
+
+
+def _xero_f5_review_response(
+    reader, period: dict, gst_ledger: Optional[dict] = None,
+    *, source_file: Optional[dict] = None,
+) -> dict:
     """Run the real (UNVALIDATED) engine review over an uploaded Xero IRAS-F5 export.
 
     ``reader`` (``XeroF5ChainReader``) and ``period`` are constructed at the PARSE BOUNDARY in
@@ -1115,6 +1148,20 @@ def _xero_f5_review_response(reader, period: dict, gst_ledger: Optional[dict] = 
         "disclaimer": upload_disclaimer("xero_f5_upload"),
         "coverage_status": coverage_status,
         "queue": queue,
+        # D-2026-07-26-xero-f5-basis: the basis-carrying box object — a PURE READ over
+        # the upload's OWN just-computed compile_output (box-isolation; NEVER
+        # viewmodel.f5_summary(artifacts), which reads FROZEN SBODEMOSG — R7a).
+        # Constructed ONLY here, on the F5 branch (R3 structural gate): an F5 export is
+        # the full return, so all 8 boxes are legitimate; sales/extract are one-sided
+        # and carry no boxes (adding them would widen #48 onto unsigned JSON). The key
+        # name deliberately avoids "f5_summary" (R2 failure asymmetry: old code looking
+        # for that key finds NOTHING rather than something SAP-styled).
+        "client_coded_f5_boxes": build_client_coded_f5_boxes(
+            result.compile_output,
+            period=period,
+            source_file=source_file or {},
+            currency=_export_stated_currency(reader, period),
+        ),
     }
 
 
