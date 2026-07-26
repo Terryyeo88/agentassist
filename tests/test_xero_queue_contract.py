@@ -92,6 +92,7 @@ def test_xero_upload_emits_shared_queue_contract(client: TestClient, hermetic_en
         "disclaimer",
         "coverage_status",
         "queue",
+        "recomputed_client_coded_f5_boxes",
     }
     assert "findings" not in body
     assert body["source_kind"] == "xero_f5_upload"

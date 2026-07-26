@@ -73,7 +73,7 @@ _XERO_FILENAME = "AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx"
 
 # The Xero upload runs under the xero_demo client config; the store keys on that client_id.
 _XERO_CLIENT_ID = "xero_demo"
-_XERO_TOP_KEYS = {"source_kind", "validation_status", "disclaimer", "coverage_status", "queue"}
+_XERO_TOP_KEYS = {"source_kind", "validation_status", "disclaimer", "coverage_status", "queue", "recomputed_client_coded_f5_boxes"}
 
 # ── #46 MIGRATION TRIPWIRE (deliberate) ──────────────────────────────────────────────
 #
