@@ -39,7 +39,13 @@ FROZEN_REVIEW_RESULT = {
     "bundle_dir", "run_started_at", "run_completed_at", "gate_failure",
     "exempt_artefact"
 }
-FROZEN_REVIEW_INPUTS = {"line_source", "provider", "declared_f5", "analytical_review", "reader", "gst_ledger","sales_line_source"}
+# t-decision-render (D-2026-07-24-decision-render): "adjudications" added — a
+# defaulted, zero-logic pass-through on ReviewInputs threaded verbatim into
+# build_report (Terry R1 Branch B, structurally identical to gst_ledger/declared_f5).
+# This is the deliberate re-pin the test's own docstring sanctions. engine/ imports
+# no decision-layer code (tests/test_leaf_import_purity.py); the field carries data,
+# not behaviour.
+FROZEN_REVIEW_INPUTS = {"line_source", "provider", "declared_f5", "analytical_review", "reader", "gst_ledger", "sales_line_source", "adjudications"}
 FROZEN_GATE_HALT = {"message", "checked"}
 FROZEN_DOSSIER = {
     "finding_id", "check_id", "finding_type", "evidence",

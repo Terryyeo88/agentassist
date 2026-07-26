@@ -62,6 +62,7 @@ from api.viewmodel import (
     DEMO_CLIENT_ID,
     DEMO_PERIOD_LABEL,
     DISCLAIMER,
+    build_adjudication_view,
     build_audit_payload,
     build_review_payload,
     f5_summary,
@@ -889,6 +890,36 @@ def post_review_session_sign(review_id: str, req: ReviewSessionSignRequest) -> d
                 {"exempt-supply": result.exempt_artefact}
                 if result.exempt_artefact is not None else None
             )
+
+            # t-decision-render: decision view over the primary run's findings + every
+            # non-primary slice's STORED rows (stored fingerprints used as-is — no
+            # recompute), one spec per client STORE. Visibility follows the per-slice
+            # client split: F5 reads decisions/xero_demo/, sales xero_sales_demo/,
+            # extract extract_demo/ — the #45 caveat (no client component in the
+            # fingerprint) is unchanged and now user-facing on this paper.
+            stored_rows_by_client: dict[str, list] = {}
+            for s in active:
+                if s.get("source_kind") == "xero_f5_upload":
+                    continue
+                cid = _SLICE_CLIENT_IDS.get(s.get("source_kind") or "")
+                if cid:
+                    stored_rows_by_client.setdefault(cid, []).extend(s.get("queue") or [])
+            adjudication_view = build_adjudication_view([
+                {
+                    "client_id": cfg.client_id,
+                    "issues": result.compile_output["detect"]["issues"],
+                    "entries": load_decision_entries(cfg.client_id),
+                },
+                *[
+                    {
+                        "client_id": cid,
+                        "stored_rows": rows,
+                        "entries": load_decision_entries(cid),
+                    }
+                    for cid, rows in stored_rows_by_client.items()
+                ],
+            ])
+
             model = build_report(
                 result.compile_output,
                 cfg,
@@ -897,6 +928,7 @@ def post_review_session_sign(review_id: str, req: ReviewSessionSignRequest) -> d
                 document_candidates=result.document_candidates,
                 extra_judgment_artefacts=extra_artefacts,
                 accumulated=accumulated,
+                adjudications=adjudication_view,
             )
             ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
             safe_reviewer = re.sub(r"[^a-z0-9]+", "-", reviewer.lower()).strip("-") or "reviewer"
@@ -1383,12 +1415,20 @@ async def post_sign_upload(
                 reviewer_name=reviewer,
                 firm_name=firm,
             )
-            if source_kind == "xero_f5_signed":
-                inputs = ReviewInputs(
-                    line_source=lambda: [], provider=None, reader=reader,
-                    gst_ledger=gst_ledger,
-                )
-            else:
+
+            def _mk_inputs(adjudications: Optional[dict] = None) -> ReviewInputs:
+                """Fresh reader + inputs per review() run.
+
+                t-decision-render: the decision pre-pass below may run the chain once
+                BEFORE the persist run; a fresh reader per run never gambles on reader
+                statefulness across two run_chain invocations.
+                """
+                if source_kind == "xero_f5_signed":
+                    return ReviewInputs(
+                        line_source=lambda: [], provider=None,
+                        reader=XeroF5ChainReader(dest), gst_ledger=gst_ledger,
+                        adjudications=adjudications,
+                    )
                 # Sales sign runs the SAME inputs as the sales review branch — including
                 # sales_line_source, so the exempt pass runs and its artefact seals into
                 # the bundle (steps/exempt-supply-candidates.json). Over a fixture with
@@ -1396,15 +1436,35 @@ async def post_sign_upload(
                 # model call — the signed paper stays hermetic by default.
                 from feeders.xero_sales_lines import xero_sales_lines
 
-                sales_reader = reader
-                inputs = ReviewInputs(
+                sales_reader = _build_xero_sales_reader(dest)
+                return ReviewInputs(
                     line_source=lambda: [], provider=None, reader=sales_reader,
                     sales_line_source=lambda: xero_sales_lines(
                         sales_reader, xero_period["start"], xero_period["end"]
                     ),
+                    adjudications=adjudications,
                 )
+
+            # t-decision-render (Branch B): the signed paper renders stored reviewer
+            # adjudications. The per-finding join needs the run's findings, which are
+            # born inside review() — so a NON-EMPTY store costs one extra PURE chain
+            # run (persist_artifacts=False; deterministic, T9-pinned identical) to
+            # discover them, and the view is built HERE in api/ and handed through the
+            # bounded ReviewInputs pass-through. An EMPTY store keeps the exact
+            # single-run flow (and a silent paper) as before.
+            adjudication_view = None
+            decision_entries = load_decision_entries(cfg.client_id)
+            if decision_entries:
+                pre = review(cfg, xero_period, _mk_inputs(), persist_artifacts=False)
+                if pre.status == "completed" and pre.compile_output is not None:
+                    adjudication_view = build_adjudication_view([{
+                        "client_id": cfg.client_id,
+                        "issues": pre.compile_output["detect"]["issues"],
+                        "entries": decision_entries,
+                    }])
+
             # persist_artifacts default True — signing IS the persist event.
-            result = review(cfg, xero_period, inputs)
+            result = review(cfg, xero_period, _mk_inputs(adjudication_view))
             if result.status != "completed" or result.compile_output is None:
                 raise HTTPException(
                     status_code=422,
