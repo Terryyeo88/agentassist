@@ -230,6 +230,16 @@ class ExtractChainReader:
         }
         return ExtractCoverage(fields=fields, populated=populated)
 
+    def populatable_sides(self) -> frozenset:
+        """Which F5 SIDES this FORMAT can populate — a capability fact, never a content fact.
+
+        The three-sheet extract format carries a ``doc_type`` column spanning sales AND
+        purchase documents, so both sides are declarable even when a given export happens
+        to contain only one — capability, not emptiness, drives the render marker (open
+        item #48). Declared beside ``coverage_status()`` (same duck-typed seam family).
+        """
+        return frozenset({"sales", "purchase"})
+
     def coverage_status(self) -> list:
         """Map this export's coverage onto per-check status (T2.12 slice 2B + ext-1 + ext-3).
 
