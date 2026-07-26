@@ -187,13 +187,39 @@ class TestUploadDisclaimer:
     """upload_disclaimer(source_kind) — new function on the existing api.viewmodel module.
     It does not exist yet, so every call raises AttributeError (a genuine failure)."""
 
-    def test_xero_kinds_share_one_xero_text(self):
+    # RETIRED (recorded, not deleted) — D-2026-07-26-xero-f5-basis supersedes ruling M2.
+    # M2 said: "both Xero upload kinds must return the SAME Xero-worded text" (the
+    # F5-vs-sales distinction is internal and must not leak into client-facing prose).
+    # That held while neither response carried boxes. The moment the F5 response ships
+    # recomputed_client_coded_f5_boxes, the shared "Computed from your uploaded Xero
+    # export" claim becomes actively FALSE for the F5 boxes (they are RECOMPUTED from
+    # transactions the client's own export grouped by their own tax-code assignments —
+    # the arithmetic is ours, the classification is theirs), while staying TRUE for
+    # sales (genuinely computed from line-level data). So the F5 wording is now
+    # DELIBERATELY distinct. The retired assertion was:
+    #     assert f5 == sales, "both Xero upload kinds must return the SAME Xero-worded text"
+    # A superseded ruling with no record of its supersession is a ruling that can be
+    # silently re-litigated — this comment IS the record.
+    def test_xero_f5_text_distinct_and_basis_correct(self):
         f5 = viewmodel.upload_disclaimer("xero_f5_upload")
         sales = viewmodel.upload_disclaimer("xero_sales_upload")
-        assert f5 == sales, "both Xero upload kinds must return the SAME Xero-worded text"
-        assert "Xero" in f5
-        assert "SBODEMOSG" not in f5
-        assert "SAP" not in f5
+        assert f5 != sales, (
+            "R4 (D-2026-07-26-xero-f5-basis): the F5 disclaimer must be DISTINCT from "
+            "sales — one shared text would re-import the false 'Computed from' claim "
+            "onto the box-bearing F5 response"
+        )
+        # The F5 text carries the R1 basis language and drops the legacy claim.
+        assert "Computed from your uploaded Xero export" not in f5
+        low = f5.lower()
+        assert "recomputed" in low, "F5 wording must carry the recomputed framing (R1)"
+        assert "arithmetic" in low and "classification" in low, (
+            "F5 wording must carry the arithmetic-ours / classification-theirs split (R1)"
+        )
+        # The surviving M2 half: both texts stay Xero-labelled and never SAP-labelled.
+        for text in (f5, sales):
+            assert "Xero" in text
+            assert "SBODEMOSG" not in text
+            assert "SAP" not in text
 
     def test_extract_kinds_share_one_extract_text(self):
         review = viewmodel.upload_disclaimer("extract_review")
