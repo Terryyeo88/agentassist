@@ -42,6 +42,7 @@ from config.loader import ClientConfig
 from config.source_labels import source_display_name
 from report.enrich import EnrichedFinding, enrich
 from report.sections import (
+    AdjudicationSection,
     AICandidatesSection,
     AnalyticalReviewSection,
     CheckCoverageSection,
@@ -70,6 +71,7 @@ from report.sections import (
     build_f5_box_section,
     build_findings_section,
     build_judgment_section,
+    build_adjudication_section,
     build_ledger_recon_section,
     build_not_examined_section,
     build_partial_exemption_section,
@@ -174,6 +176,11 @@ class ReportModel:
     # STORED findings + per-source coverage matrix + visible supersession/vintage).
     # None for every per-slice/legacy render → byte-identical output.
     accumulated: "object | None" = None
+    # t-decision-render: reviewer adjudications rendered from the decision view passed
+    # AS DATA (api builds it; report/ imports nothing from agent/). None for every
+    # decision-free/legacy render → byte-identical output. UNGATED (section.show only —
+    # human decisions, not reasoning-layer output; never keyed on show_ai_candidates).
+    adjudications: AdjudicationSection | None = None
 
 
 def build_report(
@@ -189,6 +196,7 @@ def build_report(
     partial_exemption_findings: list | None = None,
     scheme_status_findings: list | None = None,
     accumulated=None,
+    adjudications: dict | None = None,
 ) -> ReportModel:
     """Build the full ReportModel from a chain-run CompileOutput dict and a ClientConfig.
 
@@ -290,6 +298,13 @@ def build_report(
         # t-accumulated-sign: pass-through of the accumulated evidence section (None
         # for every per-slice/legacy caller — render byte-identical).
         accumulated=accumulated,
+        # t-decision-render: the decision view arrives AS DATA (built in api/ — the
+        # accumulated= precedent); the section is built HERE, once, path-agnostically.
+        # None for every decision-free/legacy caller — render byte-identical.
+        adjudications=(
+            build_adjudication_section(adjudications)
+            if adjudications is not None else None
+        ),
         cover=build_cover_section(
             compile_output, client_config, generated_at=generated_at
         ),

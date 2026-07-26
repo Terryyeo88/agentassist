@@ -20,9 +20,12 @@ import yaml
 # Pure hermetic core (stdlib-only): fingerprint + append-only ledger + annotate/demote.
 # Used here READ-ONLY — this module never writes the ledger (serialisers stay pure).
 from agent.decision_ledger import (
+    DEMOTE_DISPOSITIONS,
+    AdjudicationEntry,
     DecisionLedger,
     annotate_and_demote,
     compute_finding_fingerprint,
+    count_superseded_entries,
 )
 from agent.upload_dossiers import dossier_queue_fields
 from ui.artifacts import (
@@ -471,3 +474,107 @@ def build_review_payload(
 def build_audit_payload(artifacts: DemoArtifacts) -> list[dict[str, Any]]:
     """Assemble GET /audit: the hash-chained justification ledger as display rows."""
     return ledger_timeline_rows(artifacts.ledger)
+
+
+# ── Decision-render view (D-2026-07-24-decision-render) ─────────────────────────────
+
+
+def _adjudication_history(entries: list[AdjudicationEntry]) -> list[dict[str, Any]]:
+    """AdjudicationEntry rows → plain history dicts (R4: structured fields AS DATA).
+
+    Append-ordered, last = most recent (DecisionLedger.lookup preserves chain order —
+    run-proven in the Phase-1 recon). Carries the STRUCTURED fields the paper may render
+    (disposition/reviewer/timestamp/period); NEVER the latest-only annotation string, and
+    NEVER the free-text reason (the UI verb hides in it — R3 forbids rendering verbs).
+    """
+    return [
+        {
+            "disposition": e.disposition,
+            "reviewer": e.reviewer,
+            "timestamp": e.timestamp,
+            "period": e.period,
+        }
+        for e in entries
+    ]
+
+
+def _canonical_doc_num_str(raw: Any) -> str:
+    """Display form of a doc_num: str-canonical, NEVER int() (the #34 pattern)."""
+    return "" if raw is None else str(raw).strip()
+
+
+def build_adjudication_view(clients: list[dict]) -> dict[str, Any] | None:
+    """Assemble the decision view a signed paper renders — built HERE, passed AS DATA.
+
+    The report layer stays a pure leaf (tests/test_leaf_import_purity.py): everything it
+    needs arrives in this plain-dict view; it imports nothing from agent/.
+
+    Args:
+        clients: one spec per client store involved in the paper:
+            ``{"client_id": str, "issues": [raw detect issues]?,``
+            ``"stored_rows": [queue rows carrying "fingerprint"]?, "entries": [entry dicts]}``
+            *issues* is the recompute path (the primary/per-slice run — the SAME
+            annotate_and_demote read the upload queue uses, so demote semantics cannot
+            drift); *stored_rows* is the accumulated non-primary path (stored fingerprints
+            used AS-IS — stored rows carry "vendor" not "card_name", so a recompute would
+            be wrong-by-construction; rows without a fingerprint, e.g. ledger-recon rows,
+            are skipped, never crashed on).
+
+    Returns:
+        ``{"clients": [{"client_id", "superseded_count", "findings": [...]}]}`` with only
+        ADJUDICATED findings (>=1 matching entry), each carrying its FULL ordered history;
+        clients with nothing to say (no matches AND superseded_count == 0) are dropped;
+        None when no client has anything to say — legacy renders stay byte-identical.
+        A client with ONLY superseded (v0) entries IS kept: the aggregate count is the
+        surfaced trace (R2); per-finding attribution of a v0 entry is structurally
+        impossible (inert by construction) and is not attempted.
+    """
+    blocks: list[dict[str, Any]] = []
+    for spec in clients:
+        client_id = str(spec.get("client_id") or "")
+        entries = list(spec.get("entries") or [])
+        superseded = count_superseded_entries(entries) if entries else 0
+        findings: list[dict[str, Any]] = []
+        if entries:
+            ledger = DecisionLedger.from_entries(entries)
+
+            for af in annotate_and_demote(list(spec.get("issues") or []), ledger):
+                if not af.prior_dispositions:
+                    continue
+                issue = af.finding
+                findings.append({
+                    # Same finding_id semantics as serialize_xero_queue (raw doc_num in
+                    # the id, str-canonical in the display field).
+                    "finding_id": f"detect:{issue.get('error_code')}:{issue.get('doc_num')}",
+                    "check_id": str(issue.get("error_code") or ""),
+                    "vendor": str(issue.get("card_name") or ""),
+                    "doc_num": _canonical_doc_num_str(issue.get("doc_num")),
+                    "fingerprint": af.fingerprint,
+                    "demoted": af.demoted,
+                    "history": _adjudication_history(ledger.lookup(af.fingerprint)),
+                })
+
+            for row in list(spec.get("stored_rows") or []):
+                fingerprint = row.get("fingerprint")
+                if not fingerprint:
+                    continue  # un-fingerprinted rows (ledger-recon) — honest skip
+                priors = ledger.lookup(fingerprint)
+                if not priors:
+                    continue
+                findings.append({
+                    "finding_id": str(row.get("finding_id") or ""),
+                    "check_id": str(row.get("check_id") or ""),
+                    "vendor": str(row.get("vendor") or ""),
+                    "doc_num": _canonical_doc_num_str(row.get("doc_num")),
+                    "fingerprint": fingerprint,
+                    "demoted": any(e.disposition in DEMOTE_DISPOSITIONS for e in priors),
+                    "history": _adjudication_history(priors),
+                })
+
+        if findings or superseded:
+            blocks.append({
+                "client_id": client_id,
+                "superseded_count": superseded,
+                "findings": findings,
+            })
+    return {"clients": blocks} if blocks else None
