@@ -82,7 +82,7 @@ _SALES_FIXTURE = (
 _SALES_NAME = "AgentAssist_Xero_SalesInvoices_2026-04-01_to_2026-06-30.xlsx"
 
 # The 5-key top-level F5 upload literal (R1 -- must NEVER gain a review_id key).
-_F5_TOP_KEYS = {"source_kind", "validation_status", "disclaimer", "coverage_status", "queue"}
+_F5_TOP_KEYS = {"source_kind", "validation_status", "disclaimer", "coverage_status", "queue", "recomputed_client_coded_f5_boxes"}
 
 # The review_id char guard mirrored from agent.review_store._REVIEW_ID_RE.
 _REVIEW_ID_RE = re.compile(r"^[a-z0-9_]+$")

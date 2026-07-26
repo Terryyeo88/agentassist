@@ -57,7 +57,7 @@ SIGN_UPLOAD_KEYS = {
 }
 # The plain /review/upload Xero-branch top-level shape (pinned here as a NEW literal; the
 # existing contract test's literal stays untouched).
-XERO_UPLOAD_TOP_KEYS = {"source_kind", "validation_status", "disclaimer", "coverage_status", "queue"}
+XERO_UPLOAD_TOP_KEYS = {"source_kind", "validation_status", "disclaimer", "coverage_status", "queue", "recomputed_client_coded_f5_boxes"}
 
 
 @pytest.fixture()
