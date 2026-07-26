@@ -102,7 +102,7 @@ def _coverage_level(rows: list, check: str) -> str:
 def test_xero_upload_runs_engine_and_returns_findings(client: TestClient, hermetic_engine):
     """The full locked Xero-branch contract — proof the reader threaded into the engine.
 
-    HTTP 200 + EXACTLY 5 top-level keys; source_kind=="xero_f5_upload"; frozen
+    HTTP 200 + EXACTLY 6 top-level keys; source_kind=="xero_f5_upload"; frozen
     validation_status; a non-empty disclaimer that says "unvalidated"; NO ai_candidates in the
     body; the three dark coverage levels (NO_GST_REG unavailable, DUP_CLAIM/SEQ_GAP degraded);
     and queue reducing to EXACTLY the 3-set (no E1, no DUP_CLAIM/NO_GST_REG/SEQ_GAP).
@@ -120,6 +120,7 @@ def test_xero_upload_runs_engine_and_returns_findings(client: TestClient, hermet
         "disclaimer",
         "coverage_status",
         "queue",
+        "recomputed_client_coded_f5_boxes",
     }
     assert body["source_kind"] == "xero_f5_upload"
 

@@ -84,7 +84,7 @@ _SALES_NAME = "AgentAssist_Xero_SalesInvoices_2026-04-01_to_2026-06-30.xlsx"
 _FROZEN_EXTRACT_DIR = _REPO_ROOT / "tests" / "fixtures" / "sbodemosg-extract"
 
 # The 5-key top-level upload literals the three branches share (F5 branch shape).
-_F5_TOP_KEYS = {"source_kind", "validation_status", "disclaimer", "coverage_status", "queue"}
+_F5_TOP_KEYS = {"source_kind", "validation_status", "disclaimer", "coverage_status", "queue", "recomputed_client_coded_f5_boxes"}
 
 # The em-dash inputs_hash default serialize_queue_item stamps when no dossier is threaded.
 # Built via chr() to keep this file ASCII-safe (the codebase literal is U+2014, an em-dash).
