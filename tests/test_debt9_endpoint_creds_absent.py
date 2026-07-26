@@ -108,6 +108,7 @@ def test_xero_upload_succeeds_with_no_sap_creds_in_env(
         "disclaimer",
         "coverage_status",
         "queue",
+        "recomputed_client_coded_f5_boxes",
     }
     assert body["source_kind"] == "xero_f5_upload"
     assert body["validation_status"] == "unvalidated"

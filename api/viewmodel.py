@@ -137,11 +137,25 @@ _UPLOAD_DISCLAIMER_TEMPLATE = (
     "unvalidated candidates — not a compliance verdict."
 )
 
-#: source_kind -> disclaimer text. Both Xero kinds share ONE text (ruling M2: the
-#: F5-vs-sales distinction is internal and must not leak into client-facing prose).
+# D-2026-07-26-xero-f5-basis (Terry R1/R4): the F5 entry is SOURCE-AWARE and basis-
+# correct. On the F5 path the chain RECOMPUTES the boxes from transactions the
+# client's own export already grouped by their own tax-code assignments — the bare
+# word "Computed" (implies independent derivation, as on SAP) is FALSE there the
+# moment boxes ship in the same body. Sales/extract genuinely compute from
+# line-level data, so their wording stays byte-identical. This SUPERSEDES the old
+# M2 one-Xero-text rule for the F5 entry only.
+_XERO_F5_DISCLAIMER = (
+    "AgentAssist flags — you decide. Recomputed from transactions your uploaded "
+    "Xero export already grouped by your own tax-code assignments — the arithmetic "
+    "is AgentAssist's, the classification is yours; "
+    "validation_status=unvalidated (T2.11 is the binding gate). Findings are "
+    "unvalidated candidates — not a compliance verdict."
+)
+
+#: source_kind -> disclaimer text. F5 carries the basis-correct wording (R1/R4);
+#: sales + extract keep the legacy computed-from wording (true for them).
 UPLOAD_DISCLAIMERS: dict[str, str] = {
-    "xero_f5_upload": _UPLOAD_DISCLAIMER_TEMPLATE.format(
-        source_phrase="your uploaded Xero export"),
+    "xero_f5_upload": _XERO_F5_DISCLAIMER,
     "xero_sales_upload": _UPLOAD_DISCLAIMER_TEMPLATE.format(
         source_phrase="your uploaded Xero export"),
     "extract_review": _UPLOAD_DISCLAIMER_TEMPLATE.format(
@@ -180,6 +194,69 @@ def _period_label(period: dict) -> str:
         return f"{year}Q{quarter}"
     except (ValueError, AttributeError):
         return start or "—"
+
+
+# ── Xero F5 boxes — basis-carrying projection (D-2026-07-26-xero-f5-basis) ──────────
+
+#: THE BASIS (Terry R1, client-facing, REQUIRED on every box-bearing F5 response).
+#: Neither "computed" bare (implies independent derivation, as on SAP) nor "declared"
+#: (implies figures read off the return) — the arithmetic is ours, the classification
+#: is theirs, and agreement with the filed return is tautological (chain.py in-code).
+XERO_F5_BOX_BASIS = (
+    "Recomputed by AgentAssist from the transactions your Xero export already "
+    "grouped by your own tax-code assignments. The arithmetic is AgentAssist's; "
+    "the classification is yours. Agreement with the filed return is tautological, "
+    "not confirmatory."
+)
+
+
+def build_recomputed_client_coded_f5_boxes(
+    compile_output: dict,
+    *,
+    period: dict,
+    source_file: dict,
+    currency: str | None,
+) -> dict[str, Any]:
+    """The Xero-F5 box object — DELIBERATELY NOT named or shaped like ``f5_summary``.
+
+    R2 failure asymmetry: an embedded discriminator can be ignored, and the failure
+    mode of ignoring it is a Xero box strip rendering identically to the SAP one —
+    a non-independent figure presented as a computed one. With a distinct key the
+    worst case is the strip DOESN'T RENDER: failing-to-render is the honest failure.
+
+    The basis is NOT a parameter: the constant is stamped here so no caller can omit
+    or override it (required-never-optional, R2 belt and braces). A boxes-less object
+    is impossible — missing/empty ``calculate.boxes`` raises instead of emitting a
+    hollow basis-carrying shell.
+
+    PURE READ over the JUST-COMPUTED compile_output (box-isolation): never call this
+    with frozen demo artifacts — ``f5_summary(artifacts)`` reads FROZEN SBODEMOSG and
+    would serve another client's boxes on a Xero page (R7a; test-pinned).
+
+    Args:
+        compile_output: the upload's own run_chain output (result.compile_output).
+        period:         {"start","end"} as parsed from the export title block.
+        source_file:    {"filename","sha256"} — the identity a reviewer can verify
+                        (R6: no synthesised company identity on the Xero path).
+        currency:       the export's OWN uniformly-stated currency, or None. None
+                        OMITS the key entirely — never defaulted (R5: a defaulted
+                        "SGD" on a non-SGD org is a false statement about money).
+    """
+    boxes = dict(((compile_output or {}).get("calculate") or {}).get("boxes") or {})
+    if not boxes:
+        raise ValueError(
+            "recomputed_client_coded_f5_boxes requires the upload's computed calculate.boxes — "
+            "refusing to emit a box object without boxes"
+        )
+    out: dict[str, Any] = {
+        "boxes": boxes,
+        "basis": XERO_F5_BOX_BASIS,
+        "period": {"start": (period or {}).get("start"), "end": (period or {}).get("end")},
+        "source_file": dict(source_file or {}),
+    }
+    if currency:
+        out["currency"] = currency
+    return out
 
 
 def f5_summary(artifacts: DemoArtifacts) -> dict[str, Any]:
