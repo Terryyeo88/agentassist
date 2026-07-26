@@ -272,6 +272,17 @@ class XeroF5ChainReader:
         populated = dict(fields)
         return ExtractCoverage(fields=fields, populated=populated)
 
+    def populatable_sides(self) -> frozenset:
+        """Which F5 SIDES this FORMAT can populate — a capability fact, never a content fact.
+
+        The "Transactions by box number" export structurally carries BOTH value-box
+        sections (Box 1-4 supplies AND Box 5 purchases/imports), so both sides are
+        declarable even when a period happens to contain no purchase rows — capability,
+        not emptiness, drives the render marker (open item #48): a genuinely-zero box on
+        this format renders its 0.00 figure, never an unavailable marker.
+        """
+        return frozenset({"sales", "purchase"})
+
     def coverage_status(self) -> list:
         """Map this export's coverage onto per-check status (T2.12 slice 2B + ext-1 + ext-3).
 

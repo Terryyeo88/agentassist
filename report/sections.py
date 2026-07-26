@@ -132,15 +132,32 @@ class F5BoxAttribution:
 
     Attributes:
         box_name:   Internal box key, e.g. 'box_1_standard_rated_sales'.
-        box_value:  Computed SGD amount for this box (already rounded to 2 dp).
+        box_value:  Computed SGD amount for this box (already rounded to 2 dp),
+                    or None when the boxes dict carried NO such key — an absent
+                    key must never be fabricated as 0.00 on the paper
+                    (D-2026-07-26-box-capability R7; the renderer shows an
+                    em-dash for None).
         vat_groups: VatGroup codes from _BOX_VATGROUPS that were actually seen
                     in the period's vatgroup_inventory.  Codes present in the
                     static mapping but absent from the inventory are excluded so
                     the renderer shows only codes with actual transactions.
+        status:     Source-capability status from compile_output["box_capability"]
+                    (D-2026-07-26-box-capability, open item #48): "available"
+                    (default — also the byte-identical SAP/legacy path where no
+                    capability was emitted), "unavailable" (the source could not
+                    have populated this box; the renderer shows a marker, never a
+                    figure), or "derived_incomplete" (a derived box whose figure
+                    is real arithmetic over an incomplete term set; rendered with
+                    its figure plus a sub-line naming the unavailable input,
+                    claiming no bound or direction).
+        unavailable_inputs: For "derived_incomplete" rows, the box keys of the
+                    unavailable input term(s); empty otherwise.
     """
     box_name: str
-    box_value: float
+    box_value: float | None
     vat_groups: list[str]   # filtered to VatGroups present in vatgroup_inventory
+    status: str = "available"
+    unavailable_inputs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -642,25 +659,40 @@ def build_f5_box_section(compile_output: dict[str, Any]) -> F5BoxSection:
     report shows only codes with actual transactions rather than every code that
     could theoretically contribute to the box.
 
+    D-2026-07-26-box-capability (open item #48): when the chain emitted
+    ``compile_output["box_capability"]`` (a reader declared which sides its FORMAT
+    can populate), each row carries that per-box status so the renderer can mark a
+    structurally-unknowable box instead of presenting a fabricated 0.00 figure on
+    a signed paper. Key ABSENT (live SAP / frozen replay / legacy) → every row
+    stays the default "available" and the section is byte-identical to before.
+    R7: an ABSENT box key yields ``box_value=None`` — never a fabricated 0.0.
+    Read-only over compile_output (statuses are string-matched, not imported —
+    report/ stays orchestrator/feeders-free).
+
     Args:
         compile_output: CompileOutput dict; reads 'calculate' (boxes) and
-                        'classify' (vatgroup_inventory) keys.
+                        'classify' (vatgroup_inventory) keys, plus the optional
+                        'box_capability' key.
 
     Returns:
         F5BoxSection: Boxes dict plus one F5BoxAttribution per box in F5 form order.
     """
     boxes: dict[str, float] = compile_output["calculate"]["boxes"]
     inventory: dict[str, Any] = compile_output["classify"]["vatgroup_inventory"]
+    capability: dict[str, Any] = (compile_output.get("box_capability") or {}).get("boxes") or {}
 
     attribution: list[F5BoxAttribution] = []
     for box_name in _BOX_VATGROUPS:
         raw_vgs = _BOX_VATGROUPS[box_name]
         # Keep only codes seen in the period; avoids showing unused codes in the report
         filtered = [vg for vg in raw_vgs if vg in inventory]
+        cap_row = capability.get(box_name) or {}
         attribution.append(F5BoxAttribution(
             box_name=box_name,
-            box_value=boxes.get(box_name, 0.0),
+            box_value=boxes.get(box_name),
             vat_groups=filtered,
+            status=str(cap_row.get("status") or "available"),
+            unavailable_inputs=list(cap_row.get("unavailable_inputs") or []),
         ))
 
     return F5BoxSection(boxes=boxes, attribution=attribution)
