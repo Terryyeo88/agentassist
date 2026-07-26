@@ -2,7 +2,7 @@
 
 BUILD ID: t-xero-f5-basis. Written BEFORE the implementation (failing-first SOP). TODAY:
   * the Xero F5 upload response carries NO boxes (5 keys only), api.viewmodel has no
-    XERO_F5_BOX_BASIS constant and no build_client_coded_f5_boxes builder, and the F5
+    XERO_F5_BOX_BASIS constant and no build_recomputed_client_coded_f5_boxes builder, and the F5
     disclaimer says "Computed from your uploaded Xero export" (wrong-directional for
     boxes recomputed from the client's own tax-code groupings).
 
@@ -15,7 +15,7 @@ WHAT PHASE 2 BUILDS (Terry rulings R1-R8), pinned here first:
       (implies figures read off the return) may describe these boxes.
   R2  A DIFFERENTLY-NAMED top-level key -- NOT an embedded discriminator on f5_summary.
       Failing-to-render is the honest failure; wrongly-rendering SAP-styled is the
-      defect. Key name proposed to Terry: ``client_coded_f5_boxes`` (must not contain
+      defect. Key name proposed to Terry: ``recomputed_client_coded_f5_boxes`` (must not contain
       the token "f5_summary"). The object STILL carries an explicit REQUIRED basis
       string (belt and braces) -- never optional, never defaulted.
   R3  F5-GATED STRUCTURALLY: sales and extract responses carry NO boxes key (adding
@@ -81,7 +81,7 @@ _FROZEN_EXTRACT_DIR = _REPO_ROOT / "tests" / "fixtures" / "sbodemosg-extract"
 #: The NEW key (name pending Terry's approval -- see the STOP report). Deliberately
 #: does NOT contain the token "f5_summary": old code looking for that key must find
 #: NOTHING rather than something SAP-styled (R2 failure asymmetry).
-NEW_KEY = "client_coded_f5_boxes"
+NEW_KEY = "recomputed_client_coded_f5_boxes"
 
 #: The F5-branch response contract AFTER this build (the old 5 + the new key).
 _F5_TOP_KEYS_V2 = {
@@ -288,7 +288,7 @@ def test_t5b_builder_omits_currency_when_unstated():
     FAILS TODAY: builder does not exist. R5: an omitted currency renders as no symbol;
     a defaulted 'SGD' on a non-SGD org is a false statement about money.
     """
-    build = viewmodel.build_client_coded_f5_boxes
+    build = viewmodel.build_recomputed_client_coded_f5_boxes
     compile_output = {"calculate": {"boxes": {f"box_{i}": float(i) for i in range(1, 9)}}}
     period = {"start": "2026-04-01", "end": "2026-06-30"}
     sf = {"filename": "x.xlsx", "sha256": "sha256:" + "0" * 64}
@@ -353,7 +353,7 @@ def test_t7_basis_required_and_r1_compliant(client, hermetic):
     for phrase in _BASIS_BANNED_PHRASES:
         assert phrase.lower() not in low, f"R1 bans {phrase!r} for these boxes"
 
-    sig = inspect.signature(viewmodel.build_client_coded_f5_boxes)
+    sig = inspect.signature(viewmodel.build_recomputed_client_coded_f5_boxes)
     assert "basis" not in sig.parameters, (
         "the basis must NOT be a parameter -- required-never-optional means the builder "
         "stamps the constant itself and no caller can omit or override it"
@@ -366,7 +366,7 @@ def test_t7_basis_required_and_r1_compliant(client, hermetic):
 def test_t7b_builder_refuses_boxless_construction():
     """A NEW_KEY object without boxes must be impossible: empty/missing calculate.boxes
     raises instead of emitting a hollow basis-carrying object. FAILS TODAY (no builder)."""
-    build = viewmodel.build_client_coded_f5_boxes
+    build = viewmodel.build_recomputed_client_coded_f5_boxes
     period = {"start": "2026-04-01", "end": "2026-06-30"}
     sf = {"filename": "x.xlsx", "sha256": "sha256:" + "0" * 64}
     with pytest.raises(ValueError):
