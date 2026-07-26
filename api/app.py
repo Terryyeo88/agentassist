@@ -64,7 +64,7 @@ from api.viewmodel import (
     DISCLAIMER,
     build_adjudication_view,
     build_audit_payload,
-    build_client_coded_f5_boxes,
+    build_recomputed_client_coded_f5_boxes,
     build_review_payload,
     f5_summary,
     serialize_ledger_recon_queue,
@@ -1156,7 +1156,7 @@ def _xero_f5_review_response(
         # and carry no boxes (adding them would widen #48 onto unsigned JSON). The key
         # name deliberately avoids "f5_summary" (R2 failure asymmetry: old code looking
         # for that key finds NOTHING rather than something SAP-styled).
-        "client_coded_f5_boxes": build_client_coded_f5_boxes(
+        "recomputed_client_coded_f5_boxes": build_recomputed_client_coded_f5_boxes(
             result.compile_output,
             period=period,
             source_file=source_file or {},

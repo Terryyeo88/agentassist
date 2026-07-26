@@ -210,7 +210,7 @@ XERO_F5_BOX_BASIS = (
 )
 
 
-def build_client_coded_f5_boxes(
+def build_recomputed_client_coded_f5_boxes(
     compile_output: dict,
     *,
     period: dict,
@@ -245,7 +245,7 @@ def build_client_coded_f5_boxes(
     boxes = dict(((compile_output or {}).get("calculate") or {}).get("boxes") or {})
     if not boxes:
         raise ValueError(
-            "client_coded_f5_boxes requires the upload's computed calculate.boxes — "
+            "recomputed_client_coded_f5_boxes requires the upload's computed calculate.boxes — "
             "refusing to emit a box object without boxes"
         )
     out: dict[str, Any] = {
