@@ -110,9 +110,11 @@ export interface DecisionResponse {
 }
 
 /*
- * Source-selector Xero branch. Two honest response shapes from POST /review/upload, keyed by
- * `source_kind` (mirrors api/app.py's UPLOAD_COVERAGE_KEYS / XERO_UPLOAD_KEYS / COVERAGE_ROW_KEYS,
- * the single source of truth):
+ * Source-selector Xero branch. Honest response shapes from POST /review/upload, keyed by
+ * `source_kind`. The contract authority is the exact-set key pins in the backend tests
+ * (tests/test_upload_keys_binding.py binds each branch's live response to its api/app.py
+ * constant; the per-branch upload tests pin the same sets) — NOT the api/app.py constants
+ * alone, which are documentation the binding test keeps honest:
  *   - "extract_upload"  → COVERAGE-ONLY (no `queue`); the engine is not run.
  *   - "xero_f5_upload"  → the engine IS run; `queue` carries the real (but UNVALIDATED)
  *                          findings projected into the SHARED central-screen QueueItem shape
@@ -134,13 +136,30 @@ export interface OutOfScope {
   reason: string;
 }
 
+// The Xero-F5 box object (backend shape: api/viewmodel.py build_recomputed_client_coded_f5_boxes,
+// emitted since PR #151 at api/app.py's xero_f5_upload branch). Deliberately NOT named or shaped
+// like f5_summary — failing-to-render is the honest failure (R2). `currency` is optional because
+// the builder OMITS the key entirely when the export doesn't uniformly state one — it is never
+// defaulted to "SGD" (viewmodel.py: omit-never-default).
+export interface RecomputedF5Boxes {
+  boxes: Record<string, number>;
+  basis: string;
+  period: { start: string | null; end: string | null };
+  source_file: { filename: string; sha256: string };
+  currency?: string;
+}
+
 export interface UploadCoverageResponse {
   source_kind: string;
   validation_status: string;
   disclaimer: string;
   coverage_status: CoverageStatusRow[];
-  // Present on the engine branches ("xero_f5_upload" and "extract_review") — the shared queue.
+  // Present on the three engine branches ("xero_f5_upload", "xero_sales_upload",
+  // "extract_review") — the shared queue.
   queue?: QueueItem[];
+  // Present ONLY on the "xero_f5_upload" branch — sales and extract are one-sided and
+  // deliberately carry no boxes (#48 not widened).
+  recomputed_client_coded_f5_boxes?: RecomputedF5Boxes;
   // Present only on the general-extract engine branch ("extract_review", BUILD 3): the marker
   // that the run used a DEFAULT DEMO config (not the uploader's). Drives the LOUD default-config
   // caveat. Value: "default_demo".
