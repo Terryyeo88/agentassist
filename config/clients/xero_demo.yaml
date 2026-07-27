@@ -53,3 +53,19 @@ completeness_threshold: 0.10
 report:
   reviewer_name: ""
   firm_name: ""
+
+# =============================================================================
+# D-2026-07-27-dup-window (G4b) — windowed duplicate-purchase surfacer (DUP_WINDOW).
+#
+# THE WINDOW VALUE IS A DEMO PARAMETER, FITTED TO THE COMMITTED FIXTURE — NOT A
+# VALIDATED THRESHOLD. The committed corpus fires ONLY at window >= 7: exactly the
+# BILL-3004/3005 bait pair's 7-day gap, so this number is reverse-derived FROM the
+# fixture. Stated (here), it is a demo parameter; unstated, it would be
+# contamination. No IRAS source prescribes any window (ASK Step 3D.1.1(d)
+# prescribes the QUESTION — input tax not claimed twice on the same transaction —
+# never a matching key, window, or tolerance): this value is a NON-REGULATORY
+# TUNING PARAMETER, OURS, and the loader still refuses to guess one (an enabled
+# check with no declared days is a ConfigError, never a default).
+# =============================================================================
+dup_window_enabled: true
+dup_window_days: 7
