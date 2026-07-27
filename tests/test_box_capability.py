@@ -484,3 +484,126 @@ def test_t11_sealed_boxes_keep_computed_zeros_under_markers(dummy_creds, tmp_pat
     assert sealed["box_capability"]["declared_sides"] == ["sales"], (
         "the capability that JUSTIFIES the paper's marker is itself sealed"
     )
+
+
+# -- T12 (F3) -- STRUCTURAL: every feeders/ ChainReader declares its sides ------------
+
+# Readers that DELIBERATELY do not declare populatable_sides (Terry ruling F3 --
+# an explicit named allowlist, never a silent default):
+#   * sap_b1_server.SapChainReader -- the live SAP feeder. SAP B1 carries both
+#     document sides by construction, so the "available" render default is correct,
+#     and emitting nothing keeps the live-SAP chain output byte-identical.
+#   * tests/replay_shim.FrozenExtractReader -- the offline-replay reader. It must
+#     add NO compile-output key, or the frozen replay oracle's byte-identical
+#     comparison (Invariant 4) breaks; the frozen SBODEMOSG capture is two-sided,
+#     so the "available" default is correct there too.
+# WHY THIS PIN EXISTS (F3 reasoning): the "available" default is correct today ONLY
+# because both non-declaring readers are two-sided. A future ONE-SIDED reader that
+# forgets to declare would resurrect the #48 fabrication through this exact gap --
+# vigilance is not a control; this pin is.
+_SIDES_EXEMPT_READERS = frozenset({"SapChainReader", "FrozenExtractReader"})
+
+
+def _feeders_chain_reader_classes() -> list:
+    """Every class defined under feeders/ that satisfies the ChainReader surface
+    (duck-typed on the same probes the chain uses: fetch_invoices + fetch_listing)."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    import feeders
+
+    classes = []
+    for mod_info in pkgutil.iter_modules(feeders.__path__):
+        module = importlib.import_module(f"feeders.{mod_info.name}")
+        for _name, cls in inspect.getmembers(module, inspect.isclass):
+            if not cls.__module__.startswith("feeders."):
+                continue  # re-exported import, not a feeders-defined class
+            if callable(getattr(cls, "fetch_invoices", None)) and callable(
+                getattr(cls, "fetch_listing", None)
+            ):
+                classes.append(cls)
+    return classes
+
+
+def test_t12_every_feeders_reader_declares_sides():
+    """F3: every ChainReader in feeders/ declares populatable_sides; the deliberate
+    non-declarers are the EXPLICIT allowlist above, nowhere else."""
+    readers = _feeders_chain_reader_classes()
+    assert readers, "the scan must find the feeders readers (sweep broke, not the repo)"
+    seen = {cls.__name__ for cls in readers}
+    assert {"ExtractChainReader", "XeroF5ChainReader", "XeroSalesInvoiceChainReader"} <= seen
+
+    for cls in readers:
+        assert cls.__name__ not in _SIDES_EXEMPT_READERS, (
+            f"{cls.__name__} is feeders-defined -- the allowlist is for the live-SAP "
+            "and replay readers only; a feeders reader must declare"
+        )
+        assert callable(getattr(cls, "populatable_sides", None)), (
+            f"{cls.__name__} declares no populatable_sides: if it is one-sided, the "
+            "'available' render default FABRICATES figures on its signed papers (#48). "
+            "Declare its sides, or add it to _SIDES_EXEMPT_READERS with a stated reason."
+        )
+
+
+def test_t12b_exempt_readers_exist_and_lack_the_seam():
+    """The allowlist stays honest: both named exemptions exist and genuinely lack
+    the seam (a stale allowlist entry would mask a missing declaration)."""
+    import importlib.util
+
+    assert not hasattr(sap_b1_server.SapChainReader, "populatable_sides")
+
+    shim_spec = importlib.util.spec_from_file_location(
+        "boxcap_replay_shim", Path(__file__).resolve().parent / "replay_shim.py"
+    )
+    shim = importlib.util.module_from_spec(shim_spec)
+    shim_spec.loader.exec_module(shim)
+    assert not hasattr(shim.FrozenExtractReader, "populatable_sides"), (
+        "the replay reader must emit nothing -- the frozen oracle comparison is "
+        "byte-identical only while replay adds no compile-output key"
+    )
+
+
+# -- T13 (F4) -- DERIVED-IDENTITY BINDING: _DERIVED_BOX_INPUTS matches reality --------
+
+
+def test_t13_derived_inputs_table_bound_to_observed_arithmetic(dummy_creds):
+    """F4: _DERIVED_BOX_INPUTS is a THIRD statement of identities held in calculate
+    (sap_b1_server box_4/box_8 derivation) and Gate 2 (gates.py). An unbound
+    restatement can drift -- and the failure mode is a paper naming the WRONG
+    unavailable input, inside the feature built to prevent exactly that. This test
+    binds the table to the OBSERVED arithmetic of a real chain run whose derived
+    boxes have non-zero, distinct terms (the committed F5 fixture: box_8 =
+    900.00 - 1,265.00 = -365.00; box_4 = 15,000 + 3,000 + 0 = 18,000).
+    """
+    from orchestrator.chain import _DERIVED_BOX_INPUTS
+
+    # The table claims EXACTLY these relationships -- membership and order.
+    assert _DERIVED_BOX_INPUTS == {
+        "box_4_total_sales": (
+            "box_1_standard_rated_sales",
+            "box_2_zero_rated_sales",
+            "box_3_exempt_sales",
+        ),
+        "box_8_net_gst": ("box_6_output_tax", "box_7_input_tax"),
+    }
+
+    cfg = load_client_config("xero_demo", check_connectivity=False)
+    period = {"start": "2026-04-01", "end": "2026-06-30"}
+    compile_output, _gates = run_chain(
+        cfg, period, reader=XeroF5ChainReader(_F5_FIXTURE)
+    )
+    b = compile_output["calculate"]["boxes"]
+
+    # Non-trivial terms: a 0-heavy run would let a drifted table pass by accident.
+    assert b["box_6_output_tax"] != 0.0 and b["box_7_input_tax"] != 0.0
+    assert b["box_6_output_tax"] != b["box_7_input_tax"]
+
+    box_4_inputs = _DERIVED_BOX_INPUTS["box_4_total_sales"]
+    assert round(sum(b[k] for k in box_4_inputs), 2) == b["box_4_total_sales"], (
+        "box_4 must equal the SUM of exactly the inputs the table claims"
+    )
+    minuend, subtrahend = _DERIVED_BOX_INPUTS["box_8_net_gst"]
+    assert round(b[minuend] - b[subtrahend], 2) == b["box_8_net_gst"], (
+        "box_8 must equal box_6 - box_7 in the table's own input order"
+    )
