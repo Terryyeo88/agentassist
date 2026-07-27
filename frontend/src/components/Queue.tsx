@@ -1,5 +1,6 @@
 import type { FacetMap, Group, QueueItem } from "../api";
 import { FacetFilter } from "./FacetFilter";
+import { type ExpectedSource, isSourceMismatch, SourceMismatch } from "../lib/sourceGuard";
 
 /**
  * Facet props (T6.3 Slice 4) — the SERVER-driven facet menu, relocated onto the queue. The
@@ -27,6 +28,9 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   facets?: FacetProps;
+  /** Source-tag guard (§2 defence-in-depth); OPT-IN. See lib/sourceGuard. */
+  expectedSource?: ExpectedSource;
+  sourceKind?: string | null;
 }
 
 const TAB_LABELS: Record<Group, string> = {
@@ -53,7 +57,15 @@ export function Queue({
   selectedId,
   onSelect,
   facets,
+  expectedSource,
+  sourceKind,
 }: Props) {
+  // §2 source-tag guard: withhold foreign-source rows and surface an honest mismatch. Opt-in
+  // (inert unless expectedSource is set). Queue has no hooks, so the check can lead.
+  if (expectedSource && isSourceMismatch(expectedSource, sourceKind)) {
+    return <SourceMismatch expected={expectedSource} got={sourceKind} />;
+  }
+
   // Narrow to the SERVER's filtered finding_ids when a filter is active; else keep every row.
   const narrowed =
     facets?.visibleIds ? items.filter((it) => facets.visibleIds!.has(it.finding_id)) : items;
