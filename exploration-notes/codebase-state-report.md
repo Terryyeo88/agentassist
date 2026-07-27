@@ -40,7 +40,7 @@ fa85517  Security hygiene and severity alignment
 
 ### Collin's Commit
 
-Commit `adeb85f` (author: ChefMilo / collinteo2003@gmail.com, 2026-05-27) sits **one commit ahead** of current master tip `6133864`. The merge-base equals master tip:
+Commit `adeb85f` (author: ChefMilo / <personal email redacted>, 2026-05-27) sits **one commit ahead** of current master tip `6133864`. The merge-base equals master tip:
 
 ```
 merge-base(master, origin/Collin's-branch) == 6133864 == master HEAD
