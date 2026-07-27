@@ -318,3 +318,32 @@ def test_u9_new_prose_clears_negative_literals_all_states():
     caveat_text = _sameday_caveat_text(active)
     for banned in _NEGATIVE_LITERALS:
         assert banned not in caveat_text, f"replacement caveat must not carry {banned!r}"
+
+
+# -- U10 (H1) -- the not_enabled render carries neither cite nor parameters -----------
+
+
+def test_u10_not_enabled_renders_heading_and_statement_only():
+    """H1 (Terry ruling): on "not_enabled" the section is the heading and the
+    not-enabled statement ONLY. No ASK cite, no window number, no honest-status
+    caveats — those describe a check that did not run, and six lines of
+    check-properties before "there was no check" builds a model the last line has
+    to demolish. G2 is not weakened: the cite travels with the check's OUTPUT, and
+    there is none."""
+    co = load_compile_output(_CHAIN_SAMPLE)
+    section = build_document_dup_window_section(
+        co, dup_window_enabled=False, dup_window_days=7
+    )
+    text = _render_window_story(section)
+    assert "Windowed Duplicate-Purchase Review" in text
+    assert "NOT ENABLED" in text
+    assert "3D.1.1(d)" not in text, "no output -> nothing to cite (H1/G2)"
+    assert "7" not in text, "the never-applied window number must not render"
+    assert "non-regulatory" not in text
+    assert "Honest status of this check" not in text
+    assert "Basis:" not in text
+    # The enabled states keep the full framing (contrast pin, not_examined).
+    enabled = _render_window_story(build_document_dup_window_section(
+        co, dup_window_enabled=True, dup_window_days=7
+    ))
+    assert "3D.1.1(d)" in enabled and "Honest status of this check" in enabled
