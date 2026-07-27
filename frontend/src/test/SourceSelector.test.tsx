@@ -68,7 +68,7 @@ const COVERAGE_PAYLOAD = {
   disclaimer:
     "Coverage preview over an uploaded extract — validation_status=unvalidated; the engine is not run.",
   coverage_status: [
-    { check: "NO_GST_REG", level: "unavailable", reason: "FederalTaxID absent — supplier-master sheet required." },
+    { check: "NO_GST_REG", level: "unavailable", reason: "FederalTaxID absent — NO_GST_REG cannot run; require supplier-master sheet at onboarding." },
     { check: "E1", level: "full", reason: "" },
   ],
 };
