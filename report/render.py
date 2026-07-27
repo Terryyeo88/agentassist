@@ -1659,11 +1659,26 @@ def _document_dup(m: ReportModel, story: list) -> None:
     ))
     # Honest-status caveats — VERBATIM on the page, one per line so PDF line-wrapping
     # never splits a caveat phrase mid-string (each must survive text extraction intact).
+    #
+    # G6 (D-2026-07-27-dup-window): the third caveat is CONDITIONAL. On a paper with
+    # no active window section the string is BYTE-IDENTICAL to the locked pin
+    # (tests/test_document_dup_section.py — passes UNAMENDED). On a paper where the
+    # window check is enabled (any run state), "pending a worksheet-derived window"
+    # would be a FALSE statement — a window check exists — so the caveat scopes this
+    # section truthfully instead, deferring to the window section's own status.
+    _window = getattr(m, "document_dup_window", None)
+    _window_active = _window is not None and _window.status != "not_enabled"
+    _scope_caveat = (
+        "same-day pairs only in this section; multi-day pairs are the Windowed "
+        "Duplicate-Purchase Review's scope — see that section's own status below"
+        if _window_active
+        else "same-day only pending a worksheet-derived window"
+    )
     story.append(Paragraph("Honest status of this check:", _SMALL))
     for _caveat in (
         "built",
         "not accuracy-validated",
-        "same-day only pending a worksheet-derived window",
+        _scope_caveat,
         "over-firing untestable pending a must-spare fixture",
     ):
         story.append(Paragraph(f"— {_caveat}", _SMALL))
@@ -1703,6 +1718,126 @@ def _document_dup(m: ReportModel, story: list) -> None:
         for f in dd.findings
     ]
     story.append(_table(dd_cols, dd_hdr, dd_rows))
+
+
+def _document_dup_window(m: ReportModel, story: list) -> None:
+    """Render the windowed duplicate-purchase surfacer (DUP_WINDOW) when declared.
+
+    D-2026-07-27-dup-window. Four states (G5, amended): the model section is None
+    when the client config declares NO dup_window position — nothing renders and
+    every undeclared paper (including SAP) stays byte-identical. A DECLARED
+    position always renders the section, in one of:
+      * "not_enabled"  → the check is declared but OFF — stated on the page,
+                         distinguishably from not_examined;
+      * "not_examined" → enabled, but this review's compiled output predates the
+                         check — it was NOT performed here;
+      * "unavailable"  → could not run; the execution reason is surfaced;
+      * "examined"     → ran; zero findings is a positive statement, and findings
+                         render as candidates for reviewer attention.
+
+    G2: the ASK cite and the OURS label live in the SAME paragraph — the cite never
+    travels without the label. The surfacer NEVER asserts documents are duplicates;
+    read-only over the section; touches no F5 box, no gate.
+
+    Args:
+        m:     The ReportModel carrying the optional document_dup_window section.
+        story: Mutable story list; flowables are appended in place.
+    """
+    dw = getattr(m, "document_dup_window", None)
+    if dw is None:
+        return  # no declared position → silent omission (the established rule)
+
+    window_word = str(dw.window_days) if dw.window_days is not None else "N"
+
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph("Windowed Duplicate-Purchase Review", _H2))
+    story.append(Paragraph(
+        "Surfaces purchase invoices sharing the same supplier and the same total, "
+        f"one to {window_word} days apart, as candidates for reviewer attention — "
+        "never an assertion that they are duplicates. It does not affect F5 box "
+        "totals or gate outcomes. Distinct from the same-day review above (day-zero "
+        "pairs belong there) and from the vendor-reference check (DUP_CLAIM) — "
+        "different predicates, different units, not one check.",
+        _SMLX,
+    ))
+    # G2 — the cite and its label, one paragraph, inseparable.
+    story.append(Paragraph(
+        "Basis: IRAS ASK Annual Review Guide Step 3D.1.1(d) — check that input tax "
+        "is not claimed on the same transaction more than once. The guide prescribes "
+        f"the question, not this method: the {window_word}-day window and the "
+        "exact-amount matching are AgentAssist operationalisations — a non-regulatory "
+        "tuning parameter, not an IRAS rule.",
+        _SMALL,
+    ))
+    # Honest-status caveats — VERBATIM, one per line (G7 vacuity + G8 pair-shape).
+    story.append(Paragraph("Honest status of this check:", _SMALL))
+    for _caveat in (
+        "built",
+        "not accuracy-validated",
+        "window value is a demo parameter fitted to the committed fixture, not a "
+        "validated threshold",
+        "over-firing untestable pending a must-spare fixture; the legitimate "
+        "recurring-charge (standing-order) case is UNTESTED, not absent",
+        "findings are pair-shaped (two document numbers per row) and carry no single "
+        "document identity; they cannot be keyed by the decision ledger, so "
+        "review-panel actions do not apply — paper-only candidates",
+    ):
+        story.append(Paragraph(f"— {_caveat}", _SMALL))
+
+    if dw.status == "not_enabled":
+        story.append(Paragraph(
+            "This check is declared for this client but NOT ENABLED — no windowed "
+            "duplicate-purchase review was performed for this period. This differs "
+            "from a review performed with no findings.",
+            _SMALL,
+        ))
+        return
+
+    if dw.status == "not_examined":
+        story.append(Paragraph(
+            "This check is enabled for this client, but this review's compiled "
+            "output predates it — the windowed review was NOT performed for this "
+            "review.",
+            _SMALL,
+        ))
+        return
+
+    if dw.status == "unavailable":
+        story.append(Paragraph(
+            f"This check could not run for this review ({dw.reason}); windowed "
+            "duplicate-purchase completeness is NOT covered by this report.",
+            _SMALL,
+        ))
+        return
+
+    if not dw.findings:
+        story.append(Paragraph(
+            "Check performed — no same-supplier, same-total purchase pairs within "
+            f"the {window_word}-day window.",
+            _SMALL,
+        ))
+        return
+
+    story.append(Paragraph(
+        f"{len(dw.findings)} windowed pair candidate(s). Each row is ONE pair of "
+        "purchase invoices sharing supplier and total, dated within the window.",
+        _SMALL,
+    ))
+    dw_cols = [3.0*cm, 2.8*cm, 2.2*cm, 1.4*cm, 3.0*cm, 4.6*cm]
+    dw_hdr = [_p(h, _CELLB) for h in
+              ["Supplier", "Dates", "Total (SGD)", "Days", "DocNums", "Description"]]
+    dw_rows = [
+        [
+            _p(f.get("card_name", "—")),
+            _p(", ".join(str(d) for d in f.get("doc_dates", []))),
+            _p(_sgd(f.get("doc_total"))),
+            _p(str(f.get("delta_days", "—"))),
+            _p(", ".join(str(n) for n in f.get("doc_nums", []))),
+            _p(f.get("description", "—")),
+        ]
+        for f in dw.findings
+    ]
+    story.append(_table(dw_cols, dw_hdr, dw_rows))
 
 
 def _ledger_recon(m: ReportModel, story: list) -> None:
@@ -2115,6 +2250,10 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _findings(model, story)
     _listing_findings(model, story)
     _document_dup(model, story)
+    # D-2026-07-27-dup-window: the windowed sibling renders beside the same-day
+    # review (no-op when the config declares no dup_window position — every
+    # undeclared paper, including SAP, stays byte-identical).
+    _document_dup_window(model, story)
     _check_coverage(model, story)
     _ledger_recon(model, story)
     _cross_findings(model, story)

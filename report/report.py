@@ -50,6 +50,7 @@ from report.sections import (
     CrossFindingSection,
     DeclaredF5Section,
     DocumentDupSection,
+    DocumentDupWindowSection,
     F5BoxSection,
     FindingsSection,
     JudgmentSection,
@@ -68,6 +69,7 @@ from report.sections import (
     build_cross_finding_section,
     build_declared_f5_section,
     build_document_dup_section,
+    build_document_dup_window_section,
     build_f5_box_section,
     build_findings_section,
     build_judgment_section,
@@ -161,6 +163,11 @@ class ReportModel:
     # Same-day duplicate-purchase surfacer (DUP_SAME_DAY). None in legacy callers that
     # predate the check; renderer skips the section when None or status "not_examined".
     document_dup: DocumentDupSection | None = None
+    # Windowed duplicate-purchase surfacer (DUP_WINDOW, D-2026-07-27-dup-window).
+    # None when the client config declares NO dup_window position (the G5 declared-
+    # position gate) — the renderer emits nothing and undeclared papers (including
+    # SAP) stay byte-identical. Also gates the G6 conditional DUP_SAME_DAY caveat.
+    document_dup_window: DocumentDupWindowSection | None = None
     # D-2026-07-20-source-provenance: display label of the data source (from
     # ClientConfig.source_system via config.source_labels). Defaulted so legacy
     # callers that construct ReportModel directly keep the pre-existing SAP wording.
@@ -362,6 +369,15 @@ def build_report(
         # unavailable / not_examined) derived from compile_output keys. Renderer is a
         # no-op when not_examined with no findings (legacy compile_output).
         document_dup=build_document_dup_section(compile_output),
+        # DUP_WINDOW section (D-2026-07-27-dup-window). ENABLE STATE FROM
+        # client_config, never compile_output (G5 — the chain's silence when off is
+        # oracle-load-bearing). getattr-defensive so duck-typed/legacy test configs
+        # without the fields build None and render byte-identically.
+        document_dup_window=build_document_dup_window_section(
+            compile_output,
+            dup_window_enabled=bool(getattr(client_config, "dup_window_enabled", False)),
+            dup_window_days=getattr(client_config, "dup_window_days", None),
+        ),
         # D-2026-07-20-source-provenance: the renderer never reaches into
         # ClientConfig, so the data-source display label rides on the model.
         source_label=source_display_name(
