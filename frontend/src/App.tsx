@@ -217,9 +217,14 @@ export function App() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               facets={facetProps}
-              // §2 source-tag guard: this is the SAP (b1_demo) surface. ReviewPayload carries no
-              // source_kind key, so App declares the tag — the shared screen refuses any
-              // non-SAP payload here (defence-in-depth behind Root's mount separation).
+              // §2 source-tag guard: this is the SAP (b1_demo) surface. ReviewPayload carries NO
+              // source_kind key, so App declares BOTH sides here — which means this particular
+              // pairing is tautological and can never trip. It is a declaration of intent, not an
+              // observation: the tag is asserted by the mount, not read off the payload. The
+              // guard does real work only where the tag is payload-derived (the Xero mount, which
+              // passes the response's own source_kind). Mount separation in Root remains the
+              // actual structural guarantee on this surface. To make this observed rather than
+              // declared, ReviewPayload would need a source_kind key — a key-set change, Terry-only.
               expectedSource="sap"
               sourceKind="b1_demo"
               adjudication={{
