@@ -1,0 +1,11 @@
+doc_num,side,contact,tax_rate_name,vatgroup_expected,net,gst,expected_finding,pdf_file,pdf_variant,note
+INV-2001,sale,Acme Pte Ltd,Standard-Rated Supplies (9%),SO,10000.00,900.00,(clean control),INV-2001.pdf,match,"Clean control. SR sale, correct 9%. Should NOT flag."
+INV-2002,sale,Borealis Pte Ltd,SR-NoGST (0%) [test],SO,5000.00,0.00,E3,INV-2002.pdf,match,E3: standard-rated code carrying ZERO tax (custom 0% rate mapped to SO).
+INV-2003,sale,Cresco Pte Ltd,ZR-Broken (9%) [test],ZR,3000.00,270.00,E2,INV-2003.pdf,match,E2: zero-rated code (ZR) carrying GST (custom rate mis-set to 9%).
+BILL-3001,purchase,GoodVendor Pte Ltd,Standard-Rated Purchases (9%),SI,2000.00,180.00,(clean control),BILL-3001.pdf,match,"Clean control. SI purchase, supplier GST-registered, correct 9%. Should NOT flag."
+BILL-3002,purchase,OldRate Supplies Pte Ltd,SI-Stale (8%) [test],SI,4000.00,320.00,E4,BILL-3002.pdf,total_mismatch,E4: 8% (stale rate) vs expected 9% -> rate deviation. ALSO document plumbing: source PDF shows correct 9%/360.00 while ledger booked 8%/320.00 -> gst_amount_mismatch / total_inconsistency (J+).
+BILL-3003,purchase,NoReg Trading,Standard-Rated Purchases (9%),SI,1500.00,135.00,NO_GST_REG,BILL-3003.pdf,missing_reg,NO_GST_REG: input tax claimed but supplier FederalTaxID/Tax number BLANK. Source PDF also omits the supplier GST reg -> reg11_supplier_gst_absent (J+).
+BILL-3004,purchase,DupSupplier Pte Ltd,Standard-Rated Purchases (9%),SI,2500.00,225.00,DUP_CLAIM(pair),BILL-3004.pdf,match,"DUP_CLAIM member 1 of 2: same supplier + amount as BILL-3005, different reference (quotation vs tax invoice)."
+BILL-3005,purchase,DupSupplier Pte Ltd,Standard-Rated Purchases (9%),SI,2500.00,225.00,DUP_CLAIM(pair),BILL-3005.pdf,match,"DUP_CLAIM member 2 of 2. Same supplier + 2,500.00 as BILL-3004."
+BILL-3006,purchase,Marina Fine Dining Pte Ltd,Standard-Rated Purchases (9%),SI,800.00,72.00,REASONING-PLUMBING,BILL-3006.pdf,match,UNLABELLED. Entertainment-shaped line; MAY surface as a Reg 26/27 candidate. Tests the plumbing path ONLY (candidate -> dossier -> agent stage). NO ground truth.
+BILL-3007,purchase,AutoCare SG Pte Ltd,Standard-Rated Purchases (9%),SI,1200.00,108.00,REASONING-PLUMBING,BILL-3007.pdf,match,UNLABELLED. Motor-car-shaped line; MAY surface as a Reg 26/27 candidate. Plumbing ONLY.

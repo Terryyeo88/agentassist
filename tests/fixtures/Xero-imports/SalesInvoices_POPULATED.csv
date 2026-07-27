@@ -1,0 +1,4 @@
+*ContactName,EmailAddress,POAddressLine1,POAddressLine2,POAddressLine3,POAddressLine4,POCity,PORegion,POPostalCode,POCountry,*InvoiceNumber,Reference,*InvoiceDate,*DueDate,Total,InventoryItemCode,*Description,*Quantity,*UnitAmount,Discount,*AccountCode,*TaxType,TaxAmount,TrackingName1,TrackingOption1,TrackingName2,TrackingOption2,Currency,BrandingTheme
+Acme Pte Ltd,,,,,,,,,,INV-2001,,08/04/2026,08/05/2026,,,Consulting services - April 2026,1,10000.00,,200,Standard-Rated Supplies (9%),,,,,,SGD,
+Borealis Pte Ltd,,,,,,,,,,INV-2002,,15/04/2026,15/05/2026,,,Software licence - annual,1,5000.00,,200,SR-NoGST (0%) [test],,,,,,SGD,
+Cresco Pte Ltd,,,,,,,,,,INV-2003,,02/05/2026,01/06/2026,,,Overseas advisory (miscoded as zero-rated),1,3000.00,,200,ZR-Broken (9%) [test],,,,,,SGD,
