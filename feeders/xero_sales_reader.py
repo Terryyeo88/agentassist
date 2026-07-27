@@ -255,6 +255,18 @@ class XeroSalesInvoiceChainReader:
         populated = dict(fields)
         return ExtractCoverage(fields=fields, populated=populated)
 
+    def populatable_sides(self) -> frozenset:
+        """Which F5 SIDES this FORMAT can populate — a capability fact, never a content fact.
+
+        A Xero sales-invoice export carries sales documents ONLY: no purchase surface
+        exists in the format, so a purchase-side box is STRUCTURALLY UNKNOWABLE from it
+        (open item #48 — the paper must never state a figure the source could not
+        support). Declared beside ``coverage_status()`` (the same duck-typed honest-
+        degrade seam family); the chain projects sides → per-box status and the report
+        layer renders unavailable boxes as a marker, never a fabricated 0.00.
+        """
+        return frozenset({"sales"})
+
     def coverage_status(self) -> list:
         """Map this export's coverage onto per-check status (the EXISTING 2B + ext-1 + ext-3 seam).
 

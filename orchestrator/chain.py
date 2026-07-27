@@ -442,6 +442,11 @@ def run_chain(
     # declares one (the extract-feeder path). Emission only — never asserts a verdict.
     _emit_check_coverage(result, reader)
 
+    # D-2026-07-26-box-capability: surface which F5 boxes this SOURCE could have
+    # populated, when the reader declares its sides (open item #48). Emission only —
+    # never touches calculate.boxes or the gate results (box-isolation).
+    _emit_box_capability(result, reader)
+
     return result, build_gate_results(_records)
 
 
@@ -465,3 +470,126 @@ def _emit_check_coverage(result: dict, reader) -> None:
         result["check_coverage"] = [s.as_dict() for s in statuses]
     except Exception as exc:  # never let a coverage probe break the chain
         log.warning(f"coverage status unavailable (non-fatal): {exc}")
+
+
+# ── D-2026-07-26-box-capability (open item #48) ──────────────────────────────
+# The calculate step's accumulators initialise every box to 0.0
+# (sap_b1_server.py calculate_f5_return) — the chain output has NO representation
+# of "never fed" vs "fed zero". The capability emission supplies that distinction
+# FROM THE READER: which sides the source FORMAT can populate, projected onto the
+# eight boxes so the report layer can mark a structurally-unknowable box instead
+# of presenting a fabricated 0.00 on a signed paper. Presentation metadata ONLY:
+# calculate.boxes and the gate results are byte-identical with or without it.
+
+# Box-side knowledge comes ONLY from F5_BOX_MAPPING's own "side" field (read at
+# projection time — no authored side→box table). The two derived boxes never
+# appear as lt_box/tt_box targets there; their input identities below RESTATE the
+# arithmetic calculate performs (sap_b1_server.py: box_4 = box_1+box_2+box_3,
+# box_8 = box_6 − box_7) and gates.py Gate 2 enforces — not new tax semantics.
+_DERIVED_BOX_INPUTS: dict[str, tuple[str, ...]] = {
+    "box_4_total_sales": (
+        "box_1_standard_rated_sales",
+        "box_2_zero_rated_sales",
+        "box_3_exempt_sales",
+    ),
+    "box_8_net_gst": ("box_6_output_tax", "box_7_input_tax"),
+}
+
+# The eight boxes in F5 form order — the calculate accumulators' own key order.
+_F5_BOX_ORDER: tuple[str, ...] = (
+    "box_1_standard_rated_sales",
+    "box_2_zero_rated_sales",
+    "box_3_exempt_sales",
+    "box_4_total_sales",
+    "box_5_taxable_purchases",
+    "box_6_output_tax",
+    "box_7_input_tax",
+    "box_8_net_gst",
+)
+
+# The declarable sides — the vocabulary F5_BOX_MAPPING's "side" field uses.
+_DECLARABLE_SIDES = frozenset({"sales", "purchase"})
+
+
+def project_box_capability(declared_sides) -> dict:
+    """Project a reader's declared sides onto per-box availability status.
+
+    Statuses (consumed string-matched by report/sections.py — the layers stay
+    import-decoupled): "available" (the source can populate the box),
+    "unavailable" (no surface in the source could populate it — a figure would be
+    fabricated), "derived_incomplete" (a derived box with at least one available
+    AND at least one unavailable input; its figure is real arithmetic over an
+    incomplete term set). A derived box with EVERY input unavailable is itself
+    "unavailable". ``unavailable_inputs`` is always present (empty for
+    non-derived-incomplete rows) and names the unavailable terms so the renderer
+    can state WHICH input is missing without claiming a bound or direction.
+
+    Args:
+        declared_sides: iterable of side strings ⊆ {"sales", "purchase"}.
+
+    Returns:
+        dict: {"declared_sides": sorted list, "boxes": {box_name:
+              {"status": str, "unavailable_inputs": list[str]}}} in F5 form order.
+
+    Raises:
+        ValueError: on an empty or out-of-vocabulary declaration (the emitter
+            treats this as no-emission; never guesses).
+    """
+    sides = set(declared_sides)
+    if not sides or not sides <= _DECLARABLE_SIDES:
+        raise ValueError(
+            f"undeclarable sides {sorted(sides)!r} (expected a non-empty subset "
+            f"of {sorted(_DECLARABLE_SIDES)})"
+        )
+
+    # box → the sides that can feed it, derived from F5_BOX_MAPPING itself (R6).
+    box_sides: dict[str, set] = {}
+    for spec in sap_b1_server.F5_BOX_MAPPING.values():
+        for key in ("lt_box", "tt_box"):
+            box = spec.get(key)
+            if box:
+                box_sides.setdefault(box, set()).add(spec["side"])
+
+    boxes: dict[str, dict] = {}
+    for box in _F5_BOX_ORDER:
+        if box in _DERIVED_BOX_INPUTS:
+            continue  # derived boxes resolved from their inputs below
+        feedable = box_sides.get(box, set())
+        status = "available" if feedable & sides else "unavailable"
+        boxes[box] = {"status": status, "unavailable_inputs": []}
+
+    for box, inputs in _DERIVED_BOX_INPUTS.items():
+        input_statuses = [boxes[i]["status"] for i in inputs]
+        if all(s == "available" for s in input_statuses):
+            boxes[box] = {"status": "available", "unavailable_inputs": []}
+        elif all(s == "unavailable" for s in input_statuses):
+            boxes[box] = {"status": "unavailable", "unavailable_inputs": []}
+        else:
+            boxes[box] = {
+                "status": "derived_incomplete",
+                "unavailable_inputs": [
+                    i for i in inputs if boxes[i]["status"] == "unavailable"
+                ],
+            }
+
+    ordered = {box: boxes[box] for box in _F5_BOX_ORDER}
+    return {"declared_sides": sorted(sides), "boxes": ordered}
+
+
+def _emit_box_capability(result: dict, reader) -> None:
+    """Attach ``result["box_capability"]`` from the reader's sides seam, if any.
+
+    Duck-typed like ``_emit_check_coverage`` (``orchestrator/`` imports nothing from
+    ``feeders/``): readers WITHOUT ``populatable_sides`` — the live ``SapChainReader``
+    and the frozen-replay reader — add nothing, so those paths stay byte-identical
+    (the offline-replay oracle carries no such key). A failing or out-of-vocabulary
+    probe is non-fatal and emits NOTHING: capability is a surfaced caveat, never
+    guessed and never a chain-halting condition.
+    """
+    sides_fn = getattr(reader, "populatable_sides", None)
+    if not callable(sides_fn):
+        return
+    try:
+        result["box_capability"] = project_box_capability(sides_fn())
+    except Exception as exc:  # never let a capability probe break the chain
+        log.warning(f"box capability unavailable (non-fatal): {exc}")

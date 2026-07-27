@@ -179,7 +179,7 @@ def _base_table_style() -> TableStyle:
     ])
 
 
-def _table(col_widths: list, header: list, rows: list) -> Table:
+def _table(col_widths: list, header: list, rows: list, extra_style: list | None = None) -> Table:
     """Build a Table with a header row prepended and the standard base style.
 
     Args:
@@ -187,15 +187,21 @@ def _table(col_widths: list, header: list, rows: list) -> Table:
             Should sum to _UW so the table fills the usable page width.
         header:     List of Paragraph (or string) cells for the header row.
         rows:       List of data rows; each row is a list of cell values.
+        extra_style: Optional additional TableStyle commands appended to the base
+            style (e.g. per-row SPANs); None (the default) is byte-identical to
+            before the parameter existed.
 
     Returns:
         Table: A ReportLab Table with repeatRows=1 so the header is reprinted
             at the top of each new page when the table spans a page break.
     """
+    style = _base_table_style()
+    for command in (extra_style or []):
+        style.add(*command)
     return Table(
         [header] + rows,
         colWidths=col_widths,
-        style=_base_table_style(),
+        style=style,
         # repeatRows=1 reprints the header row at the top of each continuation page
         repeatRows=1,
     )
@@ -313,6 +319,45 @@ def _f5_summary_pairs(boxes: dict) -> list[tuple[str, float]]:
         list[tuple[str, float]]: Four (label, value) pairs in F5 reading order.
     """
     return [(label, boxes[key]) for key, label in _F5_SUMMARY_LABELS]
+
+
+# ── Box-capability rendering (D-2026-07-26-box-capability, open item #48) ─────
+
+# Marker for a box the SOURCE could not have populated (status "unavailable").
+# A capability fact, not a figure: the sealed compile-output keeps the raw
+# computed value; the paper GLOSSES it (the additive shape from
+# D-2026-07-24-decision-render) — it never states a statutory figure the source
+# could not support, and never claims a bound or a direction.
+_UNAVAILABLE_MARKER = "Not available from this source"
+
+
+def _box_value_flowables(a) -> list:
+    """SGD-value cell content for one F5 box row, by capability status.
+
+    "available" → the figure (or an em-dash when the boxes dict carried no key —
+    an absent key must never be fabricated as 0.00, R7); "unavailable" → the
+    marker, no figure; "derived_incomplete" → the figure PLUS a sub-line naming
+    the unavailable input term(s), claiming no bound or direction (R4). Pure
+    presentation over already-final values — no arithmetic, no recompute
+    (BOX-ISOLATION).
+    """
+    if a.status == "unavailable":
+        return [_p(_UNAVAILABLE_MARKER, _CELL_REC)]
+    if a.box_value is None:
+        return [_p(None)]  # _p renders None as an em-dash — never a fabricated 0.00
+    if a.status == "derived_incomplete":
+        named = "; ".join(
+            _BOX_LABELS.get(key, key) for key in a.unavailable_inputs
+        )
+        return [
+            _p(_sgd(a.box_value)),
+            _p(
+                f"Derived from an incomplete input: {named} is not available "
+                "from this source.",
+                _CELL_REC,
+            ),
+        ]
+    return [_p(_sgd(a.box_value))]
 
 
 def _display_amount(f) -> float:
@@ -744,12 +789,23 @@ def _f5_boxes(m: ReportModel, story: list) -> None:
 
     # Change 2 (Avinash): foreground the four headline figures a reviewer scans
     # first, read verbatim from the computed boxes (no arithmetic — BOX-ISOLATION).
+    # D-2026-07-26-box-capability: rows are built from the attribution (which
+    # carries each box's capability status) so a structurally-unknowable box shows
+    # the marker instead of a fabricated figure; the all-available path renders the
+    # same figures _f5_summary_pairs reads verbatim.
+    att_by_name = {a.box_name: a for a in m.f5_boxes.attribution}
     story.append(Spacer(1, 0.15 * cm))
     story.append(Paragraph("Key figures", _H3))
-    summary_rows = [
-        [_p(label, _CELLB), _p(_sgd(value))]
-        for label, value in _f5_summary_pairs(m.f5_boxes.boxes)
-    ]
+    summary_rows = []
+    for key, label in _F5_SUMMARY_LABELS:
+        a = att_by_name.get(key)
+        if a is not None and a.status == "unavailable":
+            value_cell = _p(_UNAVAILABLE_MARKER, _CELL_REC)
+        elif a is not None and a.box_value is None:
+            value_cell = _p(None)  # absent key → em-dash, never a fabricated 0.00 (R7)
+        else:
+            value_cell = _p(_sgd(m.f5_boxes.boxes[key]))
+        summary_rows.append([_p(label, _CELLB), value_cell])
     summary_style = _base_table_style()
     summary_style.add("BACKGROUND", (0, 0), (-1, -1), _SUMMARY_BG)
     summary_style.add("BOX", (0, 0), (-1, -1), 0.75, _HEADER_BG)
@@ -759,16 +815,24 @@ def _f5_boxes(m: ReportModel, story: list) -> None:
     story.append(Spacer(1, 0.2 * cm))
     story.append(Paragraph("Full box breakdown", _H3))
     hdr = [_p(h, _CELLB) for h in ["Box", "SGD Value", "VatGroups in period"]]
-    rows = [
-        [
-            _p(_BOX_LABELS.get(a.box_name, a.box_name)),
-            _p(_sgd(a.box_value)),
-            # Comma-joined VatGroup codes show the reviewer which codes fed each box
-            _p(", ".join(a.vat_groups) if a.vat_groups else "—"),
-        ]
-        for a in m.f5_boxes.attribution
-    ]
-    story.append(_table([7.5*cm, 3.5*cm, 6.0*cm], hdr, rows))
+    rows = []
+    span_commands: list = []
+    for row_idx, a in enumerate(m.f5_boxes.attribution, start=1):
+        value_flowables = _box_value_flowables(a)
+        if a.status in ("unavailable", "derived_incomplete"):
+            # Marker / sub-line text spans the value + VatGroups columns so it
+            # renders on one visual line (an unavailable box has no VatGroup
+            # transactions to show anyway; a derived box shows none by design).
+            rows.append([_p(_BOX_LABELS.get(a.box_name, a.box_name)), value_flowables, ""])
+            span_commands.append(("SPAN", (1, row_idx), (2, row_idx)))
+        else:
+            rows.append([
+                _p(_BOX_LABELS.get(a.box_name, a.box_name)),
+                value_flowables,
+                # Comma-joined VatGroup codes show the reviewer which codes fed each box
+                _p(", ".join(a.vat_groups) if a.vat_groups else "—"),
+            ])
+    story.append(_table([7.5*cm, 3.5*cm, 6.0*cm], hdr, rows, extra_style=span_commands))
 
 
 # Section 3 column geometry (report redesign, Change 1+4). Severity column
