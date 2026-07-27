@@ -8,6 +8,8 @@ import {
 } from "../api";
 import { ReviewScreen, type Adjudication } from "./ReviewScreen";
 import { SignModal } from "./SignModal";
+import { TopBar } from "./TopBar";
+import { Sidebar } from "./Sidebar";
 
 // B3a-2: decisions persist via POST /decision keyed on the backend config's client_id for
 // each engine branch (mirrors api/app.py's load_decision_entries call sites — app.py runs
@@ -60,6 +62,9 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // never co-exist (Root switches sources), so the two input sites cannot diverge live.
   const [reviewerName, setReviewerName] = useState<string>("");
   const [signOpen, setSignOpen] = useState(false);
+  // Shell chrome (shell parity with the SAP surface): the collapsible left rail. The Xero
+  // surface stays a single non-tab-gated flow — the shell adds TopBar + Sidebar around it.
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   function onLedger(event: ChangeEvent<HTMLInputElement>) {
     setLedgerFile(event.target.files?.[0] ?? null);
@@ -148,141 +153,196 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
     : undefined;
 
   return (
-    <div className="xero-upload">
-      <img className="aa-logo" src="/agentassist-logo.png" alt="AgentAssist" />
-      <button type="button" className="source-back" onClick={onChangeSource}>
-        ← Change source
-      </button>
-      <h1 className="source-title">Xero export — review</h1>
-      <p className="source-sub">
-        Upload a client .xlsx GST export. A real IRAS-F5 export is reviewed and its findings are
-        shown below as candidates — unvalidated, for a human to adjudicate.
-      </p>
+    <div className="layout">
+      {sidebarOpen && (
+        // Shell parity: the shared Sidebar tallies the UPLOAD findings (not a SAP review). No
+        // three-view nav exists on this surface, so selecting a finding just focuses it in the
+        // single-flow review screen below.
+        <Sidebar queue={findings} decided={decided} onSelectFinding={(id) => setSelectedId(id)} />
+      )}
 
-      <label className="xero-file-label reviewer-label">
-        Reviewer of record
-        <input
-          className="reviewer-input"
-          value={reviewerName}
-          onChange={(e) => setReviewerName(e.target.value)}
-          placeholder="Your name — decisions and sign-off are attributed to this reviewer"
+      <div className="main-col">
+        <TopBar
+          // Xero surface: brand + UNVALIDATED badge + reviewer pill, but NO view-tabs (omit
+          // view/setView) — this surface is a single non-tab-gated flow, so tabs would be dead
+          // controls. Badge text is the upload's own validation_status (unvalidated until then).
+          validationStatus={coverage?.validation_status ?? "unvalidated"}
+          reviewerName={reviewerName}
+          onToggleSidebar={() => setSidebarOpen((s) => !s)}
+          onOpenSign={() => setSignOpen(true)}
         />
-      </label>
 
-      <label className="xero-file-label">
-        Optional — 820 account-transactions (ledger) export
-        <input
-          className="xero-file-input xero-ledger-input"
-          type="file"
-          accept=".xlsx"
-          onChange={onLedger}
-        />
-      </label>
-      {ledgerFile && (
-        <p className="xero-ledger-attached">
-          Ledger attached: <span className="mono">{ledgerFile.name}</span> — the
-          ledger↔declared-return reconciliation will run when you upload a Xero F5 export.
-        </p>
-      )}
+        <main className="view xero-upload">
+          <img className="aa-logo" src="/agentassist-logo.png" alt="AgentAssist" />
+          <button type="button" className="source-back" onClick={onChangeSource}>
+            ← Change source
+          </button>
 
-      <label className="xero-file-label">
-        Upload .xlsx GST export
-        <input className="xero-file-input" type="file" accept=".xlsx" onChange={onFile} />
-      </label>
-
-      {busy && <div className="loading">Reading export…</div>}
-      {err && <div className="errorbox">{err}</div>}
-
-      {isExtractReview && (
-        <section className="extract-caveat callout warn" aria-label="Demo review caveat">
-          <strong>Demo review — read before relying on anything below.</strong>
-          <ol className="extract-caveat-clauses">
-            <li>Findings are <strong>unvalidated candidates</strong> for human review — not a verdict.</li>
-            <li>
-              Computed on an export format <strong>proven only against a synthetic sample</strong>;
-              real-client-export validation is open (GTM-gated).
-            </li>
-            <li>
-              This run used a <strong>default demo configuration, not your organisation's tax
-              settings</strong>. Any finding that depends on GST <strong>rate or tax-code mapping</strong>
-              is computed under the demo's settings and <strong>should not be relied on</strong> until
-              your real config is wired in. The structural/arithmetic checks stand on their own.
-            </li>
-          </ol>
-        </section>
-      )}
-
-      {findings.length > 0 && (
-        <section className="xero-findings findings-view" aria-label="Review findings">
-          {persistNote && <p className="xero-persist-note">{persistNote}</p>}
-          <ReviewScreen
-            queue={findings}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            adjudication={adjudication}
-            reviewOnlyNote={adjudication ? undefined : REVIEW_ONLY_NOTE}
-            // §2 source-tag guard: this is the Xero upload surface. The source identity is
-            // intrinsic to the upload response (source_kind); the shared screen refuses any
-            // non-Xero payload here (defence-in-depth behind Root's mount separation).
-            expectedSource="xero"
-            sourceKind={coverage?.source_kind}
-          />
-        </section>
-      )}
-
-      {coverage && (
-        <section className="xero-coverage" aria-label="Coverage preview">
-          <div className="xero-coverage-head">
-            Data coverage · <strong>{coverage.validation_status}</strong>
+          {/* Branch-aware scripted-mode banner: Xero copy, never the SAP "Live SAP Business One
+              access" prose. The two surfaces are separate (Root gates), so each carries its own. */}
+          <div className="banner" role="note">
+            <div className="banner-body">
+              <strong>Uploaded Xero export.</strong> The findings shown are review candidates over
+              a copy of your file — for a human to adjudicate; AgentAssist never writes back to Xero.
+            </div>
           </div>
-          <table className="xero-coverage-table">
-            <thead>
-              <tr>
-                <th>Check</th>
-                <th>Coverage</th>
-                <th>Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {coverage.coverage_status.map((row) => (
-                <tr key={row.check} className={`cov-${row.level}`}>
-                  <td className="mono">{row.check}</td>
-                  <td>{row.level}</td>
-                  <td>{row.reason}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {degraded.length > 0 && (
-            <div className="xero-companion-ask callout info">
-              Some checks are limited or unavailable on a Xero export alone. To enable them
-              (e.g. <span className="mono">NO_GST_REG</span>), provide a supplier-master
-              (companion) sheet at onboarding.
+
+          <p className="source-sub">
+            Upload a client .xlsx GST export. A real IRAS-F5 export is reviewed and its findings are
+            shown below as candidates — unvalidated, for a human to adjudicate.
+          </p>
+
+          <label className="xero-file-label reviewer-label">
+            Reviewer of record
+            <input
+              className="reviewer-input"
+              value={reviewerName}
+              onChange={(e) => setReviewerName(e.target.value)}
+              placeholder="Your name — decisions and sign-off are attributed to this reviewer"
+            />
+          </label>
+
+          {/* SAP-only surfaces, present but DISABLED with an honest reason. They are STATIC
+              placeholders — never the live AuditTrail/CommandBar/FacetFilter — so the Xero page
+              fires no SAP fetch (§2 box-isolation) and shows no dead affordance without a cause. */}
+          <section className="disabled-surfaces" aria-label="Unavailable on uploads">
+            <div className="disabled-surface">
+              <button type="button" disabled>Command bar</button>
+              <span className="disabled-reason">
+                The assistant command bar is available on the SAP review only; an uploaded export
+                has no agent to command.
+              </span>
             </div>
+            <div className="disabled-surface">
+              <button type="button" disabled>Audit trail</button>
+              <span className="disabled-reason">
+                The audit trail covers the SAP agent run; an uploaded export has no agent audit chain.
+              </span>
+            </div>
+            <div className="disabled-surface">
+              <button type="button" disabled>Filters</button>
+              <span className="disabled-reason">
+                Server-driven filters come from a SAP review run; they are not available for uploads.
+              </span>
+            </div>
+          </section>
+
+          <label className="xero-file-label">
+            Optional — 820 account-transactions (ledger) export
+            <input
+              className="xero-file-input xero-ledger-input"
+              type="file"
+              accept=".xlsx"
+              onChange={onLedger}
+            />
+          </label>
+          {ledgerFile && (
+            <p className="xero-ledger-attached">
+              Ledger attached: <span className="mono">{ledgerFile.name}</span> — the
+              ledger↔declared-return reconciliation will run when you upload a Xero F5 export.
+            </p>
           )}
-          {coverage.out_of_scope && coverage.out_of_scope.count > 0 && (
-            <div className="xero-out-of-scope callout info" aria-label="Out-of-scope lines">
-              <strong>
-                {coverage.out_of_scope.count} line
-                {coverage.out_of_scope.count === 1 ? "" : "s"} set aside (out of scope).
-              </strong>{" "}
-              {coverage.out_of_scope.reason}
-              {Object.keys(coverage.out_of_scope.by_code).length > 0 && (
-                <>
-                  {" "}
-                  · by code:{" "}
-                  {Object.entries(coverage.out_of_scope.by_code)
-                    .map(([code, n]) => `${code} (${n})`)
-                    .join(", ")}
-                </>
+
+          <label className="xero-file-label">
+            Upload .xlsx GST export
+            <input className="xero-file-input" type="file" accept=".xlsx" onChange={onFile} />
+          </label>
+
+          {busy && <div className="loading">Reading export…</div>}
+          {err && <div className="errorbox">{err}</div>}
+
+          {isExtractReview && (
+            <section className="extract-caveat callout warn" aria-label="Demo review caveat">
+              <strong>Demo review — read before relying on anything below.</strong>
+              <ol className="extract-caveat-clauses">
+                <li>Findings are <strong>unvalidated candidates</strong> for human review — not a verdict.</li>
+                <li>
+                  Computed on an export format <strong>proven only against a synthetic sample</strong>;
+                  real-client-export validation is open (GTM-gated).
+                </li>
+                <li>
+                  This run used a <strong>default demo configuration, not your organisation's tax
+                  settings</strong>. Any finding that depends on GST <strong>rate or tax-code mapping</strong>
+                  is computed under the demo's settings and <strong>should not be relied on</strong> until
+                  your real config is wired in. The structural/arithmetic checks stand on their own.
+                </li>
+              </ol>
+            </section>
+          )}
+
+          {findings.length > 0 && (
+            <section className="xero-findings findings-view" aria-label="Review findings">
+              {persistNote && <p className="xero-persist-note">{persistNote}</p>}
+              <ReviewScreen
+                queue={findings}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                adjudication={adjudication}
+                reviewOnlyNote={adjudication ? undefined : REVIEW_ONLY_NOTE}
+                // §2 source-tag guard: this is the Xero upload surface. The source identity is
+                // intrinsic to the upload response (source_kind); the shared screen refuses any
+                // non-Xero payload here (defence-in-depth behind Root's mount separation).
+                expectedSource="xero"
+                sourceKind={coverage?.source_kind}
+              />
+            </section>
+          )}
+
+          {coverage && (
+            <section className="xero-coverage" aria-label="Coverage preview">
+              <div className="xero-coverage-head">
+                Data coverage · <strong>{coverage.validation_status}</strong>
+              </div>
+              <table className="xero-coverage-table">
+                <thead>
+                  <tr>
+                    <th>Check</th>
+                    <th>Coverage</th>
+                    <th>Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coverage.coverage_status.map((row) => (
+                    <tr key={row.check} className={`cov-${row.level}`}>
+                      <td className="mono">{row.check}</td>
+                      <td>{row.level}</td>
+                      <td>{row.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {degraded.length > 0 && (
+                <div className="xero-companion-ask callout info">
+                  Some checks are limited or unavailable on a Xero export alone. To enable them
+                  (e.g. <span className="mono">NO_GST_REG</span>), provide a supplier-master
+                  (companion) sheet at onboarding.
+                </div>
               )}
-            </div>
+              {coverage.out_of_scope && coverage.out_of_scope.count > 0 && (
+                <div className="xero-out-of-scope callout info" aria-label="Out-of-scope lines">
+                  <strong>
+                    {coverage.out_of_scope.count} line
+                    {coverage.out_of_scope.count === 1 ? "" : "s"} set aside (out of scope).
+                  </strong>{" "}
+                  {coverage.out_of_scope.reason}
+                  {Object.keys(coverage.out_of_scope.by_code).length > 0 && (
+                    <>
+                      {" "}
+                      · by code:{" "}
+                      {Object.entries(coverage.out_of_scope.by_code)
+                        .map(([code, n]) => `${code} (${n})`)
+                        .join(", ")}
+                    </>
+                  )}
+                </div>
+              )}
+              <footer className="xero-disclaimer">{coverage.disclaimer}</footer>
+            </section>
           )}
-          <footer className="xero-disclaimer">{coverage.disclaimer}</footer>
-        </section>
-      )}
+        </main>
+      </div>
 
       {signOpen && uploadedFile && (
         <SignModal

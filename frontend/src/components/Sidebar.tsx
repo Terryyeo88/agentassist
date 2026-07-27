@@ -1,7 +1,9 @@
-import type { QueueItem, ReviewPayload } from "../api";
+import type { QueueItem } from "../api";
 
 interface Props {
-  review: ReviewPayload;
+  /** The findings to tally + list. Takes the queue directly (SAP: review.queue; Xero: the
+   *  upload panel's findings) so the Sidebar is shared across both surfaces (shell parity). */
+  queue: QueueItem[];
   decided: Record<string, { action: string; note: string }>;
   onSelectFinding: (id: string) => void;
 }
@@ -13,8 +15,8 @@ const SEV_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
  * Pure presentation over the queue + recorded decisions; selecting a finding jumps to the
  * Findings view. Carries no tax conclusion — it counts and links the existing rows only.
  */
-export function Sidebar({ review, decided, onSelectFinding }: Props) {
-  const q = review.queue;
+export function Sidebar({ queue, decided, onSelectFinding }: Props) {
+  const q = queue;
   const sev = (s: string) => q.filter((it) => it.severity === s).length;
   const recorded = Object.keys(decided).length;
 
