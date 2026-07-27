@@ -3747,6 +3747,94 @@ The view carries `validation_status="unvalidated"` + the demo disclaimer (surfac
 
 **Honest status (verbatim — built ≠ validated).** Presentation + a client-side defensive source guard over already-built server features — it moves NO rung on the chain-accuracy ladder and unlocks nothing customer-facing. The Xero upload surface now shares the SAP shell chrome (TopBar + Sidebar, tabs omitted, SAP-only surfaces disabled-not-live, branch-aware banner), and the shared review components can OPT IN to a source-family guard that WITHHOLDS data on mismatch — **BUILT + hermetically tested (vitest) ≠ demo-validated ≠ accuracy-validated**. The upload F5 box strip (`recomputed_client_coded_f5_boxes`) is **NOT built on the frontend** (PENDING, routed to Terry — the backend key exists, the frontend does not consume it). Root's mount separation is NOT dismantled. `validation_status="unvalidated"` + `show_ai_candidates=False` + T2.11 UNCHANGED. NO real Xero export has ever been read (real-FORMAT / SYNTHETIC only, DEBT-3). Docs-sync `.md`-only, separate commit from code. Branch **UNMERGED**; all counts are **branch totals, NOT master totals**.
 
+> **MERGED as PR #155** (master `0d71a9b`, 2026-07-27). The counts in this section are the
+> branch-total figures measured at build time; see §Xero-sign-gate-fix below for current totals.
+> **Correction (post-merge audit):** the description of the guard above is accurate, but must not
+> be read as protection on the SAP mount. `App` declares BOTH sides of the pairing
+> (`expectedSource="sap"` + `sourceKind="b1_demo"` are each hardcoded at the call site), so on that
+> surface the comparison is **tautological and can never trip**. It is a declaration of intent, not
+> an observation. The guard does real work only where the tag is payload-derived — the Xero mount,
+> which passes the upload response's own `source_kind`. Root's mount separation remains the actual
+> structural guarantee on the SAP surface. Making it observed would require a `source_kind` key on
+> `ReviewPayload` — a key-set change, **Terry-only**.
+
+---
+
+## §Xero-sign-gate-fix — a post-merge audit of §Xero-shell-parity found the shared TopBar reviewer pill BYPASSING the F5-only sign gate; every sign entry point is now gated on `canSign` (branch `t-xero-sign-gate-fix` off master `0d71a9b`; FRONTEND-ONLY; **frontend vitest 26 files / 90 tests, all green** — was 25 / 84, +1 file / +6 tests; backend **UNCHANGED**, zero `.py` touched; BUILT + hermetically tested ≠ accuracy-validated; T2.11 unmoved)
+
+**How it was found (process note — worth keeping).** The `invariant-auditor` step of the SOP was
+never run on the §Xero-shell-parity diff before that PR was merged. Running it **after** the merge
+surfaced this regression. The lesson is not "audit earlier" alone — it is that the audit found a
+real defect the full green suite did not, because the test pinning sign-eligibility queried a
+control the regression did not touch.
+
+**The defect.** Sign is **F5-only** — `POST /sign/upload` rejects any other export format with a
+422 ("Xero F5 exports only this slice"). The Xero surface gates this with `canSign`
+(`XeroUploadPanel.tsx`: `coverage?.source_kind === "xero_f5_upload" && uploadedFile !== null`), and
+the in-panel `ReviewScreen` path honours it. §Xero-shell-parity added a SECOND sign entry point —
+the shared `TopBar` reviewer pill — and wired it to `onOpenSign` **unconditionally**. Because
+`SignModal`'s own render gate is `signOpen && uploadedFile` (it checks the FILE, never the
+`source_kind`) and `setUploadedFile` runs on EVERY upload branch, the ungated pill produced two
+wrong states:
+
+* **pre-upload** — clicking set `signOpen=true` and nothing consumed it: a **silent dead control**,
+  against the shell-parity rule that a control is live or visibly disabled-with-reason, never
+  silently inert;
+* **after an `extract_review` / `xero_sales_upload`** — the pill **OPENED SignModal**, offering
+  sign-off for a format the backend refuses: a **fake affordance**.
+
+**Why the suite stayed green.** The existing pin (`XeroPanelAdjudication.test.tsx` C2, "a
+`xero_sales_upload` response shows NO sign control") queries `/Sign working paper/i` — the name of
+the in-panel button and of the modal heading. The TopBar pill is named `reviewerName || "Sign in"`,
+so the assertion never saw it. **Eligibility was enforced at one of two entry points, and the test
+pinning it did not cover the new one.** A rule enforced at one call site is not enforced.
+
+**The fix.** `onOpenSign` becomes an **OPTIONAL** `TopBar` prop — the same pattern
+§Xero-shell-parity itself established for `view`/`setView` in that same file — and the pill degrades
+to a **non-interactive identity chip** (`<span className="reviewer-pill inert">`, styled: no pointer
+cursor, muted, dashed border) when the handler is omitted. `XeroUploadPanel` supplies it only when
+`canSign`, so both entry points now agree and neither can outrun `POST /sign/upload`. **The SAP
+surface is unchanged and keeps its live pill** (`App.tsx` still passes the handler unconditionally —
+SAP is the signable surface).
+
+**Also corrected.** The `App.tsx` comment on the SAP source-tag guard claimed the shared screen
+"refuses any non-SAP payload here." It cannot — see the correction note in §Xero-shell-parity above.
+The **comment** was corrected; no flag, no key, and no guard behaviour was changed.
+
+**Tests.** Frontend **vitest: 26 files / 90 tests, all green** (was 25 files / 84) — **+1 file /
++6 tests**: `frontend/src/test/XeroSignGate.test.tsx` (pre-upload pill is not an interactive sign
+control; no silently-dead control; `xero_sales_upload` exposes no sign affordance; `extract_review`
+exposes no sign affordance; `xero_f5_upload` pill IS live and opens the modal — the positive case
+preserved; the UNVALIDATED badge survives on a non-signable branch). Written **failing-first**: 4 of
+6 RED before the fix, for the right reason (`expected <button class="reviewer-pill"> to be null`,
+and the dead-control case `expected null not to be null`). **pytest UNCHANGED** — zero `.py` touched.
+`tsc --noEmit` clean; `flake8` 0; both `orchestrator/` import-scans empty.
+
+**Invariants.** Import isolation (zero `.py`; frontend-only); surfaces-never-asserts (the change
+only REMOVES a fake affordance — the inert chip renders identity, never a verdict); box-isolation
+(no F5 box logic, no recomputation, no fetch added or moved — the new tests' stub actively rejects
+`/command`, `/audit`, and the B1 `/review/` GET, so all 6 would fail if one fired); determinism
+untouched; **frozen flags UNCHANGED** — the UNVALIDATED badge sits OUTSIDE the new conditional in
+`TopBar` and renders on both branches (pinned by a test on the non-signable branch);
+`show_ai_candidates=False` untouched; **no key-set literal touched**; **no existing test modified**
+(one new file only). Front-end vitest is **NOT the merge gate** (CI is pytest-only).
+
+**Honest status (verbatim — built ≠ validated).** A defect fix on a presentation surface. It moves
+**NO** rung on the chain-accuracy ladder, unlocks nothing customer-facing, and closes none of the
+debts. What changed is that a sign affordance which could be offered for a format the backend
+rejects is now unreachable — **BUILT + hermetically tested (vitest) ≠ demo-validated ≠
+accuracy-validated**. `validation_status="unvalidated"` + `show_ai_candidates=False` + T2.11
+UNCHANGED. The upload F5 box strip remains **NOT built on the frontend** (unchanged by this branch —
+still PENDING with Terry; the backend key exists, `frontend/src/api.ts` does not carry it). NO real
+Xero export has ever been read (real-FORMAT / SYNTHETIC only, DEBT-3). Docs-sync `.md`-only,
+separate commit from code. Branch **UNMERGED**; all counts are **branch totals, NOT master totals**.
+
+**Known gap left open (not stubbed, not claimed).** The inert chip carries no *stated* reason in the
+pre-upload and no-findings states (the reason is surfaced via `persistNote`, which requires
+findings + a known client id). A chip that never looked like a control is not a broken promise, so
+this is left as-is rather than guessed at; if strict parity with the disabled-with-reason convention
+is wanted, the follow-up is a `title`/`aria-label` on the inert span — **never** a weakened test.
+
 ---
 
 ## MCP tools inventory
