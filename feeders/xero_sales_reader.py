@@ -245,14 +245,46 @@ class XeroSalesInvoiceChainReader:
         )
         return {"count": total, "by_code": dict(self._oos_counts), "reason": reason}
 
+    def _observed_populated_keys(self) -> frozenset:
+        """The (surface, field) keys that carried >=1 non-empty value — OBSERVED.
+
+        D-2026-07-27-xero-coverage-derived: population is observed from the data,
+        never asserted by fiat — a present-but-empty column is NOT populated. The
+        cell predicate mirrors ``ExtractCoverage``'s exactly
+        (``extract_reader._compute_populated_columns``): a value counts as populated
+        when it is not None and stringifies to a non-blank string.
+        """
+        seen: set = set()
+        for docs in self._docs_by_bucket.values():
+            for doc in docs:
+                for field in ("DocNum", "DocDate", "CardName", "DocCurrency", "DocTotal"):
+                    value = doc.get(field)
+                    if value is not None and str(value).strip() != "":
+                        seen.add((schema.DOCUMENTS_SHEET, field))
+                for line in doc.get("DocumentLines", []):
+                    for field in ("VatGroup", "LineTotal", "TaxTotal"):
+                        value = line.get(field)
+                        if value is not None and str(value).strip() != "":
+                            seen.add((schema.DOCUMENTS_SHEET, field))
+        return frozenset(seen)
+
     def coverage(self) -> ExtractCoverage:
         """Declare which canonical fields the export carried (header AND value).
 
         Documents-surface line+header fields are covered; CardCode, the BP master and the whole
         listing surface are absent — the honest-degrade signal the status mapping consumes.
+
+        D-2026-07-27-xero-coverage-derived: ``fields`` (header/format presence) stays
+        CONSTANT-driven — presence is a FORMAT fact for this reader. ``populated`` is
+        now OBSERVED from the loaded documents (previously ``dict(fields)`` — asserted
+        by fiat), so a present-but-all-empty column reads NOT populated and
+        ``is_covered`` degrades honestly, exactly as the extract reader has always
+        behaved. FederalTaxID stays outside the covered set: NO_GST_REG remains
+        unavailable on this reader and this change makes nothing newly runnable.
         """
         fields = {key: (key in _COVERED_FIELDS) for key in schema.COVERAGE_FIELDS}
-        populated = dict(fields)
+        observed = self._observed_populated_keys()
+        populated = {key: (fields[key] and key in observed) for key in schema.COVERAGE_FIELDS}
         return ExtractCoverage(fields=fields, populated=populated)
 
     def populatable_sides(self) -> frozenset:
