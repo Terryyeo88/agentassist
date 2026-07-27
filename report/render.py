@@ -1751,6 +1751,24 @@ def _document_dup_window(m: ReportModel, story: list) -> None:
 
     story.append(Spacer(1, 0.3 * cm))
     story.append(Paragraph("Windowed Duplicate-Purchase Review", _H2))
+
+    # H1 (Terry ruling): on "not_enabled", the heading and the not-enabled statement
+    # ONLY — no basis paragraph, no honest-status caveats. Those lines describe a
+    # check that did not run: a window "never applied to anything" needs no cite and
+    # no caveat, and six lines of check-properties before "there was no check" builds
+    # a model the last line has to demolish. G2 is not weakened — the cite travels
+    # with the check's OUTPUT, and there is none. The enabled-but-didn't-run states
+    # (unavailable / not_examined) keep the full framing: the check WAS enabled, so
+    # describing its parameters is fair.
+    if dw.status == "not_enabled":
+        story.append(Paragraph(
+            "This check is declared for this client but NOT ENABLED — no windowed "
+            "duplicate-purchase review was performed for this period. This differs "
+            "from a review performed with no findings.",
+            _SMALL,
+        ))
+        return
+
     story.append(Paragraph(
         "Surfaces purchase invoices sharing the same supplier and the same total, "
         f"one to {window_word} days apart, as candidates for reviewer attention — "
@@ -1783,15 +1801,6 @@ def _document_dup_window(m: ReportModel, story: list) -> None:
         "review-panel actions do not apply — paper-only candidates",
     ):
         story.append(Paragraph(f"— {_caveat}", _SMALL))
-
-    if dw.status == "not_enabled":
-        story.append(Paragraph(
-            "This check is declared for this client but NOT ENABLED — no windowed "
-            "duplicate-purchase review was performed for this period. This differs "
-            "from a review performed with no findings.",
-            _SMALL,
-        ))
-        return
 
     if dw.status == "not_examined":
         story.append(Paragraph(
