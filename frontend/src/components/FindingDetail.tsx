@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { QueueItem } from "../api";
+import { type ExpectedSource, isSourceMismatch, SourceMismatch } from "../lib/sourceGuard";
 
 interface Props {
   item: QueueItem;
@@ -15,6 +16,9 @@ interface Props {
   // trigger that opens the split-pane viewer. When there is no doc_num, the meta shows an
   // honest "No source document" note instead of a dead control (no-fake-affordances rule).
   onViewDocument?: (docNum: string | number) => void;
+  /** Source-tag guard (§2 defence-in-depth); OPT-IN. See lib/sourceGuard. */
+  expectedSource?: ExpectedSource;
+  sourceKind?: string | null;
 }
 
 // "Decline" is a distinct adjudication from "Not an issue": Decline disputes the
@@ -34,10 +38,16 @@ const NOTE_REQUIRED = new Set(["Decline", "Not an issue", "Mark known"]);
  * path supplies it; the Xero upload path (no server-side sign store) omits it and the card
  * shows an honest review-only note. The candidate framing above is identical on both paths.
  */
-export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnlyNote, onViewDocument }: Props) {
+export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnlyNote, onViewDocument, expectedSource, sourceKind }: Props) {
   const [action, setAction] = useState<string>(decision?.action ?? "Accept");
   const [note, setNote] = useState<string>(decision?.note ?? "");
   const [err, setErr] = useState<string>("");
+
+  // §2 source-tag guard: a mismatched source withholds this finding's case-file and surfaces an
+  // honest alert instead. Opt-in (inert unless expectedSource is set); after hooks per rules-of-hooks.
+  if (expectedSource && isSourceMismatch(expectedSource, sourceKind)) {
+    return <SourceMismatch expected={expectedSource} got={sourceKind} />;
+  }
 
   // No-silent-dead-buttons (B3a-2): a row without a deterministic fingerprint cannot be
   // persisted (POST /decision keys on the fingerprint), so its decision controls render

@@ -211,6 +211,11 @@ export function App() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               facets={facetProps}
+              // §2 source-tag guard: this is the SAP (b1_demo) surface. ReviewPayload carries no
+              // source_kind key, so App declares the tag — the shared screen refuses any
+              // non-SAP payload here (defence-in-depth behind Root's mount separation).
+              expectedSource="sap"
+              sourceKind="b1_demo"
               adjudication={{
                 decided,
                 // t-decision-persistence: a decision PERSISTS via POST /decision (append-only

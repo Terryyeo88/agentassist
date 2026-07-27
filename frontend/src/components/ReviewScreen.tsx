@@ -3,6 +3,7 @@ import type { Group, QueueItem } from "../api";
 import { Queue, type FacetProps } from "./Queue";
 import { FindingDetail } from "./FindingDetail";
 import { DocumentViewer } from "./DocumentViewer";
+import { type ExpectedSource, isSourceMismatch, SourceMismatch } from "../lib/sourceGuard";
 
 /**
  * The adjudication capability the review surface needs to let a reviewer decide + sign.
@@ -31,6 +32,12 @@ interface Props {
   adjudication?: Adjudication;
   /** Shown in the detail card when `adjudication` is omitted (review-only paths). */
   reviewOnlyNote?: string;
+  /** Source-tag guard (§2 defence-in-depth). The source this mount is FOR; OPT-IN — omit and
+   *  the guard is inert (renders exactly as before). See lib/sourceGuard. */
+  expectedSource?: ExpectedSource;
+  /** The source identity of the payload being rendered (SAP: "b1_demo"; Xero: the upload
+   *  response's source_kind). Compared against expectedSource; a mismatch withholds the data. */
+  sourceKind?: string | null;
 }
 
 /**
@@ -51,14 +58,23 @@ export function ReviewScreen({
   facets,
   adjudication,
   reviewOnlyNote,
+  expectedSource,
+  sourceKind,
 }: Props) {
-  const selected = queue.find((it) => it.finding_id === selectedId) ?? null;
-
   // C1 source-document viewer: opened by the FindingDetail trigger, rendered as a THIRD pane
   // BESIDE the detail (a flex column inside the grid's detail cell) — never a full-page
   // takeover, and the queue stays visible in its own grid column. Reset when the finding
   // changes so the viewer never shows a stale doc for a different finding.
   const [openDoc, setOpenDoc] = useState<string | number | null>(null);
+
+  // §2 source-tag guard: a Xero-labelled mount handed a SAP-tagged payload (or vice versa)
+  // WITHHOLDS the data and surfaces an honest mismatch — never renders foreign findings as
+  // native. Opt-in: inert unless expectedSource is set. (After hooks, per rules-of-hooks.)
+  if (expectedSource && isSourceMismatch(expectedSource, sourceKind)) {
+    return <SourceMismatch expected={expectedSource} got={sourceKind} />;
+  }
+
+  const selected = queue.find((it) => it.finding_id === selectedId) ?? null;
 
   return (
     <>
@@ -70,6 +86,8 @@ export function ReviewScreen({
         selectedId={selectedId}
         onSelect={onSelect}
         facets={facets}
+        expectedSource={expectedSource}
+        sourceKind={sourceKind}
       />
       <div className="detail-col">
         {selected ? (
@@ -84,6 +102,8 @@ export function ReviewScreen({
             onOpenSign={adjudication?.onOpenSign}
             reviewOnlyNote={reviewOnlyNote}
             onViewDocument={setOpenDoc}
+            expectedSource={expectedSource}
+            sourceKind={sourceKind}
           />
         ) : (
           <div className="panel detail">Select a finding from the queue.</div>

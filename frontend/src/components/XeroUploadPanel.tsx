@@ -223,6 +223,11 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
             setActiveTab={setActiveTab}
             adjudication={adjudication}
             reviewOnlyNote={adjudication ? undefined : REVIEW_ONLY_NOTE}
+            // §2 source-tag guard: this is the Xero upload surface. The source identity is
+            // intrinsic to the upload response (source_kind); the shared screen refuses any
+            // non-Xero payload here (defence-in-depth behind Root's mount separation).
+            expectedSource="xero"
+            sourceKind={coverage?.source_kind}
           />
         </section>
       )}
