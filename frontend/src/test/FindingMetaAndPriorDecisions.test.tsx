@@ -59,12 +59,12 @@ describe("FindingDetail meta + prior-decision wiring (bucket B)", () => {
       doc_date: "2024-07-02",
       error_code: "E1",
       demoted: false,
-      annotation: "Previously adjudicated 1 time(s); most recent: DECLINED by J. Tan (2024Q2).",
-      prior_dispositions: ["DECLINED"],
+      annotation: "Previously adjudicated 1 time(s); most recent: REJECTED by J. Tan (2024Q2).",
+      prior_dispositions: ["REJECTED"],
     };
     render(<FindingDetail item={item} />);
     expect(screen.getByText(/Prior decisions on file/i)).toBeInTheDocument();
-    expect(screen.getByText(/DECLINED/)).toBeInTheDocument();
+    expect(screen.getByText(/REJECTED/)).toBeInTheDocument();
     // Still framed as an active candidate, not a verdict.
     expect(screen.getByText(/still an active candidate/i)).toBeInTheDocument();
   });
