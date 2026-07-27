@@ -111,6 +111,13 @@ a { color: var(--accent); }
   border: 1px solid var(--line-strong); background: var(--paper-sunk); color: var(--ink);
   border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
 }
+/* Reviewer of record on a surface that is not signable (sign is F5-only). Renders the identity
+   without offering the action: no pointer cursor, no hover, muted — it must not read as a
+   control, because there is no control here to press. */
+.reviewer-pill.inert {
+  display: inline-block; cursor: default; color: var(--ink-soft);
+  border-style: dashed; border-color: var(--line);
+}
 
 .badge {
   display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono);

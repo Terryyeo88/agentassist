@@ -12,7 +12,12 @@ interface Props {
   view?: View;
   setView?: (v: View) => void;
   onToggleSidebar: () => void;
-  onOpenSign: () => void;
+  /** The sign entry point is OPTIONAL, on the same pattern as view/setView above: it renders as a
+   *  live control only when a handler is supplied. Sign is F5-only (POST /sign/upload 422s any
+   *  other export format), so a surface that is not currently signable OMITS it and the pill
+   *  degrades to an inert identity chip — never a button that opens nothing, and never a sign
+   *  affordance for a format the backend refuses. Callers gate this; TopBar only honours it. */
+  onOpenSign?: () => void;
 }
 
 const VIEWS: { key: View; label: string }[] = [
@@ -65,9 +70,14 @@ export function TopBar({ validationStatus, reviewerName, view, setView, onToggle
         <span aria-hidden="true">◔</span>
       </button>
 
-      <button className="reviewer-pill" onClick={onOpenSign}>
-        {reviewerName || "Sign in"}
-      </button>
+      {onOpenSign ? (
+        <button className="reviewer-pill" onClick={onOpenSign}>
+          {reviewerName || "Sign in"}
+        </button>
+      ) : (
+        // Not signable here: show the reviewer of record if one exists, but expose no control.
+        <span className="reviewer-pill inert">{reviewerName || "—"}</span>
+      )}
     </header>
   );
 }
