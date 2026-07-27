@@ -347,3 +347,29 @@ def test_u10_not_enabled_renders_heading_and_statement_only():
         co, dup_window_enabled=True, dup_window_days=7
     ))
     assert "3D.1.1(d)" in enabled and "Honest status of this check" in enabled
+
+
+# -- U11 (auditor must-fix) -- the G4b demo-parameter caveat is PINNED to the page ----
+
+
+def test_u11_fixture_fitted_window_caveat_is_pinned():
+    """Auditor Inv-7 gap: without this pin, the 'demo parameter fitted to the
+    committed fixture' honesty caveat could silently vanish from the paper while
+    all other tests stay green. Pinned for every enabled-state render."""
+    co = load_compile_output(_CHAIN_SAMPLE)
+    for state_co in (
+        {},  # not_examined
+        {"document_dup_window_findings": [dict(_PAIR_FINDING)]},
+        {"document_dup_window_findings": []},
+        {"document_dup_window_findings": None,
+         "document_dup_window_status": {"level": "unavailable", "reason": "x"}},
+    ):
+        co2 = copy.deepcopy(co)
+        co2.update(state_co)
+        text = _render_window_story(build_document_dup_window_section(
+            co2, dup_window_enabled=True, dup_window_days=7
+        ))
+        assert (
+            "window value is a demo parameter fitted to the committed fixture, "
+            "not a validated threshold"
+        ) in text, "the G4b honesty caveat must be on every enabled-state page"
