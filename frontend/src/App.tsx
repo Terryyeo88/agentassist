@@ -113,12 +113,12 @@ export function App() {
   return (
     <div className="layout">
       {sidebarOpen && (
-        <Sidebar review={review} decided={decided} onSelectFinding={selectFromSidebar} />
+        <Sidebar queue={review.queue} decided={decided} onSelectFinding={selectFromSidebar} />
       )}
 
       <div className="main-col">
         <TopBar
-          review={review}
+          validationStatus={review.validation_status}
           reviewerName={reviewerName}
           view={view}
           setView={setView}
@@ -169,6 +169,11 @@ export function App() {
               onOpenSign={() => setSignOpen(true)}
             />
 
+            {/* Defensive empty-state guard: the F5 strip dereferences review.f5_summary.boxes /
+                .currency. A payload without an f5_summary (e.g. an upload-shaped body reaching
+                this shell) would throw; render the strip only when boxes are present so the
+                Review home degrades to no-strip rather than crashing. */}
+            {review.f5_summary?.boxes && (
             <section className="f5-strip" aria-label="F5 summary">
               <div className="f5-strip-head">
                 <span className="f5-dot" aria-hidden="true" />
@@ -199,6 +204,7 @@ export function App() {
                 </tbody>
               </table>
             </section>
+            )}
           </main>
         )}
 

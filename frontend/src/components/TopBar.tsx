@@ -1,12 +1,16 @@
-import type { ReviewPayload } from "../api";
-
 export type View = "review" | "findings" | "audit";
 
 interface Props {
-  review: ReviewPayload;
+  /** The trust badge text source. Takes the raw status string (SAP: review.validation_status;
+   *  Xero: the upload response's validation_status) — TopBar no longer needs the whole payload,
+   *  so it is shareable across the SAP and Xero surfaces (shell parity). */
+  validationStatus: string;
   reviewerName: string;
-  view: View;
-  setView: (v: View) => void;
+  /** The three-view nav is OPTIONAL: it renders only when BOTH view and setView are supplied
+   *  (the SAP surface). The Xero surface is a single non-tab-gated flow, so it omits them and
+   *  no view-tabs render — no dead/fake affordances. */
+  view?: View;
+  setView?: (v: View) => void;
   onToggleSidebar: () => void;
   onOpenSign: () => void;
 }
@@ -18,11 +22,12 @@ const VIEWS: { key: View; label: string }[] = [
 ];
 
 /**
- * TopBar — the dark header bar: a sidebar toggle, the F5·Review wordmark, the three view tabs,
- * the loud UNVALIDATED trust badge (carried through verbatim — T2.11 is the binding gate), and
- * the reviewer-of-record pill (or "Sign in"). View switching is mutually-exclusive on `view`.
+ * TopBar — the dark header bar: a sidebar toggle, the F5·Review wordmark, the three view tabs
+ * (SAP surface only), the loud UNVALIDATED trust badge (carried through verbatim — T2.11 is the
+ * binding gate), and the reviewer-of-record pill (or "Sign in"). Shared by both surfaces; view
+ * switching is mutually-exclusive on `view` where the nav is shown.
  */
-export function TopBar({ review, reviewerName, view, setView, onToggleSidebar, onOpenSign }: Props) {
+export function TopBar({ validationStatus, reviewerName, view, setView, onToggleSidebar, onOpenSign }: Props) {
   return (
     <header className="topbar">
       <button className="hamburger" aria-label="Toggle sidebar" onClick={onToggleSidebar}>
@@ -34,23 +39,25 @@ export function TopBar({ review, reviewerName, view, setView, onToggleSidebar, o
         <span className="brand-review">Review</span>
       </div>
 
-      <nav aria-label="Primary" className="header-nav">
-        {VIEWS.map((v) => (
-          <button
-            key={v.key}
-            className={`nav-tab${view === v.key ? " active" : ""}`}
-            aria-current={view === v.key ? "page" : undefined}
-            onClick={() => setView(v.key)}
-          >
-            {v.label}
-          </button>
-        ))}
-      </nav>
+      {view !== undefined && setView && (
+        <nav aria-label="Primary" className="header-nav">
+          {VIEWS.map((v) => (
+            <button
+              key={v.key}
+              className={`nav-tab${view === v.key ? " active" : ""}`}
+              aria-current={view === v.key ? "page" : undefined}
+              onClick={() => setView(v.key)}
+            >
+              {v.label}
+            </button>
+          ))}
+        </nav>
+      )}
 
       <span className="spacer" />
 
       <span className="badge unvalidated" title="T2.11 is the binding gate">
-        {review.validation_status} — pending specialist review
+        {validationStatus} — pending specialist review
       </span>
 
       <button className="bell" aria-label="Notifications">
