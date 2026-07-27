@@ -417,6 +417,49 @@ class DocumentDupSection:
 
 
 @dataclass
+class DocumentDupWindowSection:
+    """Data for the windowed duplicate-purchase surfacer (DUP_WINDOW) —
+    D-2026-07-27-dup-window.
+
+    Distinct from DocumentDupSection (DUP_SAME_DAY: exact same-day match) and from
+    the listing DUP_CLAIM check (vendor + vendor-reference): DIFFERENT PREDICATES,
+    different units, not one check. This section carries DUP_SAME_DAY's three-state
+    model PLUS a fourth state, per Terry ruling G5 (as amended):
+
+        "not_enabled"  — the client config DECLARES a dup_window position with the
+                         check OFF. Distinguishable in text from not_examined: the
+                         check was deliberately not run, versus never encountered.
+        "examined"     — the check RAN (findings may be empty).
+        "unavailable"  — the check could NOT run (threw).
+        "not_examined" — the check is enabled but this compile_output predates it
+                         (neither chain key present).
+
+    THE ENABLE STATE COMES FROM client_config, NEVER FROM compile_output: the chain
+    deliberately writes NEITHER key when the check is off — that silence is what
+    keeps the frozen replay oracle re-freeze-free — so "off" is structurally
+    unknowable from compile_output alone (orchestrator/chain.py documents this as
+    load-bearing).
+
+    A config that declares NO position builds NO section (the builder returns
+    None): absence of input is silent omission, never an error — the SAP and every
+    other undeclared paper stay byte-identical.
+
+    Attributes:
+        findings:    DUP_WINDOW finding dicts (pair-shaped: two doc_nums, two
+                     doc_dates per row) from document_dup_window_findings, or None
+                     for every non-"examined" state.
+        status:      One of the four states above.
+        reason:      Execution-fact caveat; non-empty ONLY for "unavailable".
+        window_days: The declared window (int), or None when the config parked no
+                     number. A DEMO/tuning parameter — never a validated threshold.
+    """
+    findings: list[dict] | None
+    status: str
+    reason: str = ""
+    window_days: int | None = None
+
+
+@dataclass
 class LedgerReconSection:
     """Data for the T2.24 "GST Control-Ledger Reconciliation" section (PR-3 render).
 
@@ -1054,6 +1097,71 @@ def build_ledger_recon_section(compile_output: dict[str, Any]) -> "LedgerReconSe
         drop_findings=drop_findings,
         drop_status=drop_status,
         drop_reason=drop_reason,
+    )
+
+
+def build_document_dup_window_section(
+    compile_output: dict[str, Any],
+    *,
+    dup_window_enabled: bool = False,
+    dup_window_days: int | None = None,
+) -> "DocumentDupWindowSection | None":
+    """Build the DUP_WINDOW section from chain output + the config's declared position.
+
+    D-2026-07-27-dup-window (Terry ruling G5, amended). The DECLARED-POSITION gate:
+    the section exists ONLY when the client config declares a dup_window position —
+    mechanically, ``dup_window_enabled`` is True (the loader guarantees days
+    accompany it) OR ``dup_window_days`` is not None (a parked window is a declared
+    position with the check off). A silent config → None → the renderer emits
+    NOTHING and every undeclared paper (including SAP) stays byte-identical.
+
+    KNOWN PROXY LIMIT (flagged at build, not silent): with no loader change,
+    ClientConfig cannot distinguish a declared ``dup_window_enabled: false`` with no
+    parked days from a silent config — both load as (False, None) and render
+    nothing. A config that wants the NOT-ENABLED state on its paper declares the
+    flag false AND parks a window.
+
+    State derivation (enable state from config, run state from compile_output):
+        enabled=False (days parked)              → "not_enabled"
+        enabled=True + status.level=unavailable  → "unavailable" (ran and threw)
+        enabled=True + findings key present      → "examined" (findings may be [])
+        enabled=True + neither key               → "not_examined" (legacy compile)
+
+    Read-only over compile_output; the offline-replay oracle is byte-unaffected.
+
+    Args:
+        compile_output:     CompileOutput dict; reads the two optional
+                            document_dup_window_* keys.
+        dup_window_enabled: ClientConfig.dup_window_enabled (from the caller — the
+                            report layer never re-reads config files).
+        dup_window_days:    ClientConfig.dup_window_days.
+
+    Returns:
+        DocumentDupWindowSection, or None when no position is declared.
+    """
+    if not dup_window_enabled and dup_window_days is None:
+        return None  # no declared position → no section → byte-identical paper
+
+    if not dup_window_enabled:
+        return DocumentDupWindowSection(
+            findings=None, status="not_enabled", reason="",
+            window_days=dup_window_days,
+        )
+
+    chain_status: dict = compile_output.get("document_dup_window_status") or {}
+    if chain_status.get("level") == "unavailable":
+        return DocumentDupWindowSection(
+            findings=None, status="unavailable",
+            reason=str(chain_status.get("reason") or ""),
+            window_days=dup_window_days,
+        )
+    if "document_dup_window_findings" in compile_output:
+        return DocumentDupWindowSection(
+            findings=list(compile_output["document_dup_window_findings"] or []),
+            status="examined", reason="", window_days=dup_window_days,
+        )
+    return DocumentDupWindowSection(
+        findings=None, status="not_examined", reason="", window_days=dup_window_days,
     )
 
 
