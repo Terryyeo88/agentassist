@@ -44,3 +44,4 @@ Known gaps / cautions:
   one supplier) in this corpus. BILL-3004/3005 was previously labelled as one;
   it is a quotation + tax-invoice double-entry, not a standing order. Nothing
   here defends a future supplier+amount matcher against over-firing.
+- "Contacts.csv is synthetic; contact fields scrubbed 2026-07-27. example.com addresses and non-allocated 6000-xxxx numbers are deliberate — do not replace with plausible-looking values."
