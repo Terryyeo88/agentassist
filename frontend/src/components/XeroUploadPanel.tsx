@@ -169,7 +169,11 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           validationStatus={coverage?.validation_status ?? "unvalidated"}
           reviewerName={reviewerName}
           onToggleSidebar={() => setSidebarOpen((s) => !s)}
-          onOpenSign={() => setSignOpen(true)}
+          // Sign is F5-only and needs the retained file — the SAME `canSign` gate the in-panel
+          // ReviewScreen path uses. Ungated, this pill opened SignModal after an extract/sales
+          // upload (the modal's own gate checks `uploadedFile`, not source_kind) and no-oped
+          // pre-upload. Both entry points must agree; neither may outrun POST /sign/upload.
+          {...(canSign ? { onOpenSign: () => setSignOpen(true) } : {})}
         />
 
         <main className="view xero-upload">
