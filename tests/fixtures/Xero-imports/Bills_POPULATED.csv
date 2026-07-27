@@ -1,0 +1,8 @@
+*ContactName,EmailAddress,POAddressLine1,POAddressLine2,POAddressLine3,POAddressLine4,POCity,PORegion,POPostalCode,POCountry,*InvoiceNumber,*InvoiceDate,*DueDate,Total,InventoryItemCode,Description,*Quantity,*UnitAmount,*AccountCode,*TaxType,TaxAmount,TrackingName1,TrackingOption1,TrackingName2,TrackingOption2,Currency
+GoodVendor Pte Ltd,,,,,,,,,,BILL-3001,10/04/2026,10/05/2026,,,Office supplies,1,2000.00,400,Standard-Rated Purchases (9%),,,,,,SGD
+OldRate Supplies Pte Ltd,,,,,,,,,,BILL-3002,22/04/2026,22/05/2026,,,Maintenance contract Q2,1,4000.00,400,SI-Stale (8%) [test],,,,,,SGD
+NoReg Trading,,,,,,,,,,BILL-3003,06/05/2026,05/06/2026,,,Catering equipment,1,1500.00,400,Standard-Rated Purchases (9%),,,,,,SGD
+DupSupplier Pte Ltd,,,,,,,,,,Q-9981,12/05/2026,11/06/2026,,,Server hardware (quotation),1,2500.00,400,Standard-Rated Purchases (9%),,,,,,SGD
+DupSupplier Pte Ltd,,,,,,,,,,INV-7742,19/05/2026,18/06/2026,,,Server hardware (tax invoice),1,2500.00,400,Standard-Rated Purchases (9%),,,,,,SGD
+Marina Fine Dining Pte Ltd,,,,,,,,,,BILL-3006,28/05/2026,27/06/2026,,,Client dinner & entertainment - 12 pax,1,800.00,400,Standard-Rated Purchases (9%),,,,,,SGD
+AutoCare SG Pte Ltd,,,,,,,,,,BILL-3007,03/06/2026,03/07/2026,,,Private passenger car (S-plate) servicing,1,1200.00,400,Standard-Rated Purchases (9%),,,,,,SGD
