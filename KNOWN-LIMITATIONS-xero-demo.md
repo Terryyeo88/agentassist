@@ -245,6 +245,29 @@ accuracy-validated**; frozen flags UNCHANGED (`validation_status="unvalidated"`,
 > - **PENDING frontend gap (routed to Terry — do NOT read as done): the upload F5 box strip is NOT built.** `recomputed_client_coded_f5_boxes` EXISTS on the backend (PR #151 — `api/viewmodel.py` `build_recomputed_client_coded_f5_boxes`, emitted on the `xero_f5_upload` branch), but the FRONTEND does NOT consume it: `frontend/src/api.ts` `UploadCoverageResponse` carries NO box key, so no upload F5 box strip renders. NOT stubbed, NOT claimed — a PENDING frontend gap.
 > - **Test counts:** frontend **vitest 25 files / 84 tests, all green** (+2 files / +15 tests: `SourceTagGuard.test.tsx` 8, `XeroShellParity.test.tsx` 7). **pytest UNCHANGED — 2892 passed, 1 skipped, 6 xfailed, 2 xpassed** (the rebased base; zero `.py` touched); vitest is NOT the merge gate (CI is pytest-only). Moves NO rung toward T2.11; `validation_status="unvalidated"` + `show_ai_candidates=False` UNCHANGED; offline-replay byte-identical (nothing on this path reaches it); closes NONE of the debts below; NO real Xero export has ever been read (real-FORMAT / SYNTHETIC only, DEBT-3).
 
+> **UPDATE — MERGED as PR #155 (master `0d71a9b`), and a post-merge audit found a REGRESSION in it, now fixed on branch `t-xero-sign-gate-fix` (UNMERGED; FRONTEND-ONLY; built + hermetically tested ≠ demo-validated ≠ accuracy-validated).**
+> The shell-parity build added a SECOND sign entry point — the shared **TopBar reviewer pill** — and
+> wired it **unconditionally**, bypassing the `canSign` gate the in-panel path honours. Sign is
+> **F5-only** (`POST /sign/upload` 422s any other format). Because `SignModal`'s render gate checks
+> the uploaded FILE and never the `source_kind`, the ungated pill (a) **no-oped pre-upload** — a
+> silent dead control — and (b) **opened the sign modal after an `extract_review` /
+> `xero_sales_upload`**, offering sign-off for a format the backend refuses. The suite stayed green
+> because the test pinning this queries `/Sign working paper/i`, while the pill is named
+> `reviewerName || "Sign in"` — **the rule was enforced at one of two entry points, and the test
+> pinning it did not cover the new one.**
+> - **Fix:** `onOpenSign` is now an OPTIONAL `TopBar` prop (the same pattern that build used for
+>   `view`/`setView`); the pill degrades to a **non-interactive identity chip** when omitted, and
+>   `XeroUploadPanel` supplies it only when `canSign`. The **SAP surface is unchanged** and keeps its
+>   live pill. A `TopBar` comment overstating the SAP-side source-tag guard was also corrected — that
+>   guard hardcodes BOTH sides on the SAP mount, so it is **tautological and can never trip** there;
+>   it does real work only on the Xero mount, where the tag is payload-derived.
+> - **Test counts:** frontend **vitest 26 files / 90 tests, all green** (+1 file / +6 tests:
+>   `XeroSignGate.test.tsx`), written failing-first — 4 of 6 RED before the fix. **pytest UNCHANGED**
+>   (zero `.py` touched); vitest is NOT the merge gate (CI is pytest-only). Moves NO rung toward
+>   T2.11; `validation_status="unvalidated"` + `show_ai_candidates=False` UNCHANGED; closes NONE of
+>   the debts below. **The upload F5 box strip is still NOT built** (unchanged by this branch — the
+>   PENDING gap above stands).
+
 Companion files:
 - Reader: `feeders/xero_f5_reader.py` (PR-A — real-FORMAT, SYNTHETIC-data, UNWIRED)
 - Tests: `tests/test_xero_f5_reader.py` (PR-A — 8 tests over the fixture)
