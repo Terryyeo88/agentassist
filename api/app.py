@@ -146,11 +146,16 @@ COVERAGE_ROW_KEYS: tuple[str, ...] = ("check", "level", "reason")
 # screen): the coverage keys PLUS `queue` — a real-Xero-FORMAT review over an uploaded F5
 # export projected into the SHARED central-screen QueueItem shape
 # (api.viewmodel.serialize_xero_queue), candidates NOT verdicts, validation_status stays
-# "unvalidated" (Inv-5). XERO_UPLOAD_KEYS documents the top-level shape the frontend TS types
-# mirror (as UPLOAD_COVERAGE_KEYS does). The coverage-era flat `findings` row is superseded by
-# `queue` (the shared screen consumes QueueItem, not a bespoke 7-key row).
-XERO_UPLOAD_KEYS: tuple[str, ...] = (
+# "unvalidated" (Inv-5). XERO_F5_UPLOAD_KEYS names the F5 branch ONLY (sales and extract have
+# their own constants below — three different contracts exist and no constant may claim to
+# describe "the Xero upload" unqualified). The coverage-era flat `findings` row is superseded
+# by `queue` (the shared screen consumes QueueItem, not a bespoke 7-key row);
+# `recomputed_client_coded_f5_boxes` was added by D-2026-07-26-xero-f5-basis (PR #151).
+# tests/test_upload_keys_binding.py binds this constant (and each sibling) to the live
+# handler body — it can no longer drift silently.
+XERO_F5_UPLOAD_KEYS: tuple[str, ...] = (
     "source_kind", "validation_status", "disclaimer", "coverage_status", "queue",
+    "recomputed_client_coded_f5_boxes",
 )
 
 # POST /review/upload GENERAL-EXTRACT engine branch (BUILD 3) response contract: the Xero-branch
