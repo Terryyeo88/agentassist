@@ -74,7 +74,7 @@
     "_replay-oracle.compiled.json": {
       "source_function": "orchestrator.chain.run_chain (CompileOutput + gate_results)",
       "serialisation": "audit_bundle.canonical.canonical_json",
-      "sha256": "sha256:59fbdbb827dee933b4c79e8557852047d2465d6cb155b00d3d3cb58b92eddc45"
+      "sha256": "sha256:0225df39c8ea6054d45f72199aa510e970c385587e557e1160407ea744f6cd5f"
     }
   }
 }

@@ -122,7 +122,10 @@ _RECOMMENDATION = {
     "E2": "Remove the GST charge or correct the tax code to a standard-rated code.",
     "E3": "Apply GST at the applicable rate, or reclassify if the supply is exempt or zero-rated.",
     "E4": "Review the GST rate — demo data uses 7%, production uses 9% from 1 Jan 2024.",
-    "NO_GST_REG": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+    # D-26: kept byte-identical to the production emitter at
+    # mcp-servers/custom/sap_b1_server.py:1514. This is a hand-copy with no binding
+    # test (#50); if you change one, change both.
+    "NO_GST_REG": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
     "COMPLETENESS": "Verify all supplier invoices for the period have been entered in SAP B1.",
 }
 
