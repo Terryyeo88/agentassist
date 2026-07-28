@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import { XeroUploadPanel } from "../components/XeroUploadPanel";
 import type { QueueItem } from "../api";
 
@@ -13,6 +13,16 @@ import type { QueueItem } from "../api";
  * already sends; no backend / contract change. Honest by rule — set-aside lines are surfaced,
  * not silently dropped.
  */
+
+async function openFindings() {
+  const nav = screen.getByRole("navigation", { name: /Primary/i });
+  fireEvent.click(within(nav).getByRole("button", { name: "Findings" }));
+}
+
+async function openReview() {
+  const nav = screen.getByRole("navigation", { name: /Primary/i });
+  fireEvent.click(within(nav).getByRole("button", { name: "Review" }));
+}
 
 const item: QueueItem = {
   finding_id: "detect:E1:958",
@@ -105,9 +115,16 @@ describe("Xero sales out-of-scope note (bucket B)", () => {
     vi.stubGlobal("fetch", fetchReturning(SALES_BODY_NO_OOS));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await upload();
+    await openFindings();
 
     // The finding still renders, but no set-aside note when nothing was held out of scope.
     expect(await screen.findByText(item.display_name!)).toBeInTheDocument();
+
+    
+    // D-16: the out-of-scope callout is Review furniture. Return to Review to assert its
+    // absence on the view where a non-zero count WOULD render it — and only after the
+    // findByText above has proven the response landed, so this cannot pass on an empty tree.
+    await openReview();
     expect(screen.queryByLabelText(/out-of-scope lines/i)).toBeNull();
   });
 });

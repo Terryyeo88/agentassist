@@ -481,3 +481,35 @@ The feeder parses the real Xero sales-invoice EXPORT FORMAT over SYNTHETIC conte
 real column-header set / TaxType vocabulary have **NOT** been pinned against a genuine client export
 (same GTM gate as the inbound F5 DEBT-3). Until then: demo only, real-Xero-FORMAT over SYNTHETIC
 data, NOT real-client-export-validated and NOT accuracy-validated.
+
+## Audit view on the Xero upload surface (`D-2026-07-28-xero-views`)
+
+The Xero surface's **Audit** view is titled **"Decisions — this session"** and is **empty on
+load, always**. That is a limitation, not a design preference:
+
+- **No decision from a prior session can ever be listed.** There is no read endpoint for the
+  decision store. Decisions ARE saved (append-only, hash-chained) — they simply cannot be read
+  back. They resurface only as the per-finding "previously adjudicated" annotation after the same
+  workbook is re-uploaded.
+- **There is no "When" column and no "Reviewer" column.** `POST /decision` returns ten keys and
+  neither a timestamp nor a reviewer name. The store records both; the response does not return
+  them. A browser clock would be the page's guess at when something happened, not the ledger's
+  record of it.
+- **There is no agent justification ledger for an upload.** `GET /audit` returns the SAP agent's
+  Tier-1/Tier-2 tool chain; an uploaded export runs no agent, so there is nothing to hash-chain
+  but the reviewer's own decisions. The view says this in plain words rather than showing an
+  empty SAP table.
+
+Two backend fixes are filed against this: return `timestamp` + `reviewer` from `POST /decision`,
+and add `GET /decisions` (`backend-gaps.md` §B1).
+
+## Ledger-reconciliation rows are indistinguishable by their own fields
+
+With the 820 ledger attached, an F5 upload returns two `ledger_recon:*` rows. **Of their 24
+fields exactly three differ** (`finding_id`, `description`, `recommendation`) — and of the six
+fields the review queue renders, **none**. The UI distinguishes them by rendering `finding_id`'s
+terminal segment (`output` / `input`); it deliberately does NOT scrape "Box 6" / "Box 7" out of
+the description prose. A backend fix is filed: these rows need a distinguishing display field.
+
+They also carry `fingerprint: null`, so they remain **non-adjudicable** — decision controls render
+disabled with the honest per-cause reason (`#46` territory).

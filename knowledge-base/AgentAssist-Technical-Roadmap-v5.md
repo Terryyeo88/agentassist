@@ -1558,3 +1558,80 @@ _Recorded as open; none block the docs-sync that introduced them. This is a self
 - **OD-6 — Provenance-manifest location.** Ours vs Avinash's, given the "store nothing" posture (ties to T2.26). OPEN.
 - **OD-7 — Skill-abstraction timing.** Pull the Tier-4-gated Skill abstraction forward (Final Architectural Reminder #5) vs a narrower per-step KB module. OPEN.
 - **OD-8 — Rate-threading.** Thread `applicable_gst_rate` through classification now vs defer (ties to `operational-backlog.md` #9). **PARTIALLY RESOLVED.** (a) *Threading the config rate on the automated chain* — already true: `orchestrator/steps.py:321/348` passes `client_config.applicable_gst_rate` into classification. (b) *Removing the silent `0.07` default* — now **DONE** (branch `t-debt4-remove-rate-default`, commit `c41d0a8`): the default is removed on `_classify_line` / `validate_invoice_tax_codes` / `detect_gst_errors`, so `expected_rate` is REQUIRED and schema-required at the FastMCP tool layer (hardens the manual MCP surface); behaviour-preserving on the automated path, offline-replay byte-identical; `validation_status="unvalidated"` unchanged. **Still OPEN:** mid-period 7%→9% rate-transition handling (a single scalar per run cannot validate a period straddling the rate-change date) — **T2.11-gated**, needs IRAS date-of-supply semantics; see new `operational-backlog.md` items #11 (mid-period transition) and #12 (manual MCP stdio tool-surface review).
+
+### `D-2026-07-28-xero-views` — Xero three-view shell + session-scoped Audit (FRONTEND-ONLY) *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+Build + docs-sync on branch `t-xero-views`, off base `c38e150` (the PR #158 merge). **UNMERGED.**
+**FRONTEND-ONLY — zero `.py` touched**, no `api/` / `feeders/` / `orchestrator/` / `report/` /
+`agent/` / `config/` change, **no key-set change**.
+
+**D-13 IS A REVERSAL, recorded as one.** The Xero surface was deliberately **non-tab-gated** by
+§Xero-shell-parity (PR #155) and that decision was **locked by a test**
+(`XeroShellParity.test.tsx:179` asserted the primary nav is absent). Terry reversed it. The rule
+the lock protected — *no dead controls* — survives: the three tabs are live, each mounting real
+content. The reversal needed **no change to `TopBar` or `Root`**: `TopBar.tsx:47` already renders
+the nav only when both `view` and `setView` are supplied, and the panel simply never supplied them.
+**Six existing test files (15 tests) were amended, all hand-authored by Terry** under separation of
+duties — the agent authored no amendment and edited no existing test. The pre-build read-only recon
+forecast **15 tests / 6 files**; the run produced **15 / 6, zero unforecast, zero
+forecast-but-passing**.
+
+**D-17 — the Audit view is session-scoped because it cannot be anything else.** Titled *"Decisions
+— this session"*, **EMPTY ON LOAD always** (a seeded row would be an invented backend state). There
+is **no read endpoint for the decision store**. A real `POST /decision` returns **ten keys** and
+**neither a timestamp nor a reviewer name** — the store records both; the response does not return
+them — so the view has **no "When" and no "Reviewer" column** rather than a browser-side guess.
+**Two backend fixes filed:** (1) `POST /decision` should return the `timestamp` and `reviewer` it
+already stores; (2) `GET /decisions` (`backend-gaps.md` §B1) for decisions from prior sessions.
+`GET /audit` is deliberately not called — an upload runs no agent, so there is no Tier-1/Tier-2
+justification ledger for this source.
+
+**D-18 — ledger-recon rows are indistinguishable by their own fields.** With the committed 820
+ledger attached, an F5 upload returns 5 rows, two of them `fingerprint: null`. **Of 24 fields
+exactly 3 differ** (`finding_id`, `description`, `recommendation`); **of the 6 fields the queue
+renders, ZERO differ**. The queue now shows `finding_id`'s terminal segment (`output`/`input`) for
+any row with no vendor, severity, doc number or date — **never parsed out of the prose**, because
+the identifier is data and "Box 6" in a sentence is not. **Backend fix filed:** ledger-recon rows
+need a distinguishing display field of their own. *(Related, NOT fixed, flagged: the Sidebar has
+the identical collision.)*
+
+**D-15 — the extract caveat renders on all three views.** Its third clause says findings *"should
+not be relied on"*; a warning about findings must be visible wherever findings are readable, and
+splitting the surface is exactly what would have stranded it on one tab.
+
+**D-16 — an absence assertion must be made on the view where the element would render.** A general
+rule, not a one-off: under mutually-exclusive views an absence check after a tab switch can pass
+against an unmounted tree — green while asserting nothing. Three assertions were at risk (the
+F5-only sign gate's only pin among them). **Belongs with R-23 / open item #50**: #50 covers
+fabricated *values*, D-16 covers assertions made against an *absent tree* — same signature, a green
+suite that has stopped watching.
+
+**D-19 / D-21 — two layout defects vitest structurally cannot catch.** **jsdom performs no
+layout**, so a grid or flex defect is invisible to the test suite; both were found by driving real
+Chrome and measuring. **D-19** (pre-existing): `.findings-view` is a 2-column grid that was being
+given **three** children, so the detail card wrapped to row 2 inside the 320px column
+(`gridTemplateColumns` `320px 306px`, detail at x=595 **y=1340** w=320) while the right half of the
+page sat empty — now `320px 848px`, detail at x=670 **y=182** w=848, two children, note above the
+grid. **D-21** (a regression from PR #158's own style commit): `flex: 1 1 240px` on
+`.reviewer-input`, whose parent is `inline-flex; flex-direction: column`, put the 240px basis on
+**height** — a 240px-tall empty box (h=240, w=192 → h=35, w=420 after). **The browser check is the
+control; a green vitest run is not evidence about layout.**
+
+**Correction sweep (Terry-directed) — the false claim never reached a doc.** The PR #158 report
+asserted no committed ledger fixture exists; it does
+(`tests/fixtures/xero-real-format/AgentAssist_-_Account_Transactions.xlsx`, tracked since
+`386e1b6`). A sweep of the canonical `.md` docs found **no occurrence** — the error was confined to
+the PR body, and this roadmap already recorded the opposite. **No doc correction required**;
+recorded so it cannot be re-imported from PR history.
+
+**Also filed:** two different F5 fixture workbooks share the filename
+`AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx` across `tests/fixtures/xero-f5-export/` and
+`tests/fixtures/xero-real-format/`.
+
+**+10 vitest** in one new file (`frontend/src/test/XeroViews.test.tsx`); **frontend vitest 29 files
+/ 112 tests, all green** (was 28 / 102); `npm run build` (tsc) clean; **backend UNCHANGED** — the
+Python suite was not run because no `.py` file was touched. **Honest status:** this is a **UI
+change**. It renders data the backend already computed; **no new finding, no new check, no backend
+change**. **BUILT + hermetically tested ≠ demo-validated ≠ accuracy-validated.** Moves no
+validation rung. `validation_status` unvalidated. `show_ai_candidates` False. T2.11 unmoved.
+Docs-sync `.md`-only, separate commit from code.
