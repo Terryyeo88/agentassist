@@ -30,6 +30,17 @@ const CLIENT_ID_BY_SOURCE_KIND: Record<string, string> = {
 const REVIEW_ONLY_NOTE = "Review-only — decisions are not persistable for this export.";
 
 /**
+ * C-2: the server's own words, with nothing added. `api.ts` throws the response body's `detail`
+ * verbatim, so an Error's `.message` IS the server message — while `String(e)` on an Error
+ * prepends "Error: ", which put a synthetic token in front of real server copy. Anything that is
+ * not an Error is stringified unchanged rather than guessed at: an unrecognised failure is
+ * surfaced as-is, never replaced with a friendlier invention.
+ */
+function serverMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
  * XeroUploadPanel — the source-selector's Xero branch. Upload a client .xlsx GST export; a
  * real Xero IRAS-F5 export runs the engine and its findings render in the SHARED central
  * review screen as CANDIDATES (BUILD 2, A1), alongside a per-check DATA-COVERAGE preview.
@@ -48,6 +59,12 @@ const REVIEW_ONLY_NOTE = "Review-only — decisions are not persistable for this
 export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void }) {
   const [coverage, setCoverage] = useState<UploadCoverageResponse | null>(null);
   const [err, setErr] = useState<string>("");
+  // C-2 (Q1): the reviewer-of-record PROMPT is not a failure and no longer shares the `err`
+  // channel with real server 422s. Separate state, separate treatment, and rendered on the
+  // Findings view — the panel mounts exactly one <ReviewScreen>, inside `view === "findings"`,
+  // so that is the only view whose controls can raise this prompt. Left on the Review view it
+  // would have been a message the reviewer could never see.
+  const [notice, setNotice] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Group>("needs_review");
@@ -91,6 +108,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
     if (!file) return;
     setBusy(true);
     setErr("");
+    setNotice("");
     setUploadedFile(file);
     setDecided({});
     uploadExtract(file, ledgerFile)
@@ -99,7 +117,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
         // Default the selection to the first finding so its case-file card renders.
         setSelectedId(resp.queue && resp.queue.length ? resp.queue[0].finding_id : null);
       })
-      .catch((e) => setErr(String(e)))
+      .catch((e) => setErr(serverMessage(e)))
       .finally(() => setBusy(false));
   }
 
@@ -124,6 +142,9 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           decided,
           onRecord: (id, action, note) => {
             setDecided((d) => ({ ...d, [id]: { action, note } }));
+            // A fresh attempt clears the previous prompt, so a stale one cannot linger past the
+            // condition that caused it.
+            setNotice("");
             const row = findings.find((it) => it.finding_id === id);
             // Defensive only: un-fingerprinted rows render DISABLED controls in
             // FindingDetail (no-silent-dead-buttons), so this cannot swallow a
@@ -131,7 +152,9 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
             if (!row?.fingerprint) return;
             const reviewer = reviewerName.trim();
             if (!reviewer) {
-              setErr(
+              // Q1: a PROMPT, not a failure — nothing was rejected, the reviewer just has one
+              // more thing to supply. Same words, its own non-error channel.
+              setNotice(
                 "Decision recorded locally only — enter the reviewer of record above " +
                   "to persist decisions under a real name."
               );
@@ -156,7 +179,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
               .then((resp) => {
                 if (resp) setCoverage(resp);
               })
-              .catch((e) => setErr(String(e)));
+              .catch((e) => setErr(serverMessage(e)));
           },
           ...(canSign ? { onOpenSign: () => setSignOpen(true) } : {}),
         }
@@ -300,7 +323,21 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           </label>
 
           {busy && <div className="loading">Reading export…</div>}
-          {err && <div className="errorbox">{err}</div>}
+          {/* C-2: house style, borrowed from App.tsx's error branch — a plain-words lead
+              sentence, then the SERVER'S OWN message verbatim in a <small>. The lead says only
+              what is certainly true of every 422 this endpoint raises (bad suffix, empty file,
+              unreadable workbook, bad ledger, reconciliation halt): the upload did not complete.
+              It never diagnoses the cause and never substitutes a friendlier summary — the real
+              message is the only thing that says why. `.errorbox-upload` carries the error
+              colour; the shared `.errorbox` base is left exactly as App.tsx and AuditTrail.tsx
+              use it. */}
+          {err && (
+            <div className="errorbox errorbox-upload" role="alert">
+              The upload did not complete. The server reported:
+              <br />
+              <small>{err}</small>
+            </div>
+          )}
 
           {extractCaveat}
 
@@ -353,6 +390,15 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
         {view === "findings" && (
           <main className="view xero-findings-view">
             {extractCaveat}
+            {/* Q1: the reviewer-of-record prompt, on the view whose controls raise it. role
+                ="status" not "alert" — nothing failed, so it is announced politely. It is
+                deliberately NOT inside .errorbox: a prompt that reads as an error teaches the
+                reviewer to distrust the error state. */}
+            {notice && (
+              <p className="xero-reviewer-prompt callout info" role="status">
+                {notice}
+              </p>
+            )}
             {/* D-19: the persist note sits ABOVE the grid, not inside it. A live browser
                 measurement showed it taking grid cell 1 (320px) with the queue beside it,
                 which pushed the detail card onto row 2 in the 320px column while the right
