@@ -1,6 +1,7 @@
 import type { FacetMap, Group, QueueItem } from "../api";
 import { FacetFilter } from "./FacetFilter";
 import { type ExpectedSource, isSourceMismatch, SourceMismatch } from "../lib/sourceGuard";
+import { rowIdentitySuffix } from "../lib/rowIdentity";
 
 /**
  * Facet props (T6.3 Slice 4) — the SERVER-driven facet menu, relocated onto the queue. The
@@ -49,25 +50,9 @@ function bucketOf(item: QueueItem, decided: Props["decided"]): Group {
   return item.demoted ? "marked_known" : "needs_review";
 }
 
-/**
- * The trailing segment of finding_id, but ONLY for a row this list would otherwise render
- * identically to its siblings (D-18).
- *
- * Measured on the two ledger-reconciliation rows a real F5+ledger upload returns: of the six
- * fields rendered here — check_id, vendor, severity, doc_num, doc_date, demoted — they differ
- * in NONE. Only finding_id, description and recommendation differ at all. Without this the two
- * rows are the same row twice, and a reviewer cannot tell which one they are looking at.
- *
- * Returns "" for any row that already has a vendor, severity, document number or date, so
- * ordinary rows are untouched on both surfaces.
- */
-function rowIdentitySuffix(item: QueueItem): string {
-  const distinguishable =
-    item.vendor || item.severity || item.doc_num != null || item.doc_date;
-  if (distinguishable) return "";
-  const tail = item.finding_id.split(":").pop() ?? "";
-  return tail && tail !== item.finding_id ? tail : "";
-}
+// rowIdentitySuffix (D-18) now lives in lib/rowIdentity — the Sidebar's "Open findings" rail hits
+// the SAME collision on the SAME rows (C-1), so both surfaces share one rule. Behaviour here is
+// unchanged; see that module for why the guard is not specialised per surface.
 
 export function Queue({
   items,
