@@ -10,10 +10,9 @@ import type { QueueItem } from "../api";
  *
  * Written BEFORE the implementation; MUST fail today for the RIGHT reason. Commit 2 wraps the
  * Xero surface (XeroUploadPanel) in the SAME shared shell chrome the SAP surface (App) already
- * uses — a shared <TopBar> (brand + loud UNVALIDATED badge + reviewer pill, but NO view-tabs on
- * the Xero page) and a shared <Sidebar aria-label="Overview"> whose tallies count the upload
- * findings — while keeping the Xero surface NON-tab-gated (single upload flow, no tab navigation).
- * The bare <h1 className="source-title"> is REMOVED, the reviewer-of-record input is RELOCATED
+ * uses — a shared <TopBar> (brand + loud UNVALIDATED badge + reviewer pill) and a shared
+ * <Sidebar aria-label="Overview"> whose tallies count the upload findings. The bare
+ * <h1 className="source-title"> is REMOVED, the reviewer-of-record input is RELOCATED
  * (not duplicated), the branch-aware banner carries Xero copy (never the SAP "Live SAP Business
  * One access" prose), and the SAP-only surfaces (Command bar / Audit trail / Filters) render as
  * DISABLED buttons with an honest reason. Mounting the panel fires NO SAP fetch (§2 box-isolation:
@@ -21,11 +20,22 @@ import type { QueueItem } from "../api";
  * empty-state guard: an F5-less payload renders the Review home WITHOUT the F5 strip and does not
  * crash.
  *
- * THREE-TIMES RULE: the "Xero surface wears the shared shell chrome, stays non-tab-gated, exposes
- * exactly one reviewer input, shows SAP-only surfaces as disabled-with-reason, and fires no SAP
- * fetch; App tolerates an F5-less payload" contract is pinned in the shell/panel spec, enforced in
- * XeroUploadPanel + App code, and asserted here.
+ * AMENDED (D-13). Commit 2 deliberately kept the Xero surface NON-tab-gated — no view-tabs, a
+ * single upload flow — because un-editable tests assumed single-flow content. That decision was
+ * REVERSED by D-13: the Xero surface now carries the same three mutually-exclusive view tabs
+ * (Review / Findings / Audit) the SAP surface has, and findings live on their own view.
+ * Assertions that read finding content switch first via openFindings(); none was weakened.
+ *
+ * THREE-TIMES RULE: the "Xero surface wears the shared shell chrome, is tab-gated into
+ * Review / Findings / Audit, exposes exactly one reviewer input, shows SAP-only surfaces as
+ * disabled-with-reason, and fires no SAP fetch; App tolerates an F5-less payload" contract is
+ * pinned in the shell/panel spec, enforced in XeroUploadPanel + App code, and asserted here.
  */
+
+async function openFindings() {
+  const nav = screen.getByRole("navigation", { name: /Primary/i });
+  fireEvent.click(within(nav).getByRole("button", { name: "Findings" }));
+}
 
 // A real-FORMAT Xero E2 finding, projected to the shared QueueItem shape by the backend
 // (mirrors XeroFindings.test.tsx's XERO_E2 so the shell wraps the SAME single-flow content).
@@ -160,7 +170,7 @@ function appFetchNoF5() {
 describe("Xero shell parity + empty-state guard (Commit 2)", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("1: fresh Xero page — shell chrome present, bare h1 gone, no tabs", async () => {
+  it("1: fresh Xero page — shell chrome present, bare h1 gone, three live tabs", async () => {
     vi.stubGlobal("fetch", rejectSapFetch());
     render(<XeroUploadPanel onChangeSource={() => {}} />);
 
@@ -175,8 +185,13 @@ describe("Xero shell parity + empty-state guard (Commit 2)", () => {
     expect(document.querySelector(".source-title")).toBeNull();
     expect(screen.queryByText("Xero export — review")).toBeNull();
 
-    // The Xero surface stays non-tab-gated: NO primary view-nav.
-    expect(screen.queryByRole("navigation", { name: /Primary/i })).toBeNull();
+    // D-13: the Xero surface is now tab-gated — three live views, mutually exclusive.
+    const nav = screen.getByRole("navigation", { name: /Primary/i });
+    for (const label of ["Review", "Findings", "Audit"]) {
+      expect(within(nav).getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    // Mutually exclusive: exactly one tab is current at a time.
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
   it("2: reviewer-of-record input renders exactly once (relocated, not duplicated)", () => {
@@ -219,19 +234,21 @@ describe("Xero shell parity + empty-state guard (Commit 2)", () => {
   });
 
   it("5: upload still works through the shell (regression guard)", async () => {
-    vi.stubGlobal("fetch", xeroUploadFetch(XERO_BODY));
-    render(<XeroUploadPanel onChangeSource={() => {}} />);
-    await uploadA();
+      vi.stubGlobal("fetch", xeroUploadFetch(XERO_BODY));
+      render(<XeroUploadPanel onChangeSource={() => {}} />);
+      await uploadA();
+      await openFindings();
 
-    // The single-flow content still renders as a candidate — the chrome did not hide it.
-    expect(await screen.findByText(/candidate for review only/i)).toBeInTheDocument();
-    expect(await screen.findByText(XERO_E2.display_name!)).toBeInTheDocument();
-  });
+      // Findings now live on their own view — the chrome did not hide them.
+      expect(await screen.findByText(/candidate for review only/i)).toBeInTheDocument();
+      expect(await screen.findByText(XERO_E2.display_name!)).toBeInTheDocument();
+    });
 
   it("6: the Sidebar tallies count the upload findings", async () => {
     vi.stubGlobal("fetch", xeroUploadFetch(XERO_BODY));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadA();
+    await openFindings();
 
     // Wait for the uploaded finding to render through the shell.
     expect(await screen.findByText(XERO_E2.display_name!)).toBeInTheDocument();

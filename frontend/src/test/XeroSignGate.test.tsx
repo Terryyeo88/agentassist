@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { XeroUploadPanel } from "../components/XeroUploadPanel";
 import type { QueueItem } from "../api";
 
@@ -36,6 +36,11 @@ import type { QueueItem } from "../api";
  * non-signable state exposes no interactive sign control anywhere" is stated in the TopBar prop
  * contract, enforced in TopBar + XeroUploadPanel code, and asserted here.
  */
+
+async function openFindings() {
+  const nav = screen.getByRole("navigation", { name: /Primary/i });
+  fireEvent.click(within(nav).getByRole("button", { name: "Findings" }));
+}
 
 const XERO_E2: QueueItem = {
   finding_id: "detect:E2:INV-2003",
@@ -145,10 +150,14 @@ describe("Xero sign gate — every sign entry point obeys canSign (F5-only)", ()
     }
   });
 
+  // The finding assertion below is a LOAD BARRIER — it forces the upload response to land before
+  // the pill assertions run. It lives on the Findings view now, hence openFindings(). The pill and
+  // modal are TopBar/portal, not view-gated, so they resolve from any view.
   it("xero_sales_upload: the TopBar pill exposes NO sign affordance (backend 422s the format)", async () => {
     vi.stubGlobal("fetch", panelFetch(uploadBody("xero_sales_upload")));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadPrimary();
+    await openFindings();
 
     expect(await screen.findByText("GST charged on a non-taxable (zero-rated) supply")).toBeInTheDocument();
     // A file IS uploaded now, so the modal's `signOpen && uploadedFile` gate would pass —
@@ -161,6 +170,7 @@ describe("Xero sign gate — every sign entry point obeys canSign (F5-only)", ()
     vi.stubGlobal("fetch", panelFetch({ ...uploadBody("extract_review"), config_scope: "default_demo" }));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadPrimary();
+    await openFindings();
 
     expect(await screen.findByText("GST charged on a non-taxable (zero-rated) supply")).toBeInTheDocument();
     expect(pillButton()).toBeNull();
@@ -171,6 +181,7 @@ describe("Xero sign gate — every sign entry point obeys canSign (F5-only)", ()
     vi.stubGlobal("fetch", panelFetch(uploadBody("xero_f5_upload")));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadPrimary();
+    await openFindings();
 
     expect(await screen.findByText("GST charged on a non-taxable (zero-rated) supply")).toBeInTheDocument();
 
