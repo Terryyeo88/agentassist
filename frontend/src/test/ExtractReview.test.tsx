@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import { XeroUploadPanel } from "../components/XeroUploadPanel";
 import type { QueueItem } from "../api";
 
@@ -12,6 +12,11 @@ import type { QueueItem } from "../api";
  * <ReviewScreen> AND surface the LOUD three-clause caveat — including the mandatory
  * default-config clause. The caveat is SCOPED to extract_review: the Xero path must NOT show it.
  */
+
+async function openFindings() {
+  const nav = screen.getByRole("navigation", { name: /Primary/i });
+  fireEvent.click(within(nav).getByRole("button", { name: "Findings" }));
+}
 
 const item: QueueItem = {
   finding_id: "detect:E1:958",
@@ -83,6 +88,9 @@ describe("extract-engine review surface (BUILD 3)", () => {
     vi.stubGlobal("fetch", fetchReturning(EXTRACT_REVIEW_BODY));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await upload();
+    // D-15: the three-clause caveat renders on ALL views. Assert it WITH the findings on
+    // Findings — that pairing is exactly what the rule exists to protect.
+    await openFindings();
 
     // Findings render as candidates in the shared screen.
     expect(await screen.findByText(/candidate for review only/i)).toBeInTheDocument();
@@ -99,9 +107,11 @@ describe("extract-engine review surface (BUILD 3)", () => {
     vi.stubGlobal("fetch", fetchReturning(XERO_BODY));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await upload();
+    await openFindings();
 
     expect(await screen.findByText(item.display_name!)).toBeInTheDocument();
-    // The default-config clause is SCOPED to extract_review — it must not leak onto the Xero path.
+    // D-16: the caveat renders on all views for extract_review, so Findings — reached after a
+    // presence assertion, so the response has landed — is a valid place to assert its absence.
     expect(screen.queryByText(/default demo configuration/i)).toBeNull();
   });
 });
