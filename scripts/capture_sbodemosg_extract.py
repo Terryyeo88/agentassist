@@ -1,6 +1,40 @@
 #!/usr/bin/env python3
 """scripts/capture_sbodemosg_extract.py — T2.12a SBODEMOSG ground-truth capture.
 
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ D-27 — THIS IS A RE-CAPTURE, NOT A REGENERATOR.                              ║
+║ IT IS FORBIDDEN AS AN ORACLE RE-FREEZE INSTRUMENT.                           ║
+║                                                                              ║
+║ The filename invites the mistake, so read this before running it. This script ║
+║ requires a LIVE SBODEMOSG connection (load_client_config(..., check_          ║
+║ connectivity=True) then configure_client(); every surface below is a live SAP ║
+║ read, and the oracle at the bottom comes from run_chain(cfg, period) against  ║
+║ live SAP — NOT off the frozen extract). Running it OVERWRITES ALL EIGHT raw   ║
+║ surfaces AND rewrites capture-manifest.json with fresh counts and hashes.     ║
+║                                                                              ║
+║ SAP state has moved since the original capture. If you run this to fix a      ║
+║ STRING, you will silently re-baseline the entire ground truth, and the D-22   ║
+║ field-by-field proof will show hundreds of unrelated paths moving. That is    ║
+║ exactly how a broken oracle gets blessed as correct.                          ║
+║                                                                              ║
+║ TO RE-FREEZE THE ORACLE, the ONLY permitted instrument is the OFFLINE replay  ║
+║ shim — deterministic, SAP unreachable, touches the oracle bytes and nothing   ║
+║ else:                                                                        ║
+║                                                                              ║
+║     import replay_shim                          # tests/replay_shim.py        ║
+║     from audit_bundle.canonical import canonical_json                        ║
+║     period = replay_shim.period_from_manifest(FIXTURE_DIR)                    ║
+║     co, gr = replay_shim.replay_chain(period)   # NoContactError if SAP hit   ║
+║     canonical_json({"period": period,                                        ║
+║                     "compile_output": co, "gate_results": gr})               ║
+║                                                                              ║
+║ D-28 — MANDATORY PROCEDURE for every re-freeze: regenerate FIRST with the     ║
+║ change NOT applied and prove the output is byte-identical to the committed    ║
+║ oracle; only then apply the change and diff field by field. The oracle is     ║
+║ regenerable only through the harness it exists to verify — that proof is what ║
+║ breaks the circularity. See AGENTASSIST_TECHNICAL_STATE.md §NO_GST_REG-reword.║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
 Freezes the six SAP read surfaces the deterministic chain consumes (recon S0–S5,
 see exploration-notes/t2.12a-read-surface-inventory.md) **verbatim**, plus a
 same-session compiled replay oracle, into tests/fixtures/sbodemosg-extract/.

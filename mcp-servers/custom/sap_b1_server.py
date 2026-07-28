@@ -1511,7 +1511,15 @@ def detect_gst_errors(period_start: str, period_end: str, expected_rate: float, 
                     f"Input tax claimed from supplier {card_code} ({doc.get('CardName', '')}) "
                     "without a GST registration number — may not be claimable."
                 ),
-                "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+                # D-26: surfaces-never-asserts. The prior wording ended "or reverse the
+                # input tax claim" — an imperative to alter the client's books that
+                # presupposed the claim was invalid. This states one action and hands the
+                # determination back to the reviewer. Rule-author authored under
+                # NO-TAX-SEMANTICS; "conditions for claiming input tax" is the title of
+                # GST (General) Regulations reg 11, the check's registry citation
+                # (agent/registry.py:250). Changing this string RE-FREEZES the offline-replay
+                # oracle — see D-22 / D-27 / D-28 in AGENTASSIST_TECHNICAL_STATE.md.
+                "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
             })
 
     # --- Sort and count by severity ---
