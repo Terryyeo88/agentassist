@@ -1,7 +1,7 @@
 [
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.238181+00:00",
+    "created_at": "2026-07-28T07:14:16.500965+00:00",
     "evidence_refs": [
       "finding:detect:E1:958",
       "evidence:sales_invoices",
@@ -9,13 +9,13 @@
     ],
     "inputs_hash": "sha256:fb52b5cd1de2fc8abe2c90ac8b939b4b4353c21446efa26da9234fac3681e5cb",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "0423c068-42c2-4376-ae2b-a7086f22f5fa",
+    "proposal_id": "3a6536fd-9c4e-4911-923f-1875a7b01603",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.238276+00:00",
+    "created_at": "2026-07-28T07:14:16.501060+00:00",
     "evidence_refs": [
       "finding:detect:E1:964",
       "evidence:sales_invoices",
@@ -23,13 +23,13 @@
     ],
     "inputs_hash": "sha256:04a0a9ad2b42589076018a2822b315445a6eac76c047ad3238f23622cc1bafb2",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "b5c133be-2af6-401c-be44-69989f02b595",
+    "proposal_id": "7c1e93b9-62af-4cb2-9e08-f8dc8c100d1a",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.238355+00:00",
+    "created_at": "2026-07-28T07:14:16.501137+00:00",
     "evidence_refs": [
       "finding:detect:E1:965",
       "evidence:sales_invoices",
@@ -37,13 +37,13 @@
     ],
     "inputs_hash": "sha256:69299592529bce36c52fb671e0c802f212000dd671c97b9d484cea7f3390039c",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "8ee63109-4356-4161-ab34-eca312474412",
+    "proposal_id": "660886bf-9a00-466c-9edd-ea272347d495",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.238421+00:00",
+    "created_at": "2026-07-28T07:14:16.501205+00:00",
     "evidence_refs": [
       "finding:detect:E1:974",
       "evidence:sales_invoices",
@@ -51,69 +51,69 @@
     ],
     "inputs_hash": "sha256:fbd49542652ef10cdb35731ed16ad9a29f06f00b526cd31d64af8aff50c6eabe",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "cba5908e-29e6-4bad-a09a-47c30c56de2d",
+    "proposal_id": "d710d4d7-3c27-4d84-a608-f263c5ee2105",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.238707+00:00",
+    "created_at": "2026-07-28T07:14:16.501481+00:00",
     "evidence_refs": [
       "finding:detect:NO_GST_REG:605",
       "evidence:purchase_invoices",
       "evidence:supplier_catalog"
     ],
-    "inputs_hash": "sha256:adeec1306e5a0aaea5a014c5309774f741aad3cdc70fa9a4d4fbceca524c64fc",
+    "inputs_hash": "sha256:1bb7b6c74d241cabe8aa8993a5b572a166ea39086b44d24a363856ccafe79aa5",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "df92f488-e51d-4a4c-b608-0f505164feb2",
+    "proposal_id": "c4caf184-84a2-4882-a34b-f3e38768973b",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.238790+00:00",
+    "created_at": "2026-07-28T07:14:16.501569+00:00",
     "evidence_refs": [
       "finding:detect:NO_GST_REG:592",
       "evidence:purchase_invoices",
       "evidence:supplier_catalog"
     ],
-    "inputs_hash": "sha256:09510205b167b2f1933085c90d384a5e1c53e5841926cf34c3aa80b6784a08e8",
+    "inputs_hash": "sha256:6f127df699877b777c0d3d6c1f6f686849d50f65c70a4e06895d27b77d5feb29",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "6b97059d-37bd-4c71-88ad-01db57ff5570",
+    "proposal_id": "ef29c1d2-9970-4690-8694-d68836b31fc0",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.238864+00:00",
+    "created_at": "2026-07-28T07:14:16.501648+00:00",
     "evidence_refs": [
       "finding:detect:NO_GST_REG:594",
       "evidence:purchase_invoices",
       "evidence:supplier_catalog"
     ],
-    "inputs_hash": "sha256:4b4fa2b5c3ec14b18a51eae886b82d9b1d41e3a5f1291fa7ace432120dbfab6f",
+    "inputs_hash": "sha256:ecd65a309be8c5f4ea36d7c8926aec468de257c8660c4aed6c746e0569602a28",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "a98890e3-50a4-430c-b2ad-cf58773b4b34",
+    "proposal_id": "86a2d371-e524-4e83-9121-83d7028dc852",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.238940+00:00",
+    "created_at": "2026-07-28T07:14:16.501726+00:00",
     "evidence_refs": [
       "finding:detect:NO_GST_REG:595",
       "evidence:purchase_invoices",
       "evidence:supplier_catalog"
     ],
-    "inputs_hash": "sha256:e160681863e7a698410fbf04427ae03c3ce3cbfbed5e2af41d50a846d23665b4",
+    "inputs_hash": "sha256:b4997031b98efe00c732e573c5b9e0f3c0983b142ea3a4aaae29e18a03523548",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "2656aaad-2139-4d7f-8c47-ed9ffe53e12d",
+    "proposal_id": "f918ef90-3a2a-43bc-911b-09b0f1bce997",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239003+00:00",
+    "created_at": "2026-07-28T07:14:16.501792+00:00",
     "evidence_refs": [
       "finding:detect:E1:971",
       "evidence:sales_invoices",
@@ -121,13 +121,13 @@
     ],
     "inputs_hash": "sha256:c0c4335c094d6494d0e775c8a19e6e7d666f57f2024b519609674ed88c3f4aca",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "b33ed5fb-bf0f-46ad-ace8-8a9195cc5932",
+    "proposal_id": "f8bbf316-f876-4031-b530-2e98c42f1b97",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239063+00:00",
+    "created_at": "2026-07-28T07:14:16.501854+00:00",
     "evidence_refs": [
       "finding:detect:E1:967",
       "evidence:sales_invoices",
@@ -135,13 +135,13 @@
     ],
     "inputs_hash": "sha256:400cf2953ec3c89845bc529d745e5e6625219a0247695b56e7961fe05d53dfd4",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "80d68838-69e9-46a9-b464-d8597af101b0",
+    "proposal_id": "2bae4b5d-e558-459a-bc66-cabe8a56597d",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239212+00:00",
+    "created_at": "2026-07-28T07:14:16.502006+00:00",
     "evidence_refs": [
       "finding:detect:E1:977",
       "evidence:sales_invoices",
@@ -149,13 +149,13 @@
     ],
     "inputs_hash": "sha256:dc47da9d19ded5f000e0bea5ec84b299a45ca37b6278567955bad15c86eedf2e",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "b0e585f9-55a1-4fee-b5cf-71bffa4923ef",
+    "proposal_id": "49d817e9-fe72-4825-b9c6-14c0c54a536b",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239272+00:00",
+    "created_at": "2026-07-28T07:14:16.502068+00:00",
     "evidence_refs": [
       "finding:detect:E1:982",
       "evidence:sales_invoices",
@@ -163,55 +163,55 @@
     ],
     "inputs_hash": "sha256:90176a6e7356b551f47c03d1518f9aae193616ba2856391ade261fbe61a9db20",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "21cee925-dde7-47e3-8384-6fbacfc4789e",
+    "proposal_id": "6db66723-9e99-4ef2-bc32-169da544f311",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239348+00:00",
+    "created_at": "2026-07-28T07:14:16.502148+00:00",
     "evidence_refs": [
       "finding:detect:NO_GST_REG:604",
       "evidence:purchase_invoices",
       "evidence:supplier_catalog"
     ],
-    "inputs_hash": "sha256:76907cab4dc9518f0eaf51ec01db4fd4d1b8384292f3a557992dc14be04ff356",
+    "inputs_hash": "sha256:f0dd79169f225815fd209db8c241586aab43b88b51b27ebaf14ba1f9770dab63",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "ada4c4d9-f8b0-44f1-8f85-c0a20df13f85",
+    "proposal_id": "5966f1e3-b0e0-4ba3-9a8d-ca4d44fa1e3a",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239421+00:00",
+    "created_at": "2026-07-28T07:14:16.502224+00:00",
     "evidence_refs": [
       "finding:detect:NO_GST_REG:600",
       "evidence:purchase_invoices",
       "evidence:supplier_catalog"
     ],
-    "inputs_hash": "sha256:cae9d10f4a4ecaae5eb79135589ca6c62f1e1f9257b9e2a101f25da5d5b4c52f",
+    "inputs_hash": "sha256:3519e69a884d0941dc8a17a1851ee13a7cd8a8a982257a08bcb44e8bb1d0f515",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "1d805d47-ac55-44f0-a75e-dae8eef60892",
+    "proposal_id": "155a723d-a7c4-40cb-9c6f-822c662eb162",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239493+00:00",
+    "created_at": "2026-07-28T07:14:16.502302+00:00",
     "evidence_refs": [
       "finding:detect:NO_GST_REG:601",
       "evidence:purchase_invoices",
       "evidence:supplier_catalog"
     ],
-    "inputs_hash": "sha256:712088a60c63cde9308015a230d3217cf549d09370e57c3ec14dd315120c9452",
+    "inputs_hash": "sha256:331e976df18cad7a5684e394a56fbafa6cf3fae18aad54aad50ecccba6a7e3ff",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "1b9ca2dd-96d0-4099-ac90-40bf7707a9db",
+    "proposal_id": "bc026ad5-755e-459c-9c67-760f469b04a4",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239559+00:00",
+    "created_at": "2026-07-28T07:14:16.502376+00:00",
     "evidence_refs": [
       "finding:detect:E2:605",
       "evidence:purchase_invoices",
@@ -220,13 +220,13 @@
     ],
     "inputs_hash": "sha256:6d597d5e397f6a9f44d440cacddd7bd9e185eb37d5fbccf06132261e3aadde0f",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "d0f47060-4532-432a-b741-ec0765ba5bd7",
+    "proposal_id": "9c02e88c-4d5d-4bf7-b6c5-069b5d14c4b8",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239630+00:00",
+    "created_at": "2026-07-28T07:14:16.502441+00:00",
     "evidence_refs": [
       "finding:detect:E2:607",
       "evidence:purchase_invoices",
@@ -235,13 +235,13 @@
     ],
     "inputs_hash": "sha256:81c0f5d565941f7e11170640592caeaa5a0ca5e0a3562a57f26ac8b1ed55df54",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "c30b1cf9-7b27-4adc-bf53-03a0b6e4e4c9",
+    "proposal_id": "7c31cca2-1eff-4532-8b87-81a3764d7f73",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239692+00:00",
+    "created_at": "2026-07-28T07:14:16.502517+00:00",
     "evidence_refs": [
       "finding:detect:E2:608",
       "evidence:purchase_invoices",
@@ -250,13 +250,13 @@
     ],
     "inputs_hash": "sha256:763afec376aa62a04f0988d174ba57dde56dd3facae37b6d996865881e78cf2a",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "0ea7c91c-03cc-4402-9abc-f493580858f9",
+    "proposal_id": "9ac495e2-0a85-45ef-a731-8ad351e40920",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239752+00:00",
+    "created_at": "2026-07-28T07:14:16.502578+00:00",
     "evidence_refs": [
       "finding:detect:E2:610",
       "evidence:purchase_invoices",
@@ -265,13 +265,13 @@
     ],
     "inputs_hash": "sha256:4b08649d86350599ebceab688116a1445857c885c3e199abf1163d716f58782e",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "8816a011-6b57-44c7-a16d-2d831f12b7dc",
+    "proposal_id": "64ddf8e9-b79a-4ce5-a3f5-b93065d94be8",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239813+00:00",
+    "created_at": "2026-07-28T07:14:16.502639+00:00",
     "evidence_refs": [
       "finding:detect:E2:611",
       "evidence:purchase_invoices",
@@ -280,13 +280,13 @@
     ],
     "inputs_hash": "sha256:4f3d37d09552a61897172653fbb000c58292b22e5c7b717fa999b07b213233e8",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "0a7c3b9e-2b78-458f-87bf-0fd22247a932",
+    "proposal_id": "3840406f-8115-4a85-a9c7-de65489a15a8",
     "status": "pending",
     "tier": 2
   },
   {
     "action": "attach_dossier",
-    "created_at": "2026-07-24T05:53:47.239988+00:00",
+    "created_at": "2026-07-28T07:14:16.502720+00:00",
     "evidence_refs": [
       "finding:doc:gst_amount_mismatch:958",
       "evidence:document_pdfs",
@@ -294,7 +294,7 @@
     ],
     "inputs_hash": "sha256:8a81f6eb725f99aed2676d050e1042a5879e5148df4f040d1795c498af270655",
     "justification": "Stage the human-reviewable dossier for reviewer approval: the code-defined completeness checklist is satisfied and the candidate framing passed the language-lint. Pending reviewer approval; no compliance determination is made.",
-    "proposal_id": "fe08663f-c211-40f7-9975-96f978ee2f4e",
+    "proposal_id": "381b5261-85fc-4932-92d0-ad79d716d219",
     "status": "pending",
     "tier": 2
   }

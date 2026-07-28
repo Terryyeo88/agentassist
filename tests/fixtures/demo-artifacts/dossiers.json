@@ -182,7 +182,7 @@
         "doc_date": "2024-07-15",
         "doc_num": 605,
         "error_code": "NO_GST_REG",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
         "severity": "HIGH"
       },
       "supplier_catalog": {
@@ -194,7 +194,7 @@
     },
     "finding_id": "detect:NO_GST_REG:605",
     "finding_type": "deterministic",
-    "inputs_hash": "sha256:adeec1306e5a0aaea5a014c5309774f741aad3cdc70fa9a4d4fbceca524c64fc"
+    "inputs_hash": "sha256:1bb7b6c74d241cabe8aa8993a5b572a166ea39086b44d24a363856ccafe79aa5"
   },
   {
     "candidate_framing_text": "Document 592 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
@@ -219,7 +219,7 @@
         "doc_date": "2024-07-16",
         "doc_num": 592,
         "error_code": "NO_GST_REG",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
         "severity": "HIGH"
       },
       "supplier_catalog": {
@@ -231,7 +231,7 @@
     },
     "finding_id": "detect:NO_GST_REG:592",
     "finding_type": "deterministic",
-    "inputs_hash": "sha256:09510205b167b2f1933085c90d384a5e1c53e5841926cf34c3aa80b6784a08e8"
+    "inputs_hash": "sha256:6f127df699877b777c0d3d6c1f6f686849d50f65c70a4e06895d27b77d5feb29"
   },
   {
     "candidate_framing_text": "Document 594 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
@@ -256,7 +256,7 @@
         "doc_date": "2024-07-16",
         "doc_num": 594,
         "error_code": "NO_GST_REG",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
         "severity": "HIGH"
       },
       "supplier_catalog": {
@@ -268,7 +268,7 @@
     },
     "finding_id": "detect:NO_GST_REG:594",
     "finding_type": "deterministic",
-    "inputs_hash": "sha256:4b4fa2b5c3ec14b18a51eae886b82d9b1d41e3a5f1291fa7ace432120dbfab6f"
+    "inputs_hash": "sha256:ecd65a309be8c5f4ea36d7c8926aec468de257c8660c4aed6c746e0569602a28"
   },
   {
     "candidate_framing_text": "Document 595 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
@@ -293,7 +293,7 @@
         "doc_date": "2024-07-20",
         "doc_num": 595,
         "error_code": "NO_GST_REG",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
         "severity": "HIGH"
       },
       "supplier_catalog": {
@@ -305,7 +305,7 @@
     },
     "finding_id": "detect:NO_GST_REG:595",
     "finding_type": "deterministic",
-    "inputs_hash": "sha256:e160681863e7a698410fbf04427ae03c3ce3cbfbed5e2af41d50a846d23665b4"
+    "inputs_hash": "sha256:b4997031b98efe00c732e573c5b9e0f3c0983b142ea3a4aaae29e18a03523548"
   },
   {
     "candidate_framing_text": "Document 971 (E1) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
@@ -490,7 +490,7 @@
         "doc_date": "2024-08-17",
         "doc_num": 604,
         "error_code": "NO_GST_REG",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
         "severity": "HIGH"
       },
       "supplier_catalog": {
@@ -502,7 +502,7 @@
     },
     "finding_id": "detect:NO_GST_REG:604",
     "finding_type": "deterministic",
-    "inputs_hash": "sha256:76907cab4dc9518f0eaf51ec01db4fd4d1b8384292f3a557992dc14be04ff356"
+    "inputs_hash": "sha256:f0dd79169f225815fd209db8c241586aab43b88b51b27ebaf14ba1f9770dab63"
   },
   {
     "candidate_framing_text": "Document 600 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
@@ -527,7 +527,7 @@
         "doc_date": "2024-08-20",
         "doc_num": 600,
         "error_code": "NO_GST_REG",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
         "severity": "HIGH"
       },
       "supplier_catalog": {
@@ -539,7 +539,7 @@
     },
     "finding_id": "detect:NO_GST_REG:600",
     "finding_type": "deterministic",
-    "inputs_hash": "sha256:cae9d10f4a4ecaae5eb79135589ca6c62f1e1f9257b9e2a101f25da5d5b4c52f"
+    "inputs_hash": "sha256:3519e69a884d0941dc8a17a1851ee13a7cd8a8a982257a08bcb44e8bb1d0f515"
   },
   {
     "candidate_framing_text": "Document 601 (NO_GST_REG) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
@@ -564,7 +564,7 @@
         "doc_date": "2024-08-27",
         "doc_num": 601,
         "error_code": "NO_GST_REG",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
         "severity": "HIGH"
       },
       "supplier_catalog": {
@@ -576,7 +576,7 @@
     },
     "finding_id": "detect:NO_GST_REG:601",
     "finding_type": "deterministic",
-    "inputs_hash": "sha256:712088a60c63cde9308015a230d3217cf549d09370e57c3ec14dd315120c9452"
+    "inputs_hash": "sha256:331e976df18cad7a5684e394a56fbafa6cf3fae18aad54aad50ecccba6a7e3ff"
   },
   {
     "candidate_framing_text": "Document 605 (E2) appears to be a candidate for reviewer attention; consider reviewing the GST treatment for this item.",
