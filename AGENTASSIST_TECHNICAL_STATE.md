@@ -5960,3 +5960,245 @@ every queue item still reads *"Illustrative citation — the IRAS basis shown is
 (T2.11 gates customer-facing claims); verify against the e-Tax Guides before any customer use."*
 Per the IRAS SOURCE RULE, **nothing here asserts what any IRAS guide or statute SAYS** — only what
 `sources.md` records about whether a copy is held.
+
+---
+
+## §NO_GST_REG-reword — the `NO_GST_REG` recommendation stops ordering the client's books altered and hands the determination back to the reviewer; **THE OFFLINE-REPLAY ORACLE WAS RE-FROZEN** under D-22, proven field by field (7 differing paths, all 7 the recommendation, 0 added, 0 removed), with D-27 forbidding the live-SAP capture script as a re-freeze instrument and D-28 making the equivalence proof standing procedure (branch `t-nogstreg-reword`, `D-2026-07-28-nogstreg-reword` *(id PROPOSED — Terry ratifies; rulings **D-25/D-26/D-27/D-28** are Terry's)*, off base `f5443a3` (the PR #159 merge) — **2900 passed, 1 skipped, 6 xfailed, 2 xpassed** base → **2900 passed, 1 skipped, 4 xfailed, 4 xpassed**; commits `2c7e163` (code) + Terry's `c38aaf3` (re-freeze) + `247b64a`/`1542114` (GST Act landing + sweep); **UNMERGED**; TEXT ONLY — no number moved; MOVES NO VALIDATION RUNG; T2.11 unmoved)
+
+**Honest status, first and plainly.** This removes an **instruction** from a signed working paper and
+replaces it with a **question for the reviewer**. Same documents flagged, same count, same severity,
+same description, no box moved, no detection behaviour changed. `validation_status` stays
+`"unvalidated"`, `show_ai_candidates` stays `False`, **T2.11 is unmoved**.
+
+### D-26 — what changed, and why it was a defect
+
+`mcp-servers/custom/sap_b1_server.py:1514` emitted:
+
+> "Obtain a valid tax invoice with the supplier's GST registration number, **or reverse the input tax
+> claim.**"
+
+The second clause is an **instruction to alter the client's books**, and it **presupposes the claim is
+invalid**. That is a verdict wearing an imperative, and it breaches **surfaces-never-asserts** — the
+invariant that any reasoning-layer output is a candidate, never a verdict, never an auto-correction.
+It reached the **signed PDF working paper**, which is the most consequential surface in the product.
+
+It now reads:
+
+> "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions
+> for claiming input tax are met is for the reviewer to determine."
+
+**Rule-author authored under NO-TAX-SEMANTICS** (option A of two offered) and applied **verbatim** —
+the agent neither composed nor adjusted it, and declined to author it when asked, on the grounds that
+a machine-written sentence on a signed document is the defect this build exists to remove.
+"Conditions for claiming input tax" is the **title of GST (General) Regulations reg 11**, which has
+been this check's registry citation since **D-24**, so the paper and the citation now reinforce each
+other. **The DESCRIPTION at `:1510-1512` is UNCHANGED** — "may not be claimable" is already correctly
+hedged.
+
+*Known soft coupling, accepted with eyes open:* the wording mirrors the citation's title, so a future
+re-cite of `NO_GST_REG` would want the prose to move with it and **nothing would catch it if it
+didn't**. That is the same drift family named at the foot of this section. It was weighed against the
+benefit and the rule-author chose the coupling.
+
+### THE ORACLE WAS RE-FROZEN
+
+Said in those words so no reader discovers it from a diff.
+
+```
+  OLD  sha256:59fbdbb827dee933b4c79e8557852047d2465d6cb155b00d3d3cb58b92eddc45   31,919 bytes
+  NEW  sha256:0225df39c8ea6054d45f72199aa510e970c385587e557e1160407ea744f6cd5f   32,332 bytes
+```
+
+`tests/fixtures/sbodemosg-extract/_replay-oracle.compiled.json`, with the pin in
+`capture-manifest.json` at `fixtures["_replay-oracle.compiled.json"]["sha256"]` updated to match.
+**Both the re-freeze and every `tests/` artefact are the rule-author's own commit `c38aaf3` plus his
+manifest edit — separation of duties; the agent touched nothing under `tests/` at any point.**
+
+**D-22, the governing ruling: a re-freeze is permitted ONLY when the old/new oracle diff is proven,
+field by field, to be EXACTLY the intended text change and nothing else.** Not "the tests pass now" —
+a printed diff. Both oracles were parsed and **every path walked** (dict keys and list indices), not
+text-diffed:
+
+```
+  paths present only in OLD : 0
+  paths present only in NEW : 0
+  paths whose VALUE differs : 7
+
+    $.compile_output.detect.issues[6].recommendation     RECOMMENDATION
+    $.compile_output.detect.issues[7].recommendation     RECOMMENDATION
+    $.compile_output.detect.issues[8].recommendation     RECOMMENDATION
+    $.compile_output.detect.issues[9].recommendation     RECOMMENDATION
+    $.compile_output.detect.issues[15].recommendation    RECOMMENDATION
+    $.compile_output.detect.issues[16].recommendation    RECOMMENDATION
+    $.compile_output.detect.issues[17].recommendation    RECOMMENDATION
+
+  COUNT differing paths            : 7
+  COUNT that are the recommendation: 7      EQUAL, and both == 7
+
+  D-22 VERDICT: SATISFIED
+```
+
+**No F5 box, no gate result, no `e1_reconciliation`, no `fetch_manifest`, no `period` moved.**
+Independently re-confirmed after the re-freeze landed: all eight F5 boxes byte-identical old vs new
+(`box_1` 369589.97 … `box_8` 12663.87), `gate_results` identical, and the 35 box-isolation /
+`canonical_json` runtime pins green.
+
+### D-27 — `capture_sbodemosg_extract.py` is FORBIDDEN as a re-freeze instrument
+
+The script's name says "capture" and its directory says "scripts", and both invite the wrong
+conclusion. It is a **RE-CAPTURE, not a regenerator**: it calls
+`load_client_config(CLIENT_ID, check_connectivity=True)` then `configure_client(...)` (`:100-104`),
+performs live `_fetch_invoices_paginated` / `_fetch_credit_notes_paginated` /
+`fetch_si_purchase_lines` / `fetch_listing_data` reads (`:111-132`), and builds the oracle from
+`run_chain(cfg, period)` against **live SAP** (`:162`) — not off the frozen extract. Running it
+**overwrites all eight raw surfaces and rewrites `capture-manifest.json` with fresh counts and
+hashes**.
+
+SBODEMOSG's state has moved since the original capture. **Anyone running it to fix a string would
+silently re-baseline the entire ground truth**, and the D-22 field-by-field proof would show hundreds
+of unrelated paths moving. That is precisely how a broken oracle gets blessed as correct.
+
+A boxed banner now sits at the head of its docstring saying so, naming the only permitted
+instrument — the **offline replay shim** (`tests/replay_shim.replay_chain`, frozen reader through the
+public seam, `NoContactError` if SAP is touched) plus `canonical_json`. **Three-times rule:** the
+prohibition is in the script (banner), in the code comment at `sap_b1_server.py:1514`, and here.
+
+### D-28 — the equivalence proof is now standing procedure for every re-freeze
+
+**Regenerate FIRST with the change NOT applied, prove byte-identity against the committed oracle,
+THEN apply the change and diff field by field.**
+
+Run here before anything was touched:
+
+```
+  regenerated (change NOT applied) : 31919 bytes  sha256 59fbdbb827dee933b…dc45
+  committed                        : 31919 bytes  sha256 59fbdbb827dee933b…dc45
+  BYTE-IDENTICAL                   : True
+```
+
+**The reason it is mandatory: the oracle is regenerable only through the harness it exists to
+verify.** Without the unchanged-regeneration step, a regenerator that is subtly wrong would produce a
+"new oracle" that the byte-identity test then happily blesses — the test would be checking the
+harness against itself. The proof breaks that circularity by pinning the regenerator to a known-good
+output first.
+
+Validated end to end on this build: the rule-author's in-place regeneration produced **exactly** the
+sha256 and all seven `dossiers.json` `inputs_hash` values the agent had predicted from an independent
+scratchpad run — two independent regenerations, identical bytes.
+
+### The reviewer-facing result, from a rendered paper
+
+Rendered before and after from the same fixture, extracted under **both** engines:
+
+```
+  pdfplumber : OLD string 7 -> 0 · NEW string 0 -> 7 · content otherwise IDENTICAL
+  pdfminer   : OLD string 7 -> 0 · NEW string 0 -> 7 · token multiset IDENTICAL (1845 both sides)
+```
+
+pdfminer's residual is **order-only** — the longer sentence changed row heights and therefore its
+table-cell reading order; not one token of content differs. Both papers 7 pages, 7 page-furniture
+blocks. The new wording was then checked character by character against **all 15 negative paper pins
+collected from the test sources** (`_BANNED_PAPER_LITERALS`, `_BANNED_VERBS`, `_NEGATIVE_PINS`,
+`_LOCKED_SAMEDAY_CAVEAT`, `_SUPERSEDED_WORDING`, plus the inline `assert … not in text` literals):
+**zero violations**, exact and case-insensitive.
+
+### P4 IS NOW COMPLETE — both halves
+
+Phase-1 recon split P4 because the citation and the recommendation had **different evidentiary
+footprints** and could not ship together. Both halves have now landed:
+
+| half | ruling | build | frozen bytes moved? |
+|---|---|---|---|
+| **citation** — `iras_basis` re-cited to the held Regulations | **D-24** | `t-nogstreg-recite`, **MERGED PR #161** (`57d0386`) | **none** — `iras_basis` is live-resolved; measured zero across the oracle and all seven committed artefacts |
+| **recommendation** — imperative → question | **D-25 / D-26** | `t-nogstreg-reword`, this build | **the oracle + 6 fixtures** — a full D-22 re-freeze |
+
+The split was correct: had they shipped together, the re-freeze would have masked the citation
+change, and the D-22 diff would have shown two intermingled edits instead of one provable one.
+
+### OPEN ITEM #50, ELEVATED — the four demo artefacts were STALE-BUT-GREEN, and that is the mild case
+
+Before this build, `review_result.json`, `dossiers.json` and both `chain-run-*.json` all carried the
+old recommendation text, and **no test failed**. `tests/test_t58_artifact_contract.py:97-118` pins
+**key sets, not values**:
+
+```python
+    assert set(rr.keys()) == FROZEN_REVIEW_RESULT
+        assert set(d.keys()) == FROZEN_DOSSIER
+        assert set(p.keys()) == FROZEN_PROPOSAL
+        assert set(e.keys()) == FROZEN_LEDGER_ENTRY
+```
+
+A shape tripwire cannot see text drift. Those four could have carried dead text **indefinitely**.
+`dossiers.json` is worse than the others: the recommendation sits inside the evidence dict that
+`inputs_hash` is computed over, so seven hashes drift with it — and **no test asserts a literal
+`inputs_hash`** (the only literals in test code are the dummies at
+`tests/test_dossier_xero_uploads.py:265,434`; every frontend value is a placeholder). The drift is
+silent by construction.
+
+`frontend/src/test/fixtures.ts` is the same defect one step worse: `:53` and `:54` were **already
+stale against production before this build** — missing "— may not be claimable." and ", or reverse
+the input tax claim." — and `:59` went stale at D-24. **Three divergent strings in one fixture
+object, two of them undetected for as long as they had existed.** All three are corrected here, each
+with a comment naming its source at file:line, because a hand-copy without a named source is how this
+happens.
+
+### THE FAMILY — and its origin, which is older than any of these
+
+**T1.2 (2026-05-27) is the origin of #50.** The NR VatGroup was wrong, and it was wrong in **three of
+four artefacts — tool code, reference script, and system prompt — all three of which AGREED WITH EACH
+OTHER.** One unverified belief, copied three times, presenting as corroboration. The knowledge base
+was the **lone outlier**, and it was the only artefact that had been checked against source.
+
+**Agreement among derived artefacts is not evidence.** Three copies of an unverified claim are one
+unverified claim with a majority. The only thing that counts is a check against the source — which is
+exactly why `knowledge-base/sources.md` exists and why every row on it records *who* checked, *from
+which copy*, and *when*.
+
+Every member of the family is the same shape — a value copied out of its source, with no binding test
+holding the copy to the original:
+
+| instance | copy | source of truth | caught by |
+|---|---|---|---|
+| **T1.2 NR VatGroup** (origin) | tool code, reference script, system prompt | IRAS para 5.11(o) via the knowledge base | a human noticing the lone outlier |
+| `XERO_UPLOAD_KEYS` | frontend constants | the live handler bodies | a binding test, added retroactively |
+| the T2.12c hand-built reason copy | hand-built string | the generated reason | a human |
+| `frontend/src/test/fixtures.ts` `:53` `:54` `:59` | three strings | `sap_b1_server.py:1510-1514`, `agent/registry.py:250` | **nothing — found by inspection during this build** |
+| `sources.md:64`'s own registry-citation list | a hand-maintained list of four legs | `CHECK_REGISTRY` (six, in fact) | **nothing — found by enumeration during D-24** |
+| the four demo artefacts | frozen text | `sap_b1_server.py:1514` | **nothing — shape-only tripwire** |
+| `scripts/run_baseline_tests.py:125` | duplicated recommendation | `sap_b1_server.py:1514` | **nothing** |
+| the two citation surfaces | `report/sections.py:866`, `report/constants.py:80` | `agent/registry.py` `iras_basis` | **nothing** |
+
+**The manifest itself is not exempt** — `sources.md:64`'s list was a hand-maintained copy of a
+registry fact, and it was both stale *and* incomplete. That is the sharpest illustration available:
+the file whose entire purpose is recording what was checked against source had itself drifted from
+source.
+
+**The generalisation:** every one of these is a value with no binding test, and in every case the
+absence of a failing test was mistaken for the absence of a problem. **A copy with no binding test is
+not a copy, it is a fork.** No mechanism is proposed here — this is filed for a ruling on whether the
+project adopts a general rule (a copied value must ship with a test binding it to its source, or must
+not be copied).
+
+### Honest-status ladder (verbatim)
+
+built ≠ hermetic ≠ offline-replay-validated ≠ real-format-validated ≠ real-client-export-validated ≠
+accuracy-validated (T2.11). **This build sits at the bottom rung and moves nothing up it.** It changes
+what a reviewer reads, not what the software knows. Per the IRAS SOURCE RULE nothing here asserts what
+any IRAS guide or statute **says** — only what `sources.md` records about whether a copy is held.
+
+### Footnote — the xfail/xpass split moved, and it was NOT this change
+
+`6 xfailed / 2 xpassed` → `4 xfailed / 4 xpassed`. Cause is the **GST Act landing** earlier on this
+branch (`247b64a`): two markers in `tests/test_citation_manifest.py` for `[GST Act]` now **xpass**,
+and their reason strings — *"no SSO-stamped copy supplied yet; row UNVERIFIED/ABSENT"* — are now
+false. Non-strict, so they do not fail the suite. **Stale markers, filed for the rule-author's hand**
+(they live under `tests/`).
+
+### Footnote — a second byte-identity guard exists
+
+The recon and the build brief both knew only about `tests/test_t2_12a_offline_replay.py`.
+**`tests/test_t224_chain_seam.py:78` holds an independent second byte-identity assertion** against the
+same oracle, written for the T2.24 ledger seam. It fired correctly and unforecast during this build.
+The complete set of oracle guards, for the next person: byte-identity at
+`test_t2_12a_offline_replay.py:126-133` and `test_t224_chain_seam.py:37,78`; sha256 pin at
+`test_sbodemosg_extract_fixtures.py:57`; shape at `test_sbodemosg_extract_fixtures.py:135`.

@@ -595,3 +595,76 @@ corrected in place. **One of six is corrected.**
 are SUPPORTED** — they rest on a held, version-pinned copy. The remaining gap is narrower and
 different: their **wording**. `E4` cites no section at all; the two `s19` cites are unpinned as to
 subsection. That is a rule-author authoring question, not an evidentiary one.
+
+## The `NO_GST_REG` recommendation no longer tells a reviewer to alter the books (`D-2026-07-28-nogstreg-reword`, rulings D-25/D-26)
+
+The working paper used to print:
+
+> "Obtain a valid tax invoice with the supplier's GST registration number, **or reverse the input tax
+> claim.**"
+
+The second clause is an **instruction to change the client's records**, and it assumes the claim is
+already invalid. It now prints:
+
+> "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions
+> for claiming input tax are met is for the reviewer to determine."
+
+**Nothing about detection changed.** Same documents flagged, same count, same severity, same
+description ("may not be claimable" was already correctly hedged and is untouched). No F5 box moved.
+`validation_status` stays `unvalidated`; T2.11 unmoved. The wording is rule-author authored under
+NO-TAX-SEMANTICS and echoes the title of GST (General) Regulations reg 11, this check's citation
+since D-24.
+
+**On Xero this is invisible** — `NO_GST_REG` remains UNAVAILABLE on the Xero upload path (no
+supplier-master surface), per `D-2026-07-27-xero-coverage-derived`. The corrected wording reaches a
+reviewer only on the SAP/extract route today.
+
+### The offline-replay oracle was RE-FROZEN
+
+Stated plainly so nobody meets it first in a diff.
+
+```
+  OLD  sha256:59fbdbb827dee933b4c79e8557852047d2465d6cb155b00d3d3cb58b92eddc45   31,919 bytes
+  NEW  sha256:0225df39c8ea6054d45f72199aa510e970c385587e557e1160407ea744f6cd5f   32,332 bytes
+```
+
+Permitted under **D-22** only because the change was proven field by field first: both oracles parsed,
+every path walked, **7 differing paths, all 7 the recommendation, 0 added, 0 removed** — no box, no
+gate, no manifest field. The re-freeze and every `tests/` artefact are the rule-author's own commits.
+
+**D-27:** `scripts/capture_sbodemosg_extract.py` is a **RE-CAPTURE, not a regenerator, and is
+forbidden** as a re-freeze instrument — it is live-SAP and rewrites all eight raw surfaces plus the
+manifest. The offline replay shim is the only permitted route; a banner now says so in the script.
+
+**D-28:** every future re-freeze must first regenerate with the change **not** applied and prove
+byte-identity against the committed oracle. The oracle is regenerable only through the harness it
+exists to verify; that proof is what stops the test checking the harness against itself.
+
+### P4 is complete — both halves
+
+`D-24` corrected the **citation** (merged, PR #161, moved no frozen bytes). `D-25`/`D-26` corrected
+the **recommendation** (this build, a full re-freeze). They were deliberately split because their
+evidentiary footprints differ; together, the re-freeze would have masked the citation change.
+
+### Open item #50 — why four artefacts could carry dead text indefinitely
+
+`review_result.json`, `dossiers.json` and both `chain-run-*.json` all held the old wording and **no
+test failed**: `test_t58_artifact_contract.py:97-118` pins **key sets, not values**. A shape tripwire
+cannot see text drift. `dossiers.json` is worse — the recommendation sits inside the evidence dict
+that `inputs_hash` is computed over, so seven hashes drift with it, and no test asserts a literal
+`inputs_hash`.
+
+`frontend/src/test/fixtures.ts` was the same defect one step worse: `:53` and `:54` were **already
+stale against production before this build**, `:59` since D-24. All three corrected here, each with a
+comment naming its source at file:line.
+
+**The origin is T1.2 (2026-05-27).** The NR VatGroup error sat in **three of four artefacts — tool
+code, reference script and system prompt — and all three agreed with each other.** One unverified
+belief copied three times, presenting as corroboration. The knowledge base was the lone outlier, and
+the only artefact that had been checked against source.
+
+**Agreement among derived artefacts is not evidence.** The family: T1.2 NR (origin),
+`XERO_UPLOAD_KEYS`, the T2.12c hand-built reason copy, the frontend fixtures, `sources.md:64`'s own
+incomplete registry-citation list, the four demo artefacts, `run_baseline_tests.py:125`, and the two
+citation surfaces (`report/sections.py:866` / `report/constants.py:80` vs the registry). **A copy with
+no binding test is not a copy, it is a fork.** Filed for a ruling; no mechanism proposed here.
