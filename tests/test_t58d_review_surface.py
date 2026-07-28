@@ -93,7 +93,15 @@ def test_check_reference_known():
 def test_check_reference_no_gst_reg_known():
     ref = check_reference("NO_GST_REG")
     assert "input tax" in ref["display_name"].lower()
-    assert "s19(1)" in ref["iras_basis"]
+    # NO-TAX-SEMANTICS golden pin. This is a Terry-authored citation; a full-string
+    # equality means ANY change to it — including an edition bump — fails loud and
+    # requires a human commit. That failure is the control, not friction.
+    # D-24 (2026-07-28): s19(1) dropped. sources.md:64 records the GST Act as
+    # ABSENT/UNVERIFIED; sources.md:65 records the Regulations as CURRENT,
+    # sha256-pinned, [2026 Ed.].
+    assert ref["iras_basis"] == (
+        "GST (General) Regulations [2026 Ed.], reg 11 — Conditions for claiming input tax"
+    )
 
 
 def test_check_reference_unknown_fallback():
