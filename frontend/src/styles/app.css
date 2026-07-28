@@ -67,6 +67,11 @@ a { color: var(--accent); }
 .open-row:hover { background: var(--paper-sunk); }
 .open-vendor { flex: 1; display: flex; flex-direction: column; font-size: 13px; overflow: hidden; }
 .open-vendor .open-check { font-size: 10px; color: var(--ink-faint); }
+/* C-1 / D-18: the identity line for a rail row that carries no vendor or severity — without it
+   the three ledger-recon rows read "— GST_LEDGER_RECON" three times over. Same --warn treatment
+   as the queue's .qr-identity, at the rail's smaller scale. .open-vendor is already a flex
+   column, so this stacks as a secondary line. */
+.open-vendor .open-identity { font-size: 10px; color: var(--warn); margin-top: 1px; }
 .sev-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--ink-faint); flex-shrink: 0; }
 
 /* Severity tokens (data values are uppercase HIGH/MEDIUM/LOW) */
