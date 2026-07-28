@@ -17,7 +17,16 @@ import type { QueueItem } from "../api";
  *          coverage status AND fabricates NO finding into the queue.
  *   caveat — the Xero QueueItem carries the constant iras_basis_caveat, so FindingDetail's
  *          no-fallback caveat line never renders bare on the Xero path.
+ *
+ * AMENDED (D-13): the Xero surface is now tab-gated into Review / Findings / Audit. Findings
+ * live on their own view, so assertions that read finding content switch first via
+ * openFindings(). The coverage panel stays Review-home furniture. No assertion is weakened.
  */
+
+async function openFindings() {
+  const nav = screen.getByRole("navigation", { name: /Primary/i });
+  fireEvent.click(within(nav).getByRole("button", { name: "Findings" }));
+}
 
 // A real-FORMAT Xero E2 finding, projected to the shared QueueItem shape by the backend.
 const XERO_E2: QueueItem = {
@@ -101,6 +110,7 @@ describe("Xero → shared central review screen (BUILD 2 A1)", () => {
     vi.stubGlobal("fetch", xeroFetch(XERO_BODY));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadA();
+    await openFindings();
 
     // The finding renders through the shared screen, framed as a candidate.
     expect(await screen.findByText(/candidate for review only/i)).toBeInTheDocument();
@@ -110,6 +120,9 @@ describe("Xero → shared central review screen (BUILD 2 A1)", () => {
     // expectations inverted to the new behaviour): the panel is now adjudicable. On a Xero
     // F5 upload the Sign control IS present (POST /sign/upload serves this source_kind),
     // the decision controls render, and the retired review-only note is GONE.
+    // D-16: these run on the Findings view, after a presence assertion on that same view —
+    // the retired note would render in the detail card, so its absence is asserted where it
+    // would appear, not against an unmounted tree.
     expect(screen.queryByRole("button", { name: /Sign working paper/i })).not.toBeNull();
     expect(screen.queryByText(/sign-off for uploads not yet available/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /^Mark known$/ })).not.toBeNull();
@@ -119,6 +132,7 @@ describe("Xero → shared central review screen (BUILD 2 A1)", () => {
     vi.stubGlobal("fetch", xeroFetch(XERO_BODY));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadA();
+    await openFindings();
     expect(await screen.findByText(/Illustrative citation/i)).toBeInTheDocument();
   });
 
@@ -128,11 +142,14 @@ describe("Xero → shared central review screen (BUILD 2 A1)", () => {
     await uploadA();
 
     // Half 1 — the degraded/unavailable coverage status is SURFACED (with its reason).
+    // The coverage panel is Review-home furniture, so this half runs BEFORE any view switch.
     await waitFor(() => expect(screen.getAllByText(/unavailable/i).length).toBeGreaterThan(0));
     expect(screen.getByText(/FederalTaxID absent/i)).toBeInTheDocument();
 
     // Half 2 — the T2.11-adjacent proof: NO_GST_REG appears ONLY in coverage, never as a
-    // fabricated queue finding. Scope the assertion to the queue list.
+    // fabricated queue finding. The queue now lives on the Findings view — the contrast
+    // between the two views IS the test.
+    await openFindings();
     const list = document.querySelector(".queue-list") as HTMLElement | null;
     expect(list).not.toBeNull();
     expect(within(list as HTMLElement).queryByText(/NO_GST_REG/)).toBeNull();

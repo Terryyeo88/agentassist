@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { XeroUploadPanel } from "../components/XeroUploadPanel";
 import type { QueueItem } from "../api";
 
@@ -27,6 +27,11 @@ import type { QueueItem } from "../api";
  *   C3 -- xero_f5_upload response -> "Sign working paper" button present. FAILS TODAY (no sign
  *         control on the panel at all).
  */
+
+async function openFindings() {
+  const nav = screen.getByRole("navigation", { name: /Primary/i });
+  fireEvent.click(within(nav).getByRole("button", { name: "Findings" }));
+}
 
 const FP = "sha256:265e9b4e92baa689143df7f1384560a0f337d325105d38c8499c6595c42b159e";
 
@@ -121,12 +126,12 @@ describe("Xero upload panel adjudication (B3a-2)", () => {
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadPrimary();
 
-    // The finding renders through the shared screen.
-    expect(await screen.findByText("Stale GST rate applied")).toBeInTheDocument();
-
-    // Enter the panel-local reviewer of record (FAILS TODAY: no such input on the panel).
+    // Reviewer of record is Review-home furniture; the decision controls are on Findings.
     const reviewer = await screen.findByLabelText(/reviewer of record/i);
     fireEvent.change(reviewer, { target: { value: "Collin Tan" } });
+
+    await openFindings();
+    expect(await screen.findByText("Stale GST rate applied")).toBeInTheDocument();
 
     // Choose "Mark known" (requires a note) and record.
     fireEvent.click(await screen.findByRole("button", { name: /Mark known/i }));
@@ -161,8 +166,11 @@ describe("Xero upload panel adjudication (B3a-2)", () => {
     vi.stubGlobal("fetch", panelFetch(uploadBody("xero_sales_upload")));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadPrimary();
+    await openFindings();
 
     expect(await screen.findByText("Stale GST rate applied")).toBeInTheDocument();
+    // D-16: absence asserted on the view where the control WOULD render, and after a presence
+    // assertion on that same view — so this cannot pass against an unmounted tree.
     expect(screen.queryByRole("button", { name: /Sign working paper/i })).toBeNull();
   });
 
@@ -170,6 +178,7 @@ describe("Xero upload panel adjudication (B3a-2)", () => {
     vi.stubGlobal("fetch", panelFetch(uploadBody("xero_f5_upload")));
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     await uploadPrimary();
+    await openFindings();
 
     // FAILS TODAY: the panel exposes no sign control on any source_kind.
     expect(await screen.findByRole("button", { name: /Sign working paper/i })).toBeInTheDocument();
