@@ -619,6 +619,35 @@ button.link:hover { color: var(--ink); }
 }
 .xero-empty-view { color: var(--ink-faint); font-size: 13px; font-style: italic; }
 
+/* C-2: the upload error state. A SCOPED MODIFIER — the shared `.errorbox` base (line ~414) is
+   styled identically to `.loading` and is used by App.tsx and AuditTrail.tsx, so an error there
+   reads as a status message. This adds the error colour for the Xero upload panel ONLY, leaving
+   the shared base untouched. `--danger` is the palette's existing error token (`.modal .err`,
+   `.cov-unavailable`), so nothing new is invented here either. The <small> holding the server's
+   verbatim message stays readable rather than shrinking into the noise. */
+.errorbox.errorbox-upload {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: var(--r-md);
+  padding: 18px 20px;
+  text-align: left;
+  max-width: 760px;
+  margin: 10px auto;
+}
+.errorbox.errorbox-upload small {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ink);
+  /* Server messages can carry long quoted paths — wrap them rather than clip. */
+  overflow-wrap: anywhere;
+}
+
+/* Q1: the reviewer-of-record prompt — a nudge, not a failure, so it borrows the neutral
+   `.callout info` treatment and never the error colour. */
+.xero-reviewer-prompt { margin: 10px 0 14px; }
+
 /* D-18: the identity line for a queue row that carries no vendor, severity, doc number or
    date — without it the two ledger-recon rows render identically. */
 .qr-identity { font-size: 10.5px; color: var(--warn); margin-top: 2px; }
