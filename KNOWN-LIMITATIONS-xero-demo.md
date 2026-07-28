@@ -518,9 +518,19 @@ disabled with the honest per-cause reason (`#46` territory).
 
 `agent/registry.py:250` now cites **`GST (General) Regulations [2026 Ed.], reg 11 — Conditions for
 claiming input tax`**, replacing `IRAS GST Act s19(1) / Regulation 11 — …`. The dropped half rested on
-a document this repo does not hold (`knowledge-base/sources.md:64`: GST Act **ABSENT / UNVERIFIED**);
-the kept half is held and version-pinned (`sources.md:65`: **CURRENT**, 227 pages, sha256 `d7534d60…`,
-`[2026 Ed.]`).
+a document this repo **did not hold at the time** (`knowledge-base/sources.md:64`: GST Act
+**ABSENT / UNVERIFIED**); the kept half is held and version-pinned (`sources.md:65`: **CURRENT**,
+227 pages, sha256 `d7534d60…`, `[2026 Ed.]`).
+
+> **SUPERSEDED IN PART, same day (2026-07-28).** The rule-author supplied the GST Act —
+> `knowledge-base/statute/gst-act-1993-2020ed.pdf`, `[2020 Ed.]`, 319 pages, sha256
+> `30bddc8f6303e35045698baefdf0df9f603e23b00d295fa63b60305dee6d145d`, stamp "Informal Consolidation –
+> version in force from 8/12/2025" on 319 of 319 pages — and `sources.md:64` is now **CURRENT**.
+> **The Act is HELD.** `s19(1)` is **NOT** restored on `NO_GST_REG` and must not be restored
+> automatically: D-24 stands as a **substantive** authoring decision, not an evidentiary workaround —
+> reg 11 is arguably the more precise authority for *conditions for claiming* input tax, and
+> entitlement (s19) and conditions (reg 11) are different things. Restoring it is a fresh rule-author
+> decision under NO-TAX-SEMANTICS, never an undo, and would fail loud at the full-string golden pin.
 
 **This changed nothing about detection.** Same documents flagged, same order, same description, same
 recommendation. `validation_status` stays `unvalidated`; T2.11 unmoved. The new citation is
@@ -571,11 +581,17 @@ and the rendered paper did not move by a byte (verified under both pdfplumber an
 was desired — but structurally **a citation can differ between the screen a reviewer reads and the
 document they sign, and nothing fails.** Filed for a ruling; no mechanism proposed.
 
-### THE CITATION PROBLEM IS NOT SOLVED — six remain on the unheld GST Act
+### THE CITATION PROBLEM IS NOT SOLVED — six remain on the GST Act *(unheld when written; HELD as of the same day)*
 
 Measured from `CHECK_REGISTRY` after this build: `E1` (s21(3)), `E3` (s10), `E4` (bare `"GST Act"`,
 no section), `gst_amount_mismatch` (s19), `correct_period` (s20), `total_inconsistency` (s19).
 
 **Six, not three.** `sources.md:64` listed four legs (`s10`, `s19(1)`, `s20`, `s21(3)`); it never
 recorded `E4`'s bare cite or the two `s19` cites (distinct from `s19(1)`). That row's list has been
-corrected in place — its **ABSENT / UNVERIFIED status untouched**. **One of six is corrected.**
+corrected in place. **One of six is corrected.**
+
+**UPDATE, same day — the problem changed shape rather than persisting.** `sources.md:64` is now
+**CURRENT** (the Act was supplied: `[2020 Ed.]`, 319 pp, sha256 `30bddc8f…`). **All six citations above
+are SUPPORTED** — they rest on a held, version-pinned copy. The remaining gap is narrower and
+different: their **wording**. `E4` cites no section at all; the two `s19` cites are unpinned as to
+subsection. That is a rule-author authoring question, not an evidentiary one.
