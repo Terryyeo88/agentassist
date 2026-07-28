@@ -49,14 +49,22 @@ export const REVIEW_FIXTURE: ReviewPayload = {
       group: "marked_known",
       vendor: "Far East Imports",
       severity: "HIGH",
+      // #50 / D-26 — these three strings are HAND-COPIES of backend values with no
+      // binding test. All three were divergent before this build; :53 and :54 had
+      // been silently stale against production since they were written. Sources:
+      //   description    <- mcp-servers/custom/sap_b1_server.py:1510-1512
+      //   recommendation <- mcp-servers/custom/sap_b1_server.py:1514
+      //   iras_basis     <- agent/registry.py:250 (CHECK_REGISTRY["NO_GST_REG"])
+      // If you change any of them, change the source first and copy from it.
       description:
-        "Input tax claimed from supplier V1010 (Far East Imports) without a GST registration number.",
-      recommendation: "Obtain a valid tax invoice with the supplier's GST registration number.",
+        "Input tax claimed from supplier V1010 (Far East Imports) without a GST registration number — may not be claimable.",
+      recommendation:
+        "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
       doc_num: 592,
       doc_date: "2024-07-16",
       error_code: "NO_GST_REG",
       display_name: "Input tax claimed from supplier with no GST registration number",
-      iras_basis: "IRAS GST Act s19(1) / Regulation 11 — Conditions for claiming input tax",
+      iras_basis: "GST (General) Regulations [2026 Ed.], reg 11 — Conditions for claiming input tax",
       iras_basis_caveat: "Illustrative citation — the IRAS basis shown is itself UNVALIDATED.",
       demoted: true,
       annotation:

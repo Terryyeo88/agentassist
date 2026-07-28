@@ -1644,9 +1644,15 @@ Build + docs-sync on branch `t-nogstreg-recite`, off base `f5443a3` (the PR #159
 **What changed and why.** `agent/registry.py:250`'s `NO_GST_REG` `iras_basis` went from
 `"IRAS GST Act s19(1) / Regulation 11 — Conditions for claiming input tax"` to
 `"GST (General) Regulations [2026 Ed.], reg 11 — Conditions for claiming input tax"`. Half the old
-citation rested on a document the repo does **not hold**: `knowledge-base/sources.md:64` records the
-**GST Act** as **ABSENT / UNVERIFIED** (no SSO-stamped copy supplied) and named `s19(1)` among the
-registry strings resting on it. `sources.md:65` records the **GST (General) Regulations** as
+citation rested on a document the repo did **not hold at the time of this build**:
+`knowledge-base/sources.md:64` recorded the **GST Act** as **ABSENT / UNVERIFIED** (no SSO-stamped copy
+supplied) and named `s19(1)` among the registry strings resting on it. ***(SUPERSEDED same day: the
+rule-author supplied the Act — `knowledge-base/statute/gst-act-1993-2020ed.pdf`, `[2020 Ed.]`, 319 pp,
+sha256 `30bddc8f…`, stamp "version in force from 8/12/2025" on 319/319 pages — and that row is now
+**CURRENT**. The Act is HELD. This does NOT auto-restore `s19(1)`: D-24 stands as a substantive
+authoring decision — reg 11 is arguably the more precise authority for* conditions for claiming *input
+tax; entitlement (s19) and conditions (reg 11) are different things. Any restoration is a fresh
+rule-author decision, never an undo.)*** `sources.md:65` records the **GST (General) Regulations** as
 **CURRENT** — `gst-general-regulations-1993-2026ed.pdf`, 227 pages, sha256 `d7534d60…`, `[2026 Ed.]`,
 in force from 15/7/2026, *"Cited by registry (regs 11, 26/27)"*. The build **drops the unheld half and
 keeps the held half**. The replacement string is **Terry-authored under NO-TAX-SEMANTICS** and was
@@ -1695,11 +1701,18 @@ layer carries its own hard-coded prose on the signed paper (`report/sections.py:
 reviewer reads and the document they sign with no test failing. Filed for a ruling; no mechanism
 proposed.
 
-**THE PROBLEM IS NOT SOLVED — six citations still rest on the unheld GST Act** (measured after this
+**THE PROBLEM IS NOT SOLVED — six citations still rest on the GST Act** (measured after this
 build): `E1` (s21(3)), `E3` (s10), `E4` (bare "GST Act"), `gst_amount_mismatch` (s19), `correct_period`
 (s20), `total_inconsistency` (s19). **Six, not three** — `sources.md:64` listed four legs and never
 recorded `E4`'s bare cite or the two `s19` (as distinct from `s19(1)`) cites; that row's list has been
-corrected in place by this docs-sync, its ABSENT/UNVERIFIED status untouched. **One of six corrected.**
+corrected in place by this docs-sync. **One of six corrected.**
+
+***SUPERSEDED SAME DAY — the problem changed shape.*** *When the paragraph above was written the Act was
+**UNHELD**, so those six cites were **unsupported**. The rule-author then supplied it and `sources.md:64`
+became **CURRENT** (`[2020 Ed.]`, 319 pp, sha256 `30bddc8f…`). **All six are now SUPPORTED.** What remains
+open is their **wording** — `E4` cites no section at all, and the two `s19` cites are unpinned as to
+subsection — which is a rule-author authoring question, not an evidentiary gap. It does **not**
+auto-restore `s19(1)` on `NO_GST_REG`.*
 
 **Honest-status ladder:** built ≠ hermetic ≠ offline-replay-validated ≠ real-format-validated ≠
 real-client-export-validated ≠ accuracy-validated (T2.11). The new citation is itself **UNVALIDATED**
@@ -1709,3 +1722,85 @@ copy is held. **`exploration-notes/iras-ask-coverage-analysis.md`: annotated onl
 (✗/👤/D+/J+/J/✓/◐) moved**; 3D.1.1.h "Purchases from non-GST-registered suppliers" stays **✓** because
 detection is unchanged. `docs/merge-gates.md`: checked — no change required (no import boundary moves).
 Docs-sync `.md`-only, separate commit from code.
+
+### `D-2026-07-28-nogstreg-reword` — `NO_GST_REG` recommendation reworded; **ORACLE RE-FROZEN** under D-22 (rulings **D-25/D-26/D-27/D-28**) *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+Build + docs-sync on branch `t-nogstreg-reword`, off base `f5443a3` (the PR #159 merge). **UNMERGED.**
+
+**D-26 — what changed and why.** `mcp-servers/custom/sap_b1_server.py:1514` emitted *"Obtain a valid
+tax invoice with the supplier's GST registration number, **or reverse the input tax claim**."* The
+second clause is an **instruction to alter the client's books** and **presupposes the claim is
+invalid** — a verdict wearing an imperative, breaching **surfaces-never-asserts**, on the **signed PDF
+working paper**. It now reads *"Obtain a valid tax invoice bearing the supplier's GST registration
+number; whether the conditions for claiming input tax are met is for the reviewer to determine."*
+Rule-author authored under NO-TAX-SEMANTICS, applied verbatim; the agent declined to author it. The
+phrase echoes the title of GST (General) Regulations **reg 11**, this check's citation since D-24.
+**The DESCRIPTION at `:1510-1512` is UNCHANGED** — already correctly hedged.
+
+**THE ORACLE WAS RE-FROZEN.** `59fbdbb827dee933b4c79e8557852047d2465d6cb155b00d3d3cb58b92eddc45`
+(31,919 B) → `0225df39c8ea6054d45f72199aa510e970c385587e557e1160407ea744f6cd5f` (32,332 B), with the
+`capture-manifest.json` pin updated. **D-22 SATISFIED, proven field by field before anything moved:**
+both oracles parsed and every path walked — **7 differing paths, ALL 7 the recommendation, 0 added,
+0 removed**. No F5 box, no gate result, no `e1_reconciliation`, no `fetch_manifest`, no `period`
+changed; re-confirmed after landing (all eight boxes byte-identical, 35 box-isolation /
+`canonical_json` pins green). **The re-freeze and every `tests/` artefact are the rule-author's own
+commit `c38aaf3` plus his manifest edit — separation of duties held throughout.**
+
+**D-27 — `scripts/capture_sbodemosg_extract.py` is a RE-CAPTURE, not a regenerator, and is FORBIDDEN
+as a re-freeze instrument.** It is live-SAP (`check_connectivity=True`, `configure_client`, live
+`_fetch_*`, live `run_chain`) and rewrites all eight raw surfaces plus the manifest; SAP state has
+moved since capture, so using it to fix a string would silently re-baseline the entire ground truth.
+The **offline replay shim** (`tests/replay_shim.replay_chain` + `canonical_json`) is the only
+permitted regenerator. A boxed banner now heads the script's docstring — three-times rule satisfied
+(script banner, code comment at `sap_b1_server.py:1514`, STATE).
+
+**D-28 — standing procedure for every re-freeze.** Regenerate FIRST with the change NOT applied,
+prove byte-identity against the committed oracle, THEN apply and diff field by field. Run here:
+unchanged regeneration reproduced `59fbdbb827…` exactly. **Reason it is mandatory: the oracle is
+regenerable only through the harness it exists to verify** — without the unchanged step, a subtly
+wrong regenerator would produce a "new oracle" the byte-identity test then blesses, checking the
+harness against itself. Validated end to end: the rule-author's in-place regeneration produced
+exactly the sha256 and all seven `dossiers.json` `inputs_hash` values the agent predicted from an
+independent scratchpad run.
+
+**Rendered paper, both extractors:** old string 7→0, new 0→7; pdfplumber content otherwise identical,
+pdfminer token multiset identical (1845 both sides, order-only from its table-cell reading order).
+Checked character by character against all **15** negative paper pins collected from the test
+sources — **zero violations**.
+
+**Test count.** Base **2900 passed, 1 skipped, 6 xfailed, 2 xpassed** → **2900 passed, 1 skipped,
+4 xfailed, 4 xpassed**. Pass count **+0**. The xfail/xpass shift is from the **GST Act landing**
+(`247b64a`), not this change: two `[GST Act]` markers in `test_citation_manifest.py` now xpass and
+their reason strings are stale — filed for the rule-author's hand.
+
+**P4 IS NOW COMPLETE — both halves.** **D-24** (citation → held Regulations, **MERGED PR #161**,
+`57d0386`, moved **no** frozen bytes) and **D-25/D-26** (recommendation, this build, a full D-22
+re-freeze). The split was correct: shipped together, the re-freeze would have masked the citation
+change and the D-22 diff would have shown two intermingled edits instead of one provable one.
+
+**OPEN ITEM #50, ELEVATED — and its ORIGIN named.** The four demo artefacts were **stale-but-green**
+before this build because `test_t58_artifact_contract.py:97-118` pins **key sets, not values**; a
+shape tripwire cannot see text drift, so they could have carried dead text indefinitely.
+`frontend/src/test/fixtures.ts` `:53`/`:54` were **already** stale against production and `:59` since
+D-24 — three divergent strings in one object, undetected. **The ORIGIN is T1.2 (2026-05-27):** the NR
+VatGroup error sat in **three of four artefacts — tool code, reference script, system prompt — all
+three agreeing with each other**. One unverified belief copied three times, presenting as
+corroboration; the knowledge base was the lone outlier and the only artefact checked against source.
+**Agreement among derived artefacts is not evidence.** The family: T1.2 NR (origin), `XERO_UPLOAD_KEYS`,
+the T2.12c hand-built reason copy, the frontend fixtures, `sources.md:64`'s own incomplete
+registry-citation list, the four demo artefacts, `run_baseline_tests.py:125`, and the two citation
+surfaces (`report/sections.py:866` / `report/constants.py:80` vs the registry). **A copy with no
+binding test is not a copy, it is a fork.** Filed for a ruling; no mechanism proposed.
+
+**Also recorded:** a **second byte-identity guard** exists that the recon and brief both missed —
+`tests/test_t224_chain_seam.py:78`, independent of `test_t2_12a_offline_replay.py`. Complete guard
+set: byte-identity at `test_t2_12a_offline_replay.py:126-133` and `test_t224_chain_seam.py:37,78`;
+sha256 pin at `test_sbodemosg_extract_fixtures.py:57`; shape at
+`test_sbodemosg_extract_fixtures.py:135`.
+
+**Honest-status ladder:** built ≠ hermetic ≠ offline-replay-validated ≠ real-format-validated ≠
+real-client-export-validated ≠ accuracy-validated (T2.11). This changes what a reviewer **reads**, not
+what the software **knows**; no validation rung moves; `validation_status` unvalidated,
+`show_ai_candidates` False, T2.11 unmoved. `exploration-notes/iras-ask-coverage-analysis.md`:
+**annotated only — NO coverage cell moved** (3D.1.1.h stays ✓; detection is unchanged).
+`docs/merge-gates.md`: checked — no change required. Docs-sync `.md`-only, separate commit from code.
