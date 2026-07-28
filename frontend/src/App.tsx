@@ -25,7 +25,19 @@ type Decision = { action: string; note: string };
  * and the per-finding detail. All trust signals carry through verbatim; F5 boxes are
  * box-isolated — filtering the queue never recomputes a box value.
  */
-export function App() {
+interface Props {
+  /**
+   * C-3: return to the source chooser. OPTIONAL by necessity — 21 existing test sites render
+   * `<App />` with no props, and those tests may not be edited, so a required prop would break
+   * the typecheck across all of them. Absent → the control is not rendered at all, rather than
+   * rendered inert: a "Change source" button that changes nothing is exactly the dead affordance
+   * the no-dead-controls rule forbids. Root always supplies it (Root.tsx), so the real app always
+   * has the control; only bare-component tests go without.
+   */
+  onChangeSource?: () => void;
+}
+
+export function App({ onChangeSource }: Props) {
   const [review, setReview] = useState<ReviewPayload | null>(null);
   const [err, setErr] = useState<string>("");
   const [view, setView] = useState<View>("review");
@@ -122,6 +134,16 @@ export function App() {
         {view === "review" && (
           <main className="view review-home">
             <img className="aa-logo" src="/agentassist-logo.png" alt="AgentAssist" />
+            {/* C-3: back-symmetry with the Xero surface, which has had this since the chooser
+                shipped (XeroUploadPanel's identical `.source-back`). Without it, picking SAP was
+                a one-way trip — the chooser is the ONLY path between the two surfaces (§2), so no
+                back control meant no way back short of a page reload. Rendered only when Root
+                supplies the handler, so it is never a button that does nothing. */}
+            {onChangeSource && (
+              <button type="button" className="source-back" onClick={onChangeSource}>
+                ← Change source
+              </button>
+            )}
 
             {bannerOpen && (
               <div className="banner" role="note">
