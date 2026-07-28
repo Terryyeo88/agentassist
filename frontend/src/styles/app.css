@@ -460,12 +460,25 @@ button.link:hover { color: var(--ink); }
   font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
   color: var(--ink-faint); white-space: nowrap;
 }
+/* Shared appearance for both reviewer inputs. SIZING IS NOT SHARED — see D-21 below. */
 .reviewer-identity input, .reviewer-input {
-  flex: 1 1 240px; min-width: 0; background: var(--bg-deep); color: var(--ink);
+  min-width: 0; background: var(--bg-deep); color: var(--ink);
   border: 1px solid var(--line); border-radius: var(--r-md); padding: 9px 11px; font-size: 13px;
 }
+/* D-21 — a regression from PR #158, found by browser measurement, not by a test.
+   `flex: 1 1 240px` was applied to BOTH inputs. It is correct for .reviewer-identity, whose
+   parent is a ROW flex container, so the 240px basis is a WIDTH. It is wrong for
+   .reviewer-input, whose parent (.xero-file-label) is `inline-flex; flex-direction: column` —
+   there the basis applies to the CROSS-AXIS-perpendicular main axis, i.e. HEIGHT, and the
+   input rendered as a 240px-tall empty box (measured in Chrome: h=240, w=192).
+   jsdom performs no layout, so vitest could not have caught this; the browser check is the
+   only control that sees it. */
+.reviewer-identity input { flex: 1 1 240px; }
+.reviewer-input { width: 100%; max-width: 420px; }
 .reviewer-identity input::placeholder, .reviewer-input::placeholder { color: var(--ink-fainter); }
-.reviewer-label { max-width: 640px; }
+/* .xero-file-label is inline-flex (shrink-to-fit), which would size the reviewer input to the
+   label text — 192px measured. The reviewer row is a field, not a chip: give it block flow. */
+.reviewer-label { display: flex; width: 100%; max-width: 640px; }
 
 /* The persistence note above the findings grid. */
 .xero-persist-note {
@@ -591,3 +604,43 @@ button.link:hover { color: var(--ink); }
 .xcov-degraded .xcov-level { color: var(--warn); }
 .xcov-full .xcov-level { color: var(--ok); }
 .xcov-reason { font-size: 12.5px; color: var(--ink-body); line-height: 1.6; min-width: 0; }
+
+/* ── Xero three-view shell (t-xero-views) ─────────────────────────────────────────────────
+   The Review home keeps the 760px .xero-upload cap — it is a single reading column. Findings
+   and Audit are wide, so .findings-view's own 1320px grid can finally apply (D-19: capped by
+   the 760px parent, the "320px + 1fr" grid was resolving to 320px + 306px). */
+.xero-findings-view, .xero-audit-view {
+  max-width: 1320px; margin: 0 auto; padding: 26px 28px 44px; width: 100%;
+}
+.xero-empty-view { color: var(--ink-faint); font-size: 13px; font-style: italic; }
+
+/* D-18: the identity line for a queue row that carries no vendor, severity, doc number or
+   date — without it the two ledger-recon rows render identically. */
+.qr-identity { font-size: 10.5px; color: var(--warn); margin-top: 2px; }
+
+/* ── Audit view (D-17) — decisions recorded in THIS session ───────────────────────────── */
+.xaudit {
+  background: var(--paper-raised); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: 18px 20px; margin-bottom: 18px;
+}
+.xaudit-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.xaudit-head h3 { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 600; color: var(--ink); }
+.xaudit-chain { font-size: 12px; color: var(--ink-soft); }
+.xaudit-chain strong { font-family: var(--font-mono); color: var(--cta); }
+.xaudit-limits { margin: 12px 0 16px; }
+.xaudit-empty { font-size: 13px; color: var(--ink-faint); font-style: italic; margin: 0; }
+/* Wide content scrolls inside its own box rather than compressing (or bursting the page). */
+.xaudit-table { overflow-x: auto; }
+.xaudit-header, .xaudit-row {
+  display: grid; grid-template-columns: 40px minmax(200px, 1.2fr) 120px 150px minmax(220px, 1fr);
+  gap: 12px; align-items: baseline; padding: 8px 4px; min-width: 760px;
+}
+.xaudit-header {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ink-faint); border-bottom: 1px solid var(--line);
+}
+.xaudit-row { border-bottom: 1px solid var(--line-faint); font-size: 13px; color: var(--ink-body); }
+.xaudit-seq, .xaudit-hash { color: var(--ink-faint); }
+.xaudit-finding { color: var(--ink); }
+.xaudit-hash { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xaudit-disp { color: var(--warn); font-weight: 600; }
