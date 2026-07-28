@@ -33,5 +33,9 @@ export function Root() {
   if (source === "xero_upload") {
     return <XeroUploadPanel onChangeSource={() => setSource(null)} />;
   }
-  return <App />;
+  // C-3: the SAP surface gets the SAME back handler the Xero one has always had. This does not
+  // widen the gate — the early returns above are untouched, so exactly one surface mounts at a
+  // time and `setSource(null)` still routes through the chooser rather than between surfaces.
+  // Unmounting is also what clears the outgoing surface's state, so nothing crosses the switch.
+  return <App onChangeSource={() => setSource(null)} />;
 }
