@@ -5576,3 +5576,167 @@ Updated 2026-07-19 (D-2026-07-19-citation-manifest: **Citation manifest — per-
 Updated 2026-07-20 (D-2026-07-20-source-motorcar: **Statute source — GST (General) Regulations 1993 into the corpus (SSO/AGC PDF + verbatim reg 25/26/27 excerpt + manifest flip)** — build + docs-sync on branch `t-source-motorcar-def`, code commit `55dec5d` on master `0bbaab3`, **UNMERGED** at time of writing. **This entry uses the date+slug ledger id `D-2026-07-20-source-motorcar` — NOT a bare integer** (per the D-2026-07-19 migration; slug verified free in BOTH docs at docs-sync). **(1) SSO/AGC PDF** `knowledge-base/statute/gst-general-regulations-1993-2026ed.pdf` — **[2026 Ed.]**, **Informal Consolidation** in force from **15/7/2026**, **227 pp**, `sha256 d7534d60cede936bcce127e55759b5d72523f5b44835779c23f4a68109253e85`, supplied + renamed by the rule-author's hand, **admissible per α1**, **attested per β**. **(2) VERBATIM excerpt** `knowledge-base/statute/gst-general-regulations-motorcar.md` — the **reg 25(1)** definitions of "chauffeured private hire car", "chauffeur service" and "motor car" (incl. exclusions **(a)–(h)**), **reg 26 in full**, **reg 27(1)–(8) in full** — **transcription only, no gloss**, **RENDERED characters per the M6 fidelity protocol** (extraction artifacts repaired; the PDF's curly lemma quotes U+201C/U+201D preserved after an invariant-auditor caveat forced their restoration; final auditor verdict **PASS, character-for-character vs the PDF rendering**). **Manifest flip (`knowledge-base/sources.md`):** the **GST (General) Regulations** row flipped **ABSENT/UNVERIFIED → cloned CURRENT** (`verified_by` rule-author, `verified_on` 2026-07-20, `evidence` = the **[2026 Ed.]/15-7-2026** stamp); the excerpt `.md` got **its own row** with the PDF as `verified_from` and self-consistency `sha256 b5a4b375be6c6518c9dccdab8185d1deadc4bb99aecd311f1e3735f9514968ea`. **Ruling M1 (relabel / correction-of-correction):** the prior prompt's "correction" (that the motor-car definition was NOT in Reg 25(1)) was itself wrong — the definition sits **literally in reg 25(1)**, "Reg 25(1)" was correct all along; verbatim rule-author sentence: **"the citation was corrected twice, the second time AWAY from the truth, by reasoning about where the definition must be instead of reading where it is — the same structure-over-text error the NR-in-Box-5 lesson (T1.2) exists to prevent."** **No manifest cell was relabelled — no Reg-25(1)-labelled row ever existed.** **XFAIL/XPASS (ruling M3(c)):** the **locked `tests/test_citation_manifest.py` was NOT edited**; its **two** `strict=False` xfail nodes for **"GST (General) Regulations"** (`TestVerifiedB` + `TestTwoCorporaA8`) now report **XPASS**. **Test count / suite:** **+20 new items** in `tests/test_motorcar_statute_source.py` (failing-first); UNMERGED, so a **branch total, NOT a master total**: **full suite 2671 passed, 1 skipped, 6 xfailed, 2 xpassed at `55dec5d`** (master baseline **2651 passed, 1 skipped, 8 xfailed at `0bbaab3`**; delta = +20 new items **plus** the **8→6 xfail / 2 xpass** flip, ruled correct per **M4** — the original acceptance's "xfail drops by one" was arithmetically wrong, the instrument had TWO nodes). **Open-item verification (recorded — verify, do not assume):** **NO numbered open item exists** for the motor-car sourcing gap (inventory checked: #34, #35, #37–#41); the gap was carried structurally by the manifest's ABSENT row + the xfail pair naming the Regulations as an α1 blocker — both closed by this build; **nothing numbered is closed**. **Open item filed (#42):** the now-dead `XFAIL_REASONS["GST (General) Regulations"]` entry in the locked `tests/test_citation_manifest.py` — removal is a **LATER rule-author HAND-pass (ruling M3(c))**, not an agent build; until then the two nodes read xpass by design. **M7 correction-of-recon (on record):** the Phase-0/recon "`.gitignore` lacks the knowledge-base negation" finding was an **ARTIFACT OF A STALE MAIN CHECKOUT** (`17af853`, pre-#122) — at master `0bbaab3` the θ-ruling negation `!knowledge-base/**/*.pdf` **exists at `.gitignore:46`** and covers the new PDF; **no `.gitignore` change made or needed; all 11 KB PDFs verified tracked-in-clean-clone**. **S4 divergence finding (reported for rule-author ruling — the reg2627 slice was NOT touched; wiring is a SEPARATE build):** (a) the slice's "Regulation 25(1)" pointer is **CORRECT**; (b) **mechanism divergence** — the slice says commercial vehicles fall "outside Reg 25(1)" but in the statute they fall outside the **HEAD definition** (≤7 passengers, ≤3,000 kg unladen), while exclusions (a)–(h) are all things that **ARE cars** (taxis, pre-1 Apr 1998 business service passenger vehicles, school-transport private cars, dealer stock, financial-institution hire-purchase supplies, used hire cars, driving-school cars) — the slice never enumerates (a)–(h); (c) **coverage divergence** — the slice carries NONE of reg 27's carve-outs (27(2)/(5) connected-person reimbursement, 27(3)/(6)/(7) chauffeured-private-hire-car business, 27(4) insurer): a PHC-fleet operator's car purchase is claimable under 27(3) but the slice's category-5 arm would surface it; (d) **provenance divergence (not a contradiction)** — the slice's COE-renewed ≥1 Apr 1998 and rental-cars ≥1 Jul 1999 sub-cases are Return-Guide-derived, differently framed from statute exclusion (a) ("registered BEFORE 1 April 1998"). `AGENTASSIST_TECHNICAL_STATE.md`: §Statute source subsection + open item **#42** + this footer. Roadmap: this ledger entry (after the D-2026-07-19-citation-manifest entry). `exploration-notes/iras-ask-coverage-analysis.md`: **checked — NOT edited** (this build sources one provision and wires nothing into a check — **no coverage cell (✗/👤/D+/J+/J) moves**). `knowledge-base/slices/` (reg2627 slice **NOT touched** — S4 divergence reported, not fixed) / `docs/merge-gates.md` / `knowledge-base/sg-tax-code-mappings.md` / `exploration-notes/operational-backlog.md` / `tests/` (append-only) / `CLAUDE.md` untouched by this docs-sync. **Honest status (verbatim):** sources one statutory provision, flips one manifest row, wires nothing into any skill. Moves no validation rung. validation_status unvalidated. show_ai_candidates False. T2.11 unmoved. Docs-sync `.md`-only, separate commit from code (caller commits). Branch **UNMERGED**; all counts are branch totals.)*
 
 Updated 2026-07-20 (D-2026-07-20-source-provenance: **Source provenance — `report/` and `api/` provenance strings now derive from the ACTUAL data source, not a hard-coded SAP literal (`config/source_labels.py` single source of truth)** — build + docs-sync on branch `t-source-provenance`, code commit `8e372f3` on master `0f56f5c`, **UNMERGED** at time of writing. **This entry uses the date+slug ledger id `D-2026-07-20-source-provenance` — NOT a bare integer** (per the D-2026-07-19 migration; slug verified free in BOTH docs at docs-sync). New pure leaf **`config/source_labels.py`** is the **single source of truth** for the provenance mapping: **`sap_b1` → "SAP B1"** (short) / **"SAP Business One"** (long); **`xero` AND `xero_sales` BOTH → "Xero"** — **ruling M2: the F5-vs-sales distinction is INTERNAL and must not leak** to the reviewer-facing label; **`extract` → "uploaded extract"**; **`None`/missing `source_system` → `sap_b1`** so the legal text can never render "None" (invariant-auditor caveats 1–2); an unknown code falls through to its **raw string**. This fixes **(1) the LIVE web leak** — `api/viewmodel.py`'s `DISCLAIMER` carried **"FROZEN SBODEMOSG engine output"**, served on **every Xero/extract upload response** and rendered in the **Xero upload footer** — and **(2) the report-side literals**: `DISCLAIMER_TEXT`'s "SAP Business One transaction data", `render.py`'s F5 caption "Computed from SAP B1 … lines", the two judgment questions, and the two not-examined entries. **`api/` (value-only, ZERO key churn):** `upload_disclaimer(source_kind)` is called at the **four real-upload endpoints** (`extract_upload`, `xero_f5_upload`, `extract_review`, `xero_sales_upload`) so each response carries the disclaimer for its own uploaded source; the **demo `DISCLAIMER` constant + all b1-demo surfaces** (`/health`, `/audit`, `/command`, `/sign`, `serialize_review`) are **UNCHANGED**; **NO response key added or removed**, so the locked exact-key-set contract tests stay green (`viewmodel ↔ app ↔ api.ts` lockstep, zero key churn). **`report/`:** `ReportModel.source_label` field (default `"SAP B1"`); `build_signature_section` renders `disclaimer_text_for(long_label)` — a **single-token name swap** of the approved legal text, **byte-identical for SAP** (the legal language is never paraphrased, only the instrument name substituted); `build_not_examined_section` substitutes two `{source_label}`-templated `NOT_EXAMINED_ITEMS` entries; `build_judgment_section` gains an **OPTIONAL** `client_config` argument, so **legacy two-arg calls render byte-identical SAP text**. **Test count:** **+27 tests in ONE new file** — `tests/test_source_provenance.py` (failing-first: 19 red / 8 current-behaviour-locks green → 27 green); **BOTH directions asserted** — a Xero upload response AND a Xero-config report render carry "Xero" and NEVER "SAP"/"SBODEMOSG", while the SAP path is byte-identical (signature disclaimer == `DISCLAIMER_TEXT` for `sap`/missing/`None` configs). UNMERGED, so a **branch total, NOT a master total**: **full suite 2697 passed, 1 skipped, 6 xfailed, 2 xpassed at `8e372f3`**, **PLUS 1 PRE-EXISTING environment failure** (master baseline **2670 passed + the same 1 env failure at `0f56f5c`**; delta = **exactly +27**). **The pre-existing failure — ruled OUT OF SCOPE (M6):** `test_motorcar_statute_source::test_sha256_self_consistent` fails on **Windows checkouts** where `core.autocrlf` materialises CRLF vs the LF-blob sha the manifest records (**CI green on Linux**); the eol fix is handled **separately by the rule-author**, not here. Import-scan clean; flake8 zero; offline-replay oracle **untouched** (it compares `run_chain` output only — the labels live downstream of the chain); invariant-auditor **PASS** (plan PASS-WITH-CAVEATS; caveats 1–2 implemented as the `None→sap_b1` default; caveat 3 is this docs-sync). Added **§Source provenance** subsection + **open item #44** + this footer. **Open item filed (#44 — SAP-mechanism field/entity names render on non-SAP sources):** the mechanism-specific nouns were **deliberately left** by this label-only build (**ruling M3** — fixing them is tax/product semantics, the rule-author's separate build); ENUMERATED with current file:line (verified on this worktree): `report/constants.py:174` "Journal Entries entity", `:210` "company-wide DocNum history", `:213` "NumAtCard"; `report/sections.py:846-847` "User Defined Field (UDF)" + "FederalTaxID" ×2; `report/render.py:1519` "Each DocNum is absent from all company records…", `render.py:1524` "Gap DocNum", `:1547` "DocNum"/"Duplicate Of"/"Vendor Ref", `:1630` "DocNums" — **NONE in `api/` or `ui/` served strings** (grep-verified). **#43 remains RESERVED (unfiled)** — soft-reserved by the rule-author for the signable-render hazard from the peek session; this build does NOT file it. **Standing notes for the rule-author:** `frontend/src/test/fixtures.ts:14`'s mock disclaimer still mirrors the OLD SBODEMOSG wording — now stale vs the new served upload values; the append-only-test boundary forbade touching it (optional Terry hand-pass; vitest not in CI); `App.tsx:136` verified correctly SAP-scoped and untouched; `SourceSelector` cards + `api/app.py:87` OpenAPI description untouched (M4, out of scope). Roadmap: this ledger entry (after the D-2026-07-20-source-motorcar entry). `exploration-notes/iras-ask-coverage-analysis.md`: **checked — NOT edited** (this build relabels provenance strings and touches no check, computes nothing — **no coverage cell (✗/👤/D+/J+/J) moves**). `knowledge-base/slices/` / `docs/merge-gates.md` / `knowledge-base/sg-tax-code-mappings.md` / `exploration-notes/operational-backlog.md` / `tests/` (append-only) / `CLAUDE.md` untouched by this docs-sync. **Honest status (verbatim):** relabels provenance strings from the real source_system; changes no box value, no finding logic, no gate, no key set. Moves no validation rung. validation_status unvalidated. show_ai_candidates False. T2.11 unmoved. Docs-sync `.md`-only, separate commit from code (caller commits). Branch **UNMERGED**; counts are branch totals.)*
+
+---
+
+## §Xero-views — the Xero upload surface gains three mutually-exclusive views (Review · Findings · Audit) behind the shared TopBar nav, REVERSING the locked no-tabs decision; the findings move into the existing queue+detail grid; a session-scoped Audit view lands (branch `t-xero-views`, `D-2026-07-28-xero-views` *(id PROPOSED — Terry ratifies under the two-writers protocol)*, off base `c38e150` (the PR #158 merge) — **frontend vitest 29 files / 112 tests, all green** (was 28 / 102, +1 file / +10 tests); backend **UNCHANGED**, zero `.py` touched; **UNMERGED**; FRONTEND-ONLY; BUILT + hermetically tested ≠ accuracy-validated ≠ live-validated; MOVES NO VALIDATION RUNG; T2.11 unmoved)
+
+**Honest status, first and plainly.** This is a **UI change**. It renders data the backend was
+already computing. There is **no new finding, no new check, no backend change, no key-set
+change** — `api/`, `feeders/`, `orchestrator/`, `report/`, `agent/` and `config/` are untouched.
+`validation_status` stays `"unvalidated"`, `show_ai_candidates` stays `False`, **T2.11 is
+unmoved**, and box-isolation is unaffected (nothing here recomputes an F5 box).
+
+### D-13 — a REVERSAL, recorded as one
+
+The decision this reverses was **locked**, and is on record twice: §Xero-shell-parity (PR #155)
+built the Xero surface deliberately **non-tab-gated**, and `XeroShellParity.test.tsx:179` pinned
+it — `expect(screen.queryByRole("navigation", { name: /Primary/i })).toBeNull()`. Both said the
+same thing: the surface is a single flow, so tabs would be **dead controls**.
+
+**Terry reversed it (D-13).** The rule that decision protected — *no dead controls* — is not
+weakened by the reversal: the tabs are **live**, each mounting real content. What changed is that
+the surface now has three things worth separating.
+
+The reversal cost **nothing in TopBar or Root**. `TopBar.tsx:47` already renders the nav only when
+BOTH `view` and `setView` are supplied; the Xero panel simply never supplied them. Passing them is
+the entire mechanism. Root's mount separation is untouched.
+
+**Six existing test files were amended** — `XeroShellParity`, `XeroFindings`, `XeroOutOfScope`,
+`XeroPanelAdjudication`, `XeroSignGate`, `ExtractReview` (15 tests). Every amendment was
+**hand-authored by Terry** under separation of duties; the agent authored none of them and edited
+no existing test. The forecast for that breakage was made BEFORE the build, from a read-only recon,
+and was exact: **15 tests / 6 files predicted, 15 tests / 6 files failed, zero unforecast, zero
+forecast-but-passing.**
+
+### D-17 — the Audit view is session-scoped, and says so
+
+Titled **"Decisions — this session"**. It is **EMPTY ON LOAD, always** — a seeded prior row would
+be an invented backend state.
+
+**Why it cannot be more.** There is **no read endpoint for the decision store**. The API exposes
+GET `/health`, `/working-paper`, `/document/{ref}`, `/review/{client}/{period}`,
+`/review-session[/{id}]` and `/audit` — none returns decision entries; `load_decision_entries` is
+called server-side only to fold decisions into some other artefact.
+
+**What a row may contain, measured.** A real `POST /decision` returns exactly **ten keys**:
+`client_id`, `finding_id`, `action`, `disposition`, `fingerprint`, `entry_id`, `entry_hash`,
+`chain_length`, `validation_status`, `disclaimer`. **Note what is absent: no timestamp and no
+reviewer name.** The store records both (they are in `ledger.jsonl`), but the response does not
+return them. So this view has **no "When" column and no "Reviewer" column** — a browser clock
+would be the page's guess at when something happened, not the ledger's record of it, and the
+reviewer name would be echoing back what the user typed rather than what was stored.
+
+**TWO BACKEND FIXES FILED (not built here):**
+
+1. **`POST /decision` should return the `timestamp` and `reviewer` it already stores.** Both are
+   written to the append-only entry; returning them costs nothing and would let the Audit view
+   show when a decision was made and by whom, from the record rather than from the browser.
+2. **`GET /decisions?client_id=…&period=…`** (`backend-gaps.md` §B1) so decisions from prior
+   sessions — or from another reviewer — can be listed at all. Until it exists they resurface
+   only as the per-finding `annotation` / `prior_dispositions` after a re-upload, which the view
+   points AT rather than shows.
+
+`GET /audit` is deliberately NOT called: it returns the SAP agent's Tier-1/Tier-2 justification
+ledger, and an uploaded export runs no agent, so there is no tool chain to hash-chain.
+
+### D-18 — the two ledger-recon rows were the same row twice
+
+Attaching the committed 820 ledger fixture to an F5 upload yields **5 queue rows**: three
+fingerprinted `detect:*` rows plus `ledger_recon:ledger_recon_divergence:output` and
+`…:input`, both with `fingerprint: null`.
+
+**Measured, field by field: of 24 fields exactly 3 differ** — `finding_id`, `description`,
+`recommendation`. The other 21 are identical, including `check_id`, `vendor`, `severity`,
+`doc_num`, `doc_date`, `display_name`, `iras_basis`, `completeness` and `inputs_hash`.
+**Of the six fields `Queue.tsx` renders, ZERO differ.** In the queue the two rows were literally
+indistinguishable — same `GST_LEDGER_RECON`, same em-dash vendor, same `doc — · —` — and the only
+thing separating them (Box 6 vs Box 7, 90.0 vs 12.6) lived in prose visible only after clicking.
+
+**The fix renders `finding_id`'s terminal segment** (`output` / `input`) as a secondary line, for
+any row carrying no vendor, severity, doc number or date. It is **NOT parsed out of the
+description or recommendation**: the identifier is data; "Box 6" inside a sentence is not, and
+scraping it would be fabrication. Ordinary rows on both surfaces are untouched.
+
+**BACKEND FIX FILED (not built here):** ledger-recon rows need a **distinguishing display field**
+of their own — a side/box discriminator the UI can render as data. The frontend is currently
+reading identity out of an identifier because the payload offers nothing else.
+
+*Related, found and NOT fixed (out of D-18's scope, flagged for a ruling):* the **Sidebar** shows
+the same two rows with the same collision (`GST_LEDGER_RECON` / em-dash, twice). D-18 named the
+queue; the sidebar has the identical defect.
+
+### D-15 — the extract caveat renders on ALL THREE views
+
+The mandatory three-clause `.extract-caveat` is no longer confined to the upload column. Its third
+clause says findings **"should not be relied on"** until the real config is wired in — so it has to
+be visible **wherever findings are readable**. Splitting the surface into views is precisely what
+would otherwise have stranded that warning on the Review tab while a reviewer read findings on
+another. This **strengthened** `ExtractReview` FT1, which now asserts the caveat *with* the
+findings rather than beside them.
+
+### D-16 — an absence assertion must be made on the view where the element would render
+
+**A general rule, not a one-off.** Under mutually-exclusive views, an absence check placed after a
+tab switch can pass because the element's whole view is unmounted — **green while asserting
+nothing**. Three assertions were at real risk here: `XeroPanelAdjudication` C2's sign-absent check
+(the F5-only sign gate's ONLY pin), `XeroOutOfScope`'s zero-count check, and `XeroFindings` FT2's
+"NO_GST_REG never appears as a queue finding".
+
+Terry's amendments assert each on the view where the element WOULD render — the sign check moved
+TO Findings, the out-of-scope check returned TO Review after a presence assertion proved the
+response had landed.
+
+**This belongs with R-23 / open item #50**, the frontend-fixture defect class: the shared root is a
+frontend assertion that looks like it tests a backend guarantee but does not. #50 covers fabricated
+*values*; D-16 covers assertions made against an *absent tree*. Same failure signature — a green
+suite that has stopped watching.
+
+### D-19 / D-21 — two layout defects that no test could have caught
+
+**jsdom performs no layout.** `getBoundingClientRect` returns zeroes and grid placement is never
+resolved, so **vitest cannot see a layout defect at all**. Both of these were found by driving a
+real Chrome against the dev server and measuring. The browser check is the control; the test suite
+is not, and treating a green vitest run as evidence about layout is a category error.
+
+**D-19 — the three-child grid (pre-existing, from the shell-parity work).** `.findings-view` is a
+two-column grid, but the Xero usage put **three** children in it: the persist note, the queue panel
+and the detail column. Measured in Chrome at 1600×1200:
+
+| | before | after |
+|---|---|---|
+| `gridTemplateColumns` | `320px 306px` | `320px 848px` |
+| section width | 704 (capped by the 760px `.xero-upload` parent) | 1246 |
+| grid children | 3 | 2 |
+| `queue-panel` | x=937, y=1015, w=306 | x=328, y=182, w=320 |
+| `detail-col` | x=595, **y=1340**, w=**320** | x=670, **y=182**, w=**848** |
+
+The detail card — 1197px tall — was being squeezed into the 320px column on **row 2** while the
+right half of the page sat empty. The note now sits above the grid; Findings and Audit get their
+own wide containers so `.findings-view`'s own 1320px can apply. **The Review home keeps its 760px
+cap** — it is a single reading column and that was never the problem.
+
+**D-21 — the `.reviewer-input` regression (introduced by PR #158's own style commit).**
+`flex: 1 1 240px` was applied to both reviewer inputs. It is correct for `.reviewer-identity`,
+whose parent is a **row** flex container, so 240px is a width. It was wrong for `.reviewer-input`,
+whose parent is `inline-flex; flex-direction: column` — there the basis lands on the main axis,
+i.e. **height**, and the field rendered as a **240px-tall empty box** (measured: h=240, w=192).
+Sizing is now per-context, and `.reviewer-label` gets block flow because an inline-flex parent was
+shrink-to-fitting the field to its label text. Measured after: **h=35, w=420**.
+
+### Correction sweep — the false ledger-fixture claim did NOT reach any doc
+
+The PR #158 report asserted that **no committed ledger fixture exists**. That was **wrong**:
+`tests/fixtures/xero-real-format/AgentAssist_-_Account_Transactions.xlsx` is tracked and has been
+since commit `386e1b6`. A sweep of the canonical `.md` docs found **no occurrence of the false
+claim** — it never left the PR body. The roadmap in fact already records the opposite
+(`AgentAssist-Technical-Roadmap-v5.md`: the manual-journal behaviour was *"frozen as a fixture
+(committed under `tests/fixtures/xero-real-format/`)"*). **No doc correction was required; recorded
+here so the erroneous claim is not re-imported from the PR history.**
+
+### FILED — two F5 fixture workbooks share a filename
+
+`AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx` exists in **both**
+`tests/fixtures/xero-f5-export/` and `tests/fixtures/xero-real-format/`. Every test uses the
+`xero-f5-export/` copy. Two same-named workbooks in different directories is a trap for the next
+person writing a fixture path, and a `git grep` on the basename cannot tell them apart.
