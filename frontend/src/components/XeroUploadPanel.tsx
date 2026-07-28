@@ -11,6 +11,7 @@ import { SignModal } from "./SignModal";
 import { TopBar } from "./TopBar";
 import { Sidebar } from "./Sidebar";
 import { XeroF5Strip } from "./XeroF5Strip";
+import { XeroCoveragePanel } from "./XeroCoveragePanel";
 
 // B3a-2: decisions persist via POST /decision keyed on the backend config's client_id for
 // each engine branch (mirrors api/app.py's load_decision_entries call sites — app.py runs
@@ -306,29 +307,15 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
               <div className="xero-coverage-head">
                 Data coverage · <strong>{coverage.validation_status}</strong>
               </div>
-              <table className="xero-coverage-table">
-                <thead>
-                  <tr>
-                    <th>Check</th>
-                    <th>Coverage</th>
-                    <th>Note</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {coverage.coverage_status.map((row) => (
-                    <tr key={row.check} className={`cov-${row.level}`}>
-                      <td className="mono">{row.check}</td>
-                      <td>{row.level}</td>
-                      <td>{row.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* The grouped panel replaces the raw check/level/reason table: not-examined
+                  first, ids labelled, levels worded, counts computed, reasons verbatim. */}
+              <XeroCoveragePanel rows={coverage.coverage_status} />
               {degraded.length > 0 && (
                 <div className="xero-companion-ask callout info">
-                  Some checks are limited or unavailable on a Xero export alone. To enable them
-                  (e.g. <span className="mono">NO_GST_REG</span>), provide a supplier-master
-                  (companion) sheet at onboarding.
+                  Some checks are limited or unavailable on a Xero export alone. To enable them,
+                  provide the missing companion inputs at onboarding: a supplier-master sheet
+                  (for <span className="mono">NO_GST_REG</span>) and the source-document PDFs
+                  (for the invoice-face checks).
                 </div>
               )}
               {coverage.out_of_scope && coverage.out_of_scope.count > 0 && (
