@@ -1272,7 +1272,7 @@
         "doc_date": "2024-07-15",
         "card_name": "Acme Associates",
         "description": "Input tax claimed from supplier V10000 (Acme Associates) without a GST registration number — may not be claimable.",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine."
       },
       {
         "severity": "HIGH",
@@ -1281,7 +1281,7 @@
         "doc_date": "2024-07-16",
         "card_name": "Far East Imports",
         "description": "Input tax claimed from supplier V1010 (Far East Imports) without a GST registration number — may not be claimable.",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine."
       },
       {
         "severity": "HIGH",
@@ -1290,7 +1290,7 @@
         "doc_date": "2024-07-16",
         "card_name": "SMD Technologies",
         "description": "Input tax claimed from supplier V70000 (SMD Technologies) without a GST registration number — may not be claimable.",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine."
       },
       {
         "severity": "HIGH",
@@ -1299,7 +1299,7 @@
         "doc_date": "2024-07-20",
         "card_name": "Lasercom",
         "description": "Input tax claimed from supplier V20000 (Lasercom) without a GST registration number — may not be claimable.",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine."
       },
       {
         "severity": "HIGH",
@@ -1353,7 +1353,7 @@
         "doc_date": "2024-08-17",
         "card_name": "Lumarx",
         "description": "Input tax claimed from supplier V50000 (Lumarx) without a GST registration number — may not be claimable.",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine."
       },
       {
         "severity": "HIGH",
@@ -1362,7 +1362,7 @@
         "doc_date": "2024-08-20",
         "card_name": "CTI Computers",
         "description": "Input tax claimed from supplier V60000 (CTI Computers) without a GST registration number — may not be claimable.",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine."
       },
       {
         "severity": "HIGH",
@@ -1371,7 +1371,7 @@
         "doc_date": "2024-08-27",
         "card_name": "Blockies Corporation",
         "description": "Input tax claimed from supplier V30000 (Blockies Corporation) without a GST registration number — may not be claimable.",
-        "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim."
+        "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine."
       },
       {
         "severity": "MEDIUM",

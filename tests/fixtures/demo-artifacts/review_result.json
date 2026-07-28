@@ -543,7 +543,7 @@
           "doc_date": "2024-07-15",
           "doc_num": 605,
           "error_code": "NO_GST_REG",
-          "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+          "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
           "severity": "HIGH"
         },
         {
@@ -552,7 +552,7 @@
           "doc_date": "2024-07-16",
           "doc_num": 592,
           "error_code": "NO_GST_REG",
-          "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+          "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
           "severity": "HIGH"
         },
         {
@@ -561,7 +561,7 @@
           "doc_date": "2024-07-16",
           "doc_num": 594,
           "error_code": "NO_GST_REG",
-          "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+          "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
           "severity": "HIGH"
         },
         {
@@ -570,7 +570,7 @@
           "doc_date": "2024-07-20",
           "doc_num": 595,
           "error_code": "NO_GST_REG",
-          "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+          "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
           "severity": "HIGH"
         },
         {
@@ -624,7 +624,7 @@
           "doc_date": "2024-08-17",
           "doc_num": 604,
           "error_code": "NO_GST_REG",
-          "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+          "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
           "severity": "HIGH"
         },
         {
@@ -633,7 +633,7 @@
           "doc_date": "2024-08-20",
           "doc_num": 600,
           "error_code": "NO_GST_REG",
-          "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+          "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
           "severity": "HIGH"
         },
         {
@@ -642,7 +642,7 @@
           "doc_date": "2024-08-27",
           "doc_num": 601,
           "error_code": "NO_GST_REG",
-          "recommendation": "Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.",
+          "recommendation": "Obtain a valid tax invoice bearing the supplier's GST registration number; whether the conditions for claiming input tax are met is for the reviewer to determine.",
           "severity": "HIGH"
         },
         {
