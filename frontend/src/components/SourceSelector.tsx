@@ -24,9 +24,16 @@ export function SourceSelector({ onPick }: { onPick: (source: Source) => void })
         </button>
         <button type="button" className="source-card" onClick={() => onPick("xero_upload")}>
           <span className="source-card-title">Xero export (upload)</span>
+          {/* C-3: the previous line said "Coverage only — the engine is not run", which is FALSE
+              — a committed F5 + 820 upload returns six findings. Wording is adapted from the
+              panel's own already-shipped sentence (XeroUploadPanel's "A real IRAS-F5 export is
+              reviewed and its findings are shown below as candidates — unvalidated, for a human
+              to adjudicate") rather than invented here, so the chooser and the surface the
+              reviewer lands on say the same thing. */}
           <span className="source-card-desc">
-            Upload a client .xlsx GST export for a data-coverage preview. Coverage only — the
-            engine is not run.
+            Upload a client .xlsx GST export. A real IRAS-F5 export is reviewed and its findings
+            are surfaced as candidates — unvalidated, for a human to adjudicate — alongside a
+            data-coverage preview.
           </span>
         </button>
       </div>
