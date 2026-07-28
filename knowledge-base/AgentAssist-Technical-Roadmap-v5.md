@@ -1644,9 +1644,15 @@ Build + docs-sync on branch `t-nogstreg-recite`, off base `f5443a3` (the PR #159
 **What changed and why.** `agent/registry.py:250`'s `NO_GST_REG` `iras_basis` went from
 `"IRAS GST Act s19(1) / Regulation 11 — Conditions for claiming input tax"` to
 `"GST (General) Regulations [2026 Ed.], reg 11 — Conditions for claiming input tax"`. Half the old
-citation rested on a document the repo does **not hold**: `knowledge-base/sources.md:64` records the
-**GST Act** as **ABSENT / UNVERIFIED** (no SSO-stamped copy supplied) and named `s19(1)` among the
-registry strings resting on it. `sources.md:65` records the **GST (General) Regulations** as
+citation rested on a document the repo did **not hold at the time of this build**:
+`knowledge-base/sources.md:64` recorded the **GST Act** as **ABSENT / UNVERIFIED** (no SSO-stamped copy
+supplied) and named `s19(1)` among the registry strings resting on it. ***(SUPERSEDED same day: the
+rule-author supplied the Act — `knowledge-base/statute/gst-act-1993-2020ed.pdf`, `[2020 Ed.]`, 319 pp,
+sha256 `30bddc8f…`, stamp "version in force from 8/12/2025" on 319/319 pages — and that row is now
+**CURRENT**. The Act is HELD. This does NOT auto-restore `s19(1)`: D-24 stands as a substantive
+authoring decision — reg 11 is arguably the more precise authority for* conditions for claiming *input
+tax; entitlement (s19) and conditions (reg 11) are different things. Any restoration is a fresh
+rule-author decision, never an undo.)*** `sources.md:65` records the **GST (General) Regulations** as
 **CURRENT** — `gst-general-regulations-1993-2026ed.pdf`, 227 pages, sha256 `d7534d60…`, `[2026 Ed.]`,
 in force from 15/7/2026, *"Cited by registry (regs 11, 26/27)"*. The build **drops the unheld half and
 keeps the held half**. The replacement string is **Terry-authored under NO-TAX-SEMANTICS** and was
@@ -1695,11 +1701,18 @@ layer carries its own hard-coded prose on the signed paper (`report/sections.py:
 reviewer reads and the document they sign with no test failing. Filed for a ruling; no mechanism
 proposed.
 
-**THE PROBLEM IS NOT SOLVED — six citations still rest on the unheld GST Act** (measured after this
+**THE PROBLEM IS NOT SOLVED — six citations still rest on the GST Act** (measured after this
 build): `E1` (s21(3)), `E3` (s10), `E4` (bare "GST Act"), `gst_amount_mismatch` (s19), `correct_period`
 (s20), `total_inconsistency` (s19). **Six, not three** — `sources.md:64` listed four legs and never
 recorded `E4`'s bare cite or the two `s19` (as distinct from `s19(1)`) cites; that row's list has been
-corrected in place by this docs-sync, its ABSENT/UNVERIFIED status untouched. **One of six corrected.**
+corrected in place by this docs-sync. **One of six corrected.**
+
+***SUPERSEDED SAME DAY — the problem changed shape.*** *When the paragraph above was written the Act was
+**UNHELD**, so those six cites were **unsupported**. The rule-author then supplied it and `sources.md:64`
+became **CURRENT** (`[2020 Ed.]`, 319 pp, sha256 `30bddc8f…`). **All six are now SUPPORTED.** What remains
+open is their **wording** — `E4` cites no section at all, and the two `s19` cites are unpinned as to
+subsection — which is a rule-author authoring question, not an evidentiary gap. It does **not**
+auto-restore `s19(1)` on `NO_GST_REG`.*
 
 **Honest-status ladder:** built ≠ hermetic ≠ offline-replay-validated ≠ real-format-validated ≠
 real-client-export-validated ≠ accuracy-validated (T2.11). The new citation is itself **UNVALIDATED**

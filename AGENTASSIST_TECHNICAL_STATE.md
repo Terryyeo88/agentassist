@@ -5745,6 +5745,22 @@ person writing a fixture path, and a `git grep` on the basename cannot tell them
 
 ## §NO_GST_REG-recite — the `NO_GST_REG` registry citation drops its unheld half: `IRAS GST Act s19(1) / Regulation 11` becomes `GST (General) Regulations [2026 Ed.], reg 11`, because `sources.md:64` records the GST Act as ABSENT/UNVERIFIED while `sources.md:65` records the Regulations as CURRENT and sha256-pinned; a MEASUREMENT GATE proved zero frozen artefacts carry `iras_basis`, so NOTHING was re-frozen and the rendered paper is byte-identical (branch `t-nogstreg-recite`, `D-2026-07-28-nogstreg-recite` *(id PROPOSED — Terry ratifies; ruling **D-24** is Terry's)*, off base `f5443a3` (the PR #159 merge) — **2900 passed, 1 skipped, 6 xfailed, 2 xpassed** base → **2900 passed, 1 skipped, 6 xfailed, 2 xpassed** (baseline + 0); commits `a143186` (code) + `8a38331` (Terry's test amendment); **UNMERGED**; ONE-STRING change to a LIVE-RESOLVED field; MOVES NO VALIDATION RUNG; T2.11 unmoved)
 
+> **SUPERSEDED IN PART, same day (2026-07-28), by the GST Act source landing.** Everything below was
+> **true when written** and is retained as the build record — do not read it as the current position.
+> The premise it rests on has since changed: **`sources.md:64` is no longer ABSENT/UNVERIFIED.** The
+> rule-author supplied an SSO copy of the **GST Act 1993 `[2020 Ed.]`** — `knowledge-base/statute/gst-act-1993-2020ed.pdf`,
+> 319 pages, sha256 `30bddc8f6303e35045698baefdf0df9f603e23b00d295fa63b60305dee6d145d`, stamp
+> "Informal Consolidation – version in force from 8/12/2025" on 319 of 319 pages — and that row is now
+> **CURRENT**. **The Act is HELD.** Two consequences, and only two:
+> **(1)** the six GST-Act citations listed under "THE PROBLEM IS NOT SOLVED" below are **no longer
+> unsupported** — a held, version-pinned copy backs them; what remains open is their **wording**, not
+> their evidentiary basis. **(2)** `s19(1)` is **NOT** restored on `NO_GST_REG` and **must not be
+> restored automatically**: D-24 stands as a **substantive** authoring decision, not merely an
+> evidentiary workaround — reg 11 is arguably the more precise authority for *conditions for claiming*
+> input tax, and entitlement (s19) and conditions (reg 11) are different things. Any restoration is a
+> **fresh rule-author decision** under NO-TAX-SEMANTICS, never an undo, and would fail loud at the
+> full-string golden pin in `tests/test_t58d_review_surface.py`.
+
 **Honest status, first and plainly.** This corrects a **citation** on **one** check. It adds no check,
 emits no new finding, and touches no arithmetic. `validation_status` stays `"unvalidated"`,
 `show_ai_candidates` stays `False`, **T2.11 is unmoved**. Nothing about the accuracy of `NO_GST_REG`
@@ -5905,7 +5921,7 @@ desired outcome; structurally it means **a citation could differ between the scr
 and the document they sign, and no test would fail.** That is the failure this matters for. **No
 mechanism is proposed here** — it is filed for a ruling.
 
-### THE PROBLEM IS NOT SOLVED — six citations still rest on the unheld GST Act
+### THE PROBLEM IS NOT SOLVED — six citations still rest on the GST Act *(which was UNHELD when this was written; it is HELD as of the same day — see the banner above)*
 
 Measured from `agent.registry.CHECK_REGISTRY` **after** this build:
 
@@ -5923,6 +5939,14 @@ now-corrected `s19(1)` leaves three. A direct enumeration finds **three more tha
 recorded**: `E4`'s bare `"GST Act"` with no section, and two `s19` citations (distinct from `s19(1)`)
 on `gst_amount_mismatch` and `total_inconsistency`. **`sources.md:64`'s list was incomplete, and has
 been corrected in place by this build's docs-sync** — its ABSENT/UNVERIFIED status untouched.
+
+**UPDATE, same day — the problem CHANGED SHAPE rather than persisting.** The rule-author supplied the
+GST Act and `sources.md:64` is now **CURRENT** (`[2020 Ed.]`, 319 pp, sha256 `30bddc8f…`). **All six
+citations above are therefore SUPPORTED** — the row they rest on holds a version-pinned copy. What is
+still open is narrower and different: their **wording**. `E4` cites no section at all
+(`"IRAS GST Act / applicable rate schedule"`), and the two `s19` cites are unpinned as to subsection.
+**That is an authoring question for the rule-author, not an evidentiary gap** — and it is NOT a
+licence to restore `s19(1)` on `NO_GST_REG` (see the banner at the head of this section).
 
 **One of six is corrected. Five sixths of the problem remains, plus a bookkeeping gap that hid half
 of it.**
