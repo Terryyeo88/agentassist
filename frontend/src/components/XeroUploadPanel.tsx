@@ -10,6 +10,7 @@ import { ReviewScreen, type Adjudication } from "./ReviewScreen";
 import { SignModal } from "./SignModal";
 import { TopBar } from "./TopBar";
 import { Sidebar } from "./Sidebar";
+import { XeroF5Strip } from "./XeroF5Strip";
 
 // B3a-2: decisions persist via POST /decision keyed on the backend config's client_id for
 // each engine branch (mirrors api/app.py's load_decision_entries call sites — app.py runs
@@ -293,6 +294,12 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
               />
             </section>
           )}
+
+          {/* The recomputed F5 boxes, on the ONE branch that carries them. Absent key ->
+              nothing renders (the component's own rule): sales and extract uploads are
+              one-sided and deliberately ship no boxes, and a zeroed fallback there would be
+              a fabricated eight-box artefact (#48 not widened). */}
+          <XeroF5Strip boxes={coverage?.recomputed_client_coded_f5_boxes} />
 
           {coverage && (
             <section className="xero-coverage" aria-label="Coverage preview">

@@ -7,21 +7,14 @@ import { ReviewScreen } from "./components/ReviewScreen";
 import { AuditTrail } from "./components/AuditTrail";
 import { SignModal } from "./components/SignModal";
 import { RUN_REVIEW_UTTERANCE, asRunReviewData, normalizeFilters, toggleFilter } from "./lib/runReview";
+// The F5 box labels moved to lib/f5 so the Xero strip renders the SAME IRAS box numbers from
+// ONE source (D-12). Only the labels are shared — the two tables' treatments stay distinct.
+import { boxDescription, boxNumber } from "./lib/f5";
 
 const CLIENT = "sbodemosg";
 const PERIOD = "2024Q3";
 
 type Decision = { action: string; note: string };
-
-// Humanise an F5 box key for the returns table: "box_8_net_gst" → "Box 8" + "Net gst".
-function boxNumber(key: string): string {
-  const m = key.match(/box_(\d+)/i);
-  return m ? `Box ${m[1]}` : key;
-}
-function boxDescription(key: string): string {
-  const rest = key.replace(/^box_\d+_/i, "").replace(/_/g, " ");
-  return rest.charAt(0).toUpperCase() + rest.slice(1);
-}
 
 /**
  * App — the dark AgentAssist review surface (T6.3 Slice 4). A collapsible sidebar + a header
