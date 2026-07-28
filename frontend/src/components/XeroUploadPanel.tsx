@@ -3,12 +3,14 @@ import {
   postDecision,
   postSignUpload,
   uploadExtract,
+  type DecisionResponse,
   type Group,
   type UploadCoverageResponse,
 } from "../api";
 import { ReviewScreen, type Adjudication } from "./ReviewScreen";
 import { SignModal } from "./SignModal";
-import { TopBar } from "./TopBar";
+import { TopBar, type View } from "./TopBar";
+import { XeroAuditView } from "./XeroAuditView";
 import { Sidebar } from "./Sidebar";
 import { XeroF5Strip } from "./XeroF5Strip";
 import { XeroCoveragePanel } from "./XeroCoveragePanel";
@@ -64,9 +66,21 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // never co-exist (Root switches sources), so the two input sites cannot diverge live.
   const [reviewerName, setReviewerName] = useState<string>("");
   const [signOpen, setSignOpen] = useState(false);
-  // Shell chrome (shell parity with the SAP surface): the collapsible left rail. The Xero
-  // surface stays a single non-tab-gated flow — the shell adds TopBar + Sidebar around it.
+  // Shell chrome (shell parity with the SAP surface): the collapsible left rail.
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // D-13: the three mutually-exclusive views, mirroring App.tsx. "review" is home — the upload
+  // controls, the F5 strip and the coverage panel live there; findings and the session decision
+  // list get their own views.
+  const [view, setView] = useState<View>("review");
+  // D-17: the decisions THIS SESSION recorded, captured from the POST /decision responses.
+  // This is the only material an Audit view can honestly list — there is no read endpoint for
+  // the decision store, so nothing from an earlier session can ever be shown.
+  const [sessionDecisions, setSessionDecisions] = useState<DecisionResponse[]>([]);
+
+  function selectFromSidebar(id: string) {
+    setSelectedId(id);
+    setView("findings");
+  }
 
   function onLedger(event: ChangeEvent<HTMLInputElement>) {
     setLedgerFile(event.target.files?.[0] ?? null);
@@ -131,11 +145,14 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
               note,
               reviewer_name: reviewer,
             })
-              .then(() =>
+              .then((recorded) => {
+                // D-17: keep the server's own response — entry_id / entry_hash / chain_length /
+                // disposition are the Audit view's only honest material.
+                setSessionDecisions((ds) => [...ds, recorded]);
                 // Re-apply: re-submit the retained workbook so the persisted demotion /
                 // annotation re-renders from the server (decisions survive refresh).
-                uploadedFile ? uploadExtract(uploadedFile, ledgerFile) : null
-              )
+                return uploadedFile ? uploadExtract(uploadedFile, ledgerFile) : null;
+              })
               .then((resp) => {
                 if (resp) setCoverage(resp);
               })
@@ -144,6 +161,29 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           ...(canSign ? { onOpenSign: () => setSignOpen(true) } : {}),
         }
       : undefined;
+
+  // D-15: the mandatory three-clause caveat renders on ALL THREE views, not just the one the
+  // findings happen to be on. Its third clause says findings "should not be relied on" — a
+  // warning about findings has to be visible wherever findings are, and splitting the surface
+  // into views is exactly what would otherwise have stranded it on the Review tab.
+  const extractCaveat = isExtractReview ? (
+    <section className="extract-caveat callout warn" aria-label="Demo review caveat">
+      <strong>Demo review — read before relying on anything below.</strong>
+      <ol className="extract-caveat-clauses">
+        <li>Findings are <strong>unvalidated candidates</strong> for human review — not a verdict.</li>
+        <li>
+          Computed on an export format <strong>proven only against a synthetic sample</strong>;
+          real-client-export validation is open (GTM-gated).
+        </li>
+        <li>
+          This run used a <strong>default demo configuration, not your organisation's tax
+          settings</strong>. Any finding that depends on GST <strong>rate or tax-code mapping</strong>
+          is computed under the demo's settings and <strong>should not be relied on</strong> until
+          your real config is wired in. The structural/arithmetic checks stand on their own.
+        </li>
+      </ol>
+    </section>
+  ) : null;
 
   const persistNote = adjudication
     ? canSign
@@ -157,19 +197,23 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   return (
     <div className="layout">
       {sidebarOpen && (
-        // Shell parity: the shared Sidebar tallies the UPLOAD findings (not a SAP review). No
-        // three-view nav exists on this surface, so selecting a finding just focuses it in the
-        // single-flow review screen below.
-        <Sidebar queue={findings} decided={decided} onSelectFinding={(id) => setSelectedId(id)} />
+        // Shell parity: the shared Sidebar tallies the UPLOAD findings (not a SAP review).
+        // Selecting a finding focuses it AND switches to the Findings view — the same
+        // behaviour as App.tsx's selectFromSidebar, now that this surface has views.
+        <Sidebar queue={findings} decided={decided} onSelectFinding={selectFromSidebar} />
       )}
 
       <div className="main-col">
         <TopBar
-          // Xero surface: brand + UNVALIDATED badge + reviewer pill, but NO view-tabs (omit
-          // view/setView) — this surface is a single non-tab-gated flow, so tabs would be dead
-          // controls. Badge text is the upload's own validation_status (unvalidated until then).
+          // D-13 REVERSES the previous "no view-tabs on Xero" decision: this surface now has
+          // the same three mutually-exclusive views as the SAP one, so view/setView are passed
+          // and TopBar renders the nav (it renders it only when BOTH are supplied). The tabs
+          // are live controls, not dead ones — which is what the old rule was protecting.
+          // Badge text is the upload's own validation_status (unvalidated until then).
           validationStatus={coverage?.validation_status ?? "unvalidated"}
           reviewerName={reviewerName}
+          view={view}
+          setView={setView}
           onToggleSidebar={() => setSidebarOpen((s) => !s)}
           // Sign is F5-only and needs the retained file — the SAME `canSign` gate the in-panel
           // ReviewScreen path uses. Ungated, this pill opened SignModal after an extract/sales
@@ -178,6 +222,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           {...(canSign ? { onOpenSign: () => setSignOpen(true) } : {})}
         />
 
+        {view === "review" && (
         <main className="view xero-upload">
           <img className="aa-logo" src="/agentassist-logo.png" alt="AgentAssist" />
           <button type="button" className="source-back" onClick={onChangeSource}>
@@ -257,44 +302,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           {busy && <div className="loading">Reading export…</div>}
           {err && <div className="errorbox">{err}</div>}
 
-          {isExtractReview && (
-            <section className="extract-caveat callout warn" aria-label="Demo review caveat">
-              <strong>Demo review — read before relying on anything below.</strong>
-              <ol className="extract-caveat-clauses">
-                <li>Findings are <strong>unvalidated candidates</strong> for human review — not a verdict.</li>
-                <li>
-                  Computed on an export format <strong>proven only against a synthetic sample</strong>;
-                  real-client-export validation is open (GTM-gated).
-                </li>
-                <li>
-                  This run used a <strong>default demo configuration, not your organisation's tax
-                  settings</strong>. Any finding that depends on GST <strong>rate or tax-code mapping</strong>
-                  is computed under the demo's settings and <strong>should not be relied on</strong> until
-                  your real config is wired in. The structural/arithmetic checks stand on their own.
-                </li>
-              </ol>
-            </section>
-          )}
-
-          {findings.length > 0 && (
-            <section className="xero-findings findings-view" aria-label="Review findings">
-              {persistNote && <p className="xero-persist-note">{persistNote}</p>}
-              <ReviewScreen
-                queue={findings}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                adjudication={adjudication}
-                reviewOnlyNote={adjudication ? undefined : REVIEW_ONLY_NOTE}
-                // §2 source-tag guard: this is the Xero upload surface. The source identity is
-                // intrinsic to the upload response (source_kind); the shared screen refuses any
-                // non-Xero payload here (defence-in-depth behind Root's mount separation).
-                expectedSource="xero"
-                sourceKind={coverage?.source_kind}
-              />
-            </section>
-          )}
+          {extractCaveat}
 
           {/* The recomputed F5 boxes, on the ONE branch that carries them. Absent key ->
               nothing renders (the component's own rule): sales and extract uploads are
@@ -340,6 +348,73 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
             </section>
           )}
         </main>
+        )}
+
+        {view === "findings" && (
+          <main className="view xero-findings-view">
+            {extractCaveat}
+            {/* D-19: the persist note sits ABOVE the grid, not inside it. A live browser
+                measurement showed it taking grid cell 1 (320px) with the queue beside it,
+                which pushed the detail card onto row 2 in the 320px column while the right
+                half of the page stayed empty. The grid holds exactly two children. */}
+            {findings.length > 0 && persistNote && (
+              <p className="xero-persist-note">{persistNote}</p>
+            )}
+            {findings.length > 0 ? (
+              <section className="xero-findings findings-view" aria-label="Review findings">
+                <ReviewScreen
+                  queue={findings}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  adjudication={adjudication}
+                  reviewOnlyNote={adjudication ? undefined : REVIEW_ONLY_NOTE}
+                  // §2 source-tag guard: this is the Xero upload surface. The source identity is
+                  // intrinsic to the upload response (source_kind); the shared screen refuses any
+                  // non-Xero payload here (defence-in-depth behind Root's mount separation).
+                  expectedSource="xero"
+                  sourceKind={coverage?.source_kind}
+                />
+              </section>
+            ) : (
+              <p className="xero-empty-view">
+                No findings yet — upload a .xlsx GST export on the <strong>Review</strong> tab.
+              </p>
+            )}
+          </main>
+        )}
+
+        {view === "audit" && (
+          <main className="view xero-audit-view">
+            {extractCaveat}
+            <XeroAuditView decisions={sessionDecisions} />
+            {/* SAP-only surfaces, present but DISABLED with an honest reason — they belong with
+                the audit story, which is where a reviewer looks for them. */}
+            <section className="disabled-surfaces" aria-label="Unavailable on uploads">
+              <div className="disabled-surface">
+                <button type="button" disabled>Agent tool chain</button>
+                <span className="disabled-reason">
+                  An uploaded export runs no agent, so there is no Tier-1/Tier-2 tool chain to
+                  hash-chain — only your own decisions.
+                </span>
+              </div>
+              <div className="disabled-surface">
+                <button type="button" disabled>Server-driven facets</button>
+                <span className="disabled-reason">
+                  The facet menu comes from a SAP review run; an upload returns no facet menu.
+                </span>
+              </div>
+              <div className="disabled-surface">
+                <button type="button" disabled>Source documents</button>
+                <span className="disabled-reason">
+                  A Xero export carries no source-document PDFs, which is also why four coverage
+                  checks could not run.
+                </span>
+              </div>
+            </section>
+          </main>
+        )}
       </div>
 
       {signOpen && uploadedFile && (
