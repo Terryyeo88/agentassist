@@ -247,7 +247,7 @@ _CHECKS: list[CheckSpec] = [
     CheckSpec(
         check_id="NO_GST_REG",
         display_name="Input tax claimed from supplier with no GST registration number",
-        iras_basis="IRAS GST Act s19(1) / Regulation 11 — Conditions for claiming input tax",
+        iras_basis="GST (General) Regulations [2026 Ed.], reg 11 — Conditions for claiming input tax",
         # LOAD-BEARING: supplier_catalog is the round-2-validated agent-gathered
         # slot (read_vendor_gst_status -> supplier_catalog). Do not remove.
         inputs_needed=["purchase_invoices", "supplier_catalog"],
