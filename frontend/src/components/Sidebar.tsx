@@ -1,4 +1,5 @@
 import type { QueueItem } from "../api";
+import { rowIdentitySuffix } from "../lib/rowIdentity";
 
 interface Props {
   /** The findings to tally + list. Takes the queue directly (SAP: review.queue; Xero: the
@@ -74,6 +75,15 @@ export function Sidebar({ queue, decided, onSelectFinding }: Props) {
             <span className="open-vendor">
               {it.vendor || "—"}
               <span className="mono open-check">{it.check_id}</span>
+              {/* C-1 / D-18: this rail renders only vendor, check_id and severity, and the
+                  three ledger-recon rows the 820 path returns are identical in all three —
+                  "— GST_LEDGER_RECON" three times over. finding_id's terminal segment is the
+                  only non-prose thing that separates them, so it is surfaced as a secondary
+                  line, exactly as the review queue does (shared lib/rowIdentity). NOT parsed
+                  out of description/recommendation — the identifier is data, the prose is not. */}
+              {rowIdentitySuffix(it) && (
+                <span className="mono open-identity">{rowIdentitySuffix(it)}</span>
+              )}
             </span>
             <span className={`sev-label sev-${it.severity}`}>{it.severity}</span>
           </button>
