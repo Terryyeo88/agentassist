@@ -1635,3 +1635,77 @@ change**. It renders data the backend already computed; **no new finding, no new
 change**. **BUILT + hermetically tested ≠ demo-validated ≠ accuracy-validated.** Moves no
 validation rung. `validation_status` unvalidated. `show_ai_candidates` False. T2.11 unmoved.
 Docs-sync `.md`-only, separate commit from code.
+
+### `D-2026-07-28-nogstreg-recite` — `NO_GST_REG` re-cited to the HELD Regulations only (ruling **D-24**) *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+Build + docs-sync on branch `t-nogstreg-recite`, off base `f5443a3` (the PR #159 merge). **UNMERGED.**
+**ONE STRING changed** in `agent/registry.py`; no other source file, no fixture, no frozen artefact.
+
+**What changed and why.** `agent/registry.py:250`'s `NO_GST_REG` `iras_basis` went from
+`"IRAS GST Act s19(1) / Regulation 11 — Conditions for claiming input tax"` to
+`"GST (General) Regulations [2026 Ed.], reg 11 — Conditions for claiming input tax"`. Half the old
+citation rested on a document the repo does **not hold**: `knowledge-base/sources.md:64` records the
+**GST Act** as **ABSENT / UNVERIFIED** (no SSO-stamped copy supplied) and named `s19(1)` among the
+registry strings resting on it. `sources.md:65` records the **GST (General) Regulations** as
+**CURRENT** — `gst-general-regulations-1993-2026ed.pdf`, 227 pages, sha256 `d7534d60…`, `[2026 Ed.]`,
+in force from 15/7/2026, *"Cited by registry (regs 11, 26/27)"*. The build **drops the unheld half and
+keeps the held half**. The replacement string is **Terry-authored under NO-TAX-SEMANTICS** and was
+applied **verbatim**.
+
+**This is not a validation event.** It corrects a citation on ONE check. No new check, no new finding,
+no arithmetic touched; `validation_status` stays `unvalidated`, `show_ai_candidates` stays `False`,
+**T2.11 unmoved**. The `s19(1)` citation was **not wrong about the law** — it was **unsupported by any
+document this repo holds**. The build **does not verify a claim; it stops making one the repo cannot
+back.**
+
+**MEASUREMENT GATE (before any edit) — why this is NOT an oracle re-freeze.** `iras_basis` is resolved
+**live** from `CHECK_REGISTRY` at serialize time (`ui/artifacts.py:316-323` via `api/viewmodel.py:287,302`),
+never stored. Probed directly from disk: `iras_basis` / `s19(1)` / `Regulation 11` / `reg 11` /
+`GST Act` all count **ZERO** in the offline-replay oracle **and** in all seven committed
+compile-output-shaped artefacts (`review_result.json`, `dossiers.json`, `proposals.json`,
+`decision-ledger.json`, `ledger.json`, both `chain-run-*.json`). **Nothing was re-frozen** — the oracle
+sha256 is **UNCHANGED** at `59fbdbb827dee933b4c79e8557852047d2465d6cb155b00d3d3cb58b92eddc45`,
+`git diff master --name-only -- tests/fixtures/` is **empty**, and the three offline-replay tests pass.
+
+**The rendered paper is byte-identical** before/after under **both** pdfplumber and pdfminer
+(13,603 chars, matching sha per extractor). **The screen did change**, proven from a run:
+`GET /review/SBODEMOSG/2024Q3` returns the new string on all 7 `NO_GST_REG` rows. `NO_GST_REG` stays
+**dark on the Xero upload path** (`POST /review/upload` → `E2/E3/E4` only), per
+`D-2026-07-27-xero-coverage-derived`.
+
+**Test count.** Base **2900 passed, 1 skipped, 6 xfailed, 2 xpassed** → **2900 passed, 1 skipped,
+6 xfailed, 2 xpassed**. **Baseline + 0 — zero regressions, zero new tests.** Exactly one test moved,
+as forecast: `tests/test_t58d_review_surface.py:96` (`assert "s19(1)" in ref["iras_basis"]`), and it
+was **hand-amended by Terry as his own commit `8a38331`** (substring pin → full-string equality),
+separation of duties — the agent touched nothing under `tests/`.
+
+**P4 SPLIT INTO TWO BUILDS.** The `NO_GST_REG` **recommendation** reword (**D-25**,
+`mcp-servers/custom/sap_b1_server.py:1514`) is **NOT done and IS an oracle re-freeze** — that string
+is embedded verbatim in `_replay-oracle.compiled.json` (7 rows), which
+`tests/test_t2_12a_offline_replay.py:127` compares byte-for-byte against a manifest-pinned sha.
+**Do not read this entry as "the NO_GST_REG text is corrected."**
+
+**KNOWINGLY CREATED DRIFT.** `frontend/src/test/fixtures.ts:59` (a hand-copy of the registry string)
+now diverges. **Owner: Collin (C-8)**, to be fixed **WITH a binding test**, batched with
+`fixtures.ts:53-54` which are **already** stale against production today.
+
+**OPEN ITEM, ELEVATED — two independent citation surfaces.** The registry feeds the screen; the report
+layer carries its own hard-coded prose on the signed paper (`report/sections.py:866`,
+`report/constants.py:80`). **Nothing checks they agree** — a citation could differ between the screen a
+reviewer reads and the document they sign with no test failing. Filed for a ruling; no mechanism
+proposed.
+
+**THE PROBLEM IS NOT SOLVED — six citations still rest on the unheld GST Act** (measured after this
+build): `E1` (s21(3)), `E3` (s10), `E4` (bare "GST Act"), `gst_amount_mismatch` (s19), `correct_period`
+(s20), `total_inconsistency` (s19). **Six, not three** — `sources.md:64` listed four legs and never
+recorded `E4`'s bare cite or the two `s19` (as distinct from `s19(1)`) cites; that row's list has been
+corrected in place by this docs-sync, its ABSENT/UNVERIFIED status untouched. **One of six corrected.**
+
+**Honest-status ladder:** built ≠ hermetic ≠ offline-replay-validated ≠ real-format-validated ≠
+real-client-export-validated ≠ accuracy-validated (T2.11). The new citation is itself **UNVALIDATED**
+— the shipped `iras_basis_caveat` still says so on every queue item. Per the IRAS SOURCE RULE nothing
+here asserts what any IRAS guide or statute **says**, only what `sources.md` records about whether a
+copy is held. **`exploration-notes/iras-ask-coverage-analysis.md`: annotated only — NO coverage cell
+(✗/👤/D+/J+/J/✓/◐) moved**; 3D.1.1.h "Purchases from non-GST-registered suppliers" stays **✓** because
+detection is unchanged. `docs/merge-gates.md`: checked — no change required (no import boundary moves).
+Docs-sync `.md`-only, separate commit from code.

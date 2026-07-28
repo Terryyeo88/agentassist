@@ -513,3 +513,69 @@ the description prose. A backend fix is filed: these rows need a distinguishing 
 
 They also carry `fingerprint: null`, so they remain **non-adjudicable** — decision controls render
 disabled with the honest per-cause reason (`#46` territory).
+
+## `NO_GST_REG`'s citation is corrected; its recommendation is not (`D-2026-07-28-nogstreg-recite`, ruling D-24)
+
+`agent/registry.py:250` now cites **`GST (General) Regulations [2026 Ed.], reg 11 — Conditions for
+claiming input tax`**, replacing `IRAS GST Act s19(1) / Regulation 11 — …`. The dropped half rested on
+a document this repo does not hold (`knowledge-base/sources.md:64`: GST Act **ABSENT / UNVERIFIED**);
+the kept half is held and version-pinned (`sources.md:65`: **CURRENT**, 227 pages, sha256 `d7534d60…`,
+`[2026 Ed.]`).
+
+**This changed nothing about detection.** Same documents flagged, same order, same description, same
+recommendation. `validation_status` stays `unvalidated`; T2.11 unmoved. The new citation is
+**Terry-authored and itself UNVALIDATED** — the constant `iras_basis_caveat` still ships on every
+queue item saying exactly that.
+
+**On Xero this is invisible.** `NO_GST_REG` remains **UNAVAILABLE on the Xero upload path** — the
+supplier-master surface (`FederalTaxID`) is outside the covered set, per
+`D-2026-07-27-xero-coverage-derived`. Verified from a run: `POST /review/upload` over the committed F5
+fixture returns `check_ids=['E2','E3','E4']` and **no `NO_GST_REG` row**. The corrected citation
+reaches a reviewer only on the SAP/extract route today.
+
+### STILL OPEN — the recommendation reword (D-25) is an ORACLE RE-FREEZE
+
+`mcp-servers/custom/sap_b1_server.py:1514`'s recommendation text is **not** corrected and was
+deliberately out of scope. It is embedded **verbatim** in the offline-replay oracle (7 rows), which
+`tests/test_t2_12a_offline_replay.py:127` compares **byte-for-byte** against a sha pinned in
+`capture-manifest.json`. Rewording it forces a re-freeze plus staleness in `review_result.json`,
+`dossiers.json` (including 7 `inputs_hash` values) and both `chain-run-*.json` — all hook-blocked
+under `tests/`. **Do not read the `NO_GST_REG` text as fully corrected.**
+
+### KNOWINGLY CREATED DRIFT — `frontend/src/test/fixtures.ts` (owner: Collin, C-8)
+
+`fixtures.ts:59` is a **hand-copy** of the registry citation and now **diverges** from
+`agent/registry.py:250`. No test asserts it, so nothing goes red.
+
+Fix it **WITH a binding test** — an unbound copy is how this drift arose — and **batch it with
+`fixtures.ts:53-54`, which are ALREADY stale against production today**, independently of this build:
+
+| fixtures.ts | fixture carries | production emits |
+|---|---|---|
+| `:53` description | `…without a GST registration number.` | `…without a GST registration number — may not be claimable.` (`sap_b1_server.py:1510-1512`) |
+| `:54` recommendation | `Obtain a valid tax invoice with the supplier's GST registration number.` | `Obtain a valid tax invoice with the supplier's GST registration number, or reverse the input tax claim.` (`:1514`) |
+| `:59` iras_basis | `IRAS GST Act s19(1) / Regulation 11 — …` | `GST (General) Regulations [2026 Ed.], reg 11 — …` (`registry.py:250`) |
+
+**Three divergent strings in one fixture object; two of them pre-existing and undetected.**
+
+### OPEN ITEM, ELEVATED — two independent citation surfaces, nothing reconciles them
+
+1. **Registry → screen:** `agent/registry.py` `iras_basis`, live-resolved via `check_reference`
+   (`ui/artifacts.py:316`) into every queue item (`api/viewmodel.py:302`).
+2. **Report layer → signed paper:** its own hard-coded prose — `report/sections.py:866`
+   (`"… per IRAS s21(3). …"`), `report/constants.py:80`
+   (`"expenses disallowed under GST (General) Regulations 26 and 27"`).
+
+**No test checks that the two agree.** This build demonstrates the gap: the registry citation changed
+and the rendered paper did not move by a byte (verified under both pdfplumber and pdfminer). Here that
+was desired — but structurally **a citation can differ between the screen a reviewer reads and the
+document they sign, and nothing fails.** Filed for a ruling; no mechanism proposed.
+
+### THE CITATION PROBLEM IS NOT SOLVED — six remain on the unheld GST Act
+
+Measured from `CHECK_REGISTRY` after this build: `E1` (s21(3)), `E3` (s10), `E4` (bare `"GST Act"`,
+no section), `gst_amount_mismatch` (s19), `correct_period` (s20), `total_inconsistency` (s19).
+
+**Six, not three.** `sources.md:64` listed four legs (`s10`, `s19(1)`, `s20`, `s21(3)`); it never
+recorded `E4`'s bare cite or the two `s19` cites (distinct from `s19(1)`). That row's list has been
+corrected in place — its **ABSENT / UNVERIFIED status untouched**. **One of six is corrected.**
