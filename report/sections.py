@@ -1739,3 +1739,64 @@ def build_adjudication_section(view: dict | None) -> AdjudicationSection:
         if (b.get("findings") or (b.get("superseded_count") or 0) > 0)
     ]
     return AdjudicationSection(show=bool(blocks), clients=blocks)
+
+
+# ---------------------------------------------------------------------------
+# Source-Document Cross-Reference (T-E(2) / D-46) — UNGATED
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DocumentCrossrefRow:
+    doc_num: str
+    check_label: str
+    provenance: str
+    message: str
+
+
+@dataclass
+class DocumentCrossrefSection:
+    show: bool
+    rows: list
+    disclaimer: str
+
+
+def build_document_crossref_section(document_candidates) -> "DocumentCrossrefSection":
+    """Source-Document Cross-Reference — renders UNGATED (D-46).
+
+    These are deterministic comparisons over values extracted from supplied source
+    documents (a float difference, a string date compare, arithmetic on the PDF's own
+    numbers, a null check). They previously rendered only through the AI-Surfaced
+    section because they SHARED A RENDERER, not a provenance; show_ai_candidates gates
+    reasoning-layer (LLM) candidates ONLY. ``show`` derives from candidates EXISTING —
+    never from the flag (the legibility-rows precedent). Each row renders its
+    extraction provenance: born-digital extraction is deterministic end to end; a
+    scanned document's model-assisted extraction says so on its face. NO severity
+    word ever reaches the paper.
+    """
+    def _get(c, key, default=""):
+        # Live paths pass DocumentCandidate objects; the frozen/mock sign paths pass
+        # dict-shaped candidates loaded from stored JSON. Both render identically.
+        return getattr(c, key, c.get(key, default) if isinstance(c, dict) else default)
+
+    rows = []
+    for c in (document_candidates or []):
+        prov = (
+            "extraction: born-digital (deterministic)"
+            if _get(c, "extraction_source") == "born_digital"
+            else "extraction: model-assisted (scanned image)"
+        )
+        rows.append(DocumentCrossrefRow(
+            doc_num=str(_get(c, "doc_num")),
+            check_label=str(_get(c, "check_id")).replace("_", " "),
+            provenance=prov,
+            message=str(_get(c, "message")),
+        ))
+    return DocumentCrossrefSection(
+        show=bool(rows),
+        rows=rows,
+        disclaimer=(
+            "Candidates for reviewer attention: values extracted from the supplied "
+            "source documents, compared against the books. Not compliance verdicts; "
+            "validation_status=unvalidated."
+        ),
+    )

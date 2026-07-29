@@ -80,6 +80,7 @@ from report.sections import (
     build_scheme_status_section,
     build_scope_section,
     build_signature_section,
+    build_document_crossref_section,
     build_unified_candidates_section,
     render_listing_findings_section,
 )
@@ -132,6 +133,9 @@ class ReportModel:
     # None only in legacy callers that predate Prompt 4 — renderer falls back to
     # _ai_candidates_subsection when this is None.
     unified_candidates: UnifiedCandidatesSection | None = None
+    # T-E(2)/D-46: Source-Document Cross-Reference — UNGATED (deterministic comparisons
+    # over extracted values; show_ai_candidates gates reasoning/LLM candidates only).
+    document_crossref: object | None = None
     # T2.9: declared-vs-computed F5 section.  None when --declared-f5 was not
     # supplied; renderer is a no-op in that case.  Kept as an optional field so
     # existing callers (tests, seal round-trips) remain unaffected.
@@ -340,6 +344,8 @@ def build_report(
         unified_candidates=build_unified_candidates_section(
             judgment_artefact, document_candidates, show=show_ai
         ),
+        # T-E(2)/D-46: UNGATED — show derives from candidates existing, never show_ai.
+        document_crossref=build_document_crossref_section(document_candidates),
         # T2.9: declared-vs-computed section; no-op when df5_findings is empty.
         declared_f5=build_declared_f5_section(compile_output),
         # T2.10: listing findings section (SEQ_GAP + DUP_CLAIM).

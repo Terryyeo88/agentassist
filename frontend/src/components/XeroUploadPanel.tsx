@@ -531,7 +531,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           onClose={() => setSignOpen(false)}
           onSigned={(name) => setReviewerName(name)}
           initialReviewer={reviewerName}
-          sign={(reviewer, firm) => postSignUpload(uploadedFile, ledgerFile, reviewer, firm)}
+          sign={(reviewer, firm) => postSignUpload(uploadedFile, ledgerFile, reviewer, firm, reviewId ?? undefined)}
         />
       )}
     </div>

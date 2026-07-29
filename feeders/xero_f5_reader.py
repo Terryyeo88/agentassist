@@ -188,6 +188,10 @@ _COVERED_FIELDS = frozenset(
 
 
 class XeroF5ChainReader:
+    #: T-E(2)/D-40 — (matched, total) document join, set by the api layer when the
+    #: review session carries uploaded source documents; None = no document surface.
+    document_join: "tuple[int, int] | None" = None
+
     """A ``ChainReader`` backed by a REAL Xero IRAS-F5 "Transactions by box number" export.
 
     Args:
@@ -323,10 +327,17 @@ class XeroF5ChainReader:
         degrade, and the four document-pre-pass checks are unavailable. Emission only; asserts
         no verdict.
         """
+        # T-E(2)/D-40: the api layer sets document_join = (matched, total), COMPUTED
+        # from the actual reference join against the review's uploaded documents. The
+        # SAME reader instance feeds both the response's coverage rows and the signed
+        # paper's (engine review reads it), so screen and paper cannot diverge. None
+        # (the default) is byte-identical to the pre-T-E(2) False.
         return derive_coverage_statuses(
             self.coverage(),
             company_wide_population_present=False,
-            document_pdfs_present=False,
+            document_pdfs_present=(
+                self.document_join if self.document_join is not None else False
+            ),
         )
 
 
