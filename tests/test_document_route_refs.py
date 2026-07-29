@@ -1,15 +1,18 @@
 """tests/test_document_route_refs.py — C1 follow-up: GET /document/{doc_ref} string references.
 
 Findings on the Xero path carry a non-numeric DocNum like "BILL-3003" (feeders/xero_f5_reader.py).
-The route now takes a STRING ref and selects the fixture by the last run of digits, so both a
-bare SAP doc_num and a Xero-style reference resolve to the same INV-<n>.pdf. No digits, or digits
-with no matching fixture, is a flat 404 (the UI's honest "no source document on file").
+D-34 (D-2026-07-29): the route resolves a reference ONLY within its own namespace — a bare SAP
+doc_num ("3003") or the invoice-number form ("INV-3003") serves INV-<n>.pdf; any other-shaped
+reference (BILL-*, Q-*, …) is REFUSED with the same honest 404 as an absent document, even when
+a digit-colliding fixture exists. Run-proven defect: GET /document/BILL-3002 served the SAP
+fixture INV-3002.pdf (sha 98d08a5e…) — a different company's invoice, two years out of period —
+as the source document for the Xero E4 finding.
 
 Path-safety: only the extracted digits (parsed to int) reach the provider; the raw string never
 builds a filesystem path.
 
 Coverage:
-  * R1 — "BILL-3003" -> 200 + application/pdf (serves INV-3003.pdf).
+  * R1 — "BILL-3003" -> 404 even though INV-3003.pdf exists (refusal, not substitution).
   * R2 — "3003" (bare numeric) -> 200 (unchanged behaviour).
   * R3 — "BILL-XYZ" (no digits) -> 404.
   * R4 — "BILL-9999" (digits parse, no fixture) -> 404.
@@ -31,12 +34,12 @@ def doc_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_xero_style_ref_serves_matching_fixture(doc_dir):
-    """R1: BILL-3003 -> the digits 3003 select INV-3003.pdf."""
+def test_xero_style_ref_is_refused_not_substituted(doc_dir):
+    """R1 (D-34): BILL-3003 -> 404 even though INV-3003.pdf exists — the route must not
+    substitute a digit-colliding document from another corpus (the BILL-3002/INV-3002 defect)."""
     resp = client.get("/document/BILL-3003")
-    assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("application/pdf")
-    assert resp.content == b"%PDF-1.4\n%%EOF\n"
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "No source document on file"}
 
 
 def test_bare_numeric_ref_still_works(doc_dir):
