@@ -106,11 +106,23 @@ def _doc_unavailable_reason(check: str) -> str:
     )
 
 
+def _doc_degraded_reason(check: str, matched: int, total: int) -> str:
+    """Coverage FACT only (no IRAS rationale) for a PARTIAL document set (D-40).
+
+    PROSE, not a contract: the UI must never parse this for counts — a structured
+    missing_inputs surface is a separate build. The numbers are COMPUTED from the
+    actual reference join, never asserted (test_document_checks_xero T4)."""
+    return (
+        f"source documents partial — {check} ran over {matched} of {total} documents; "
+        "items without a supplied document were not examined by this check."
+    )
+
+
 def derive_coverage_statuses(
     coverage,
     *,
     company_wide_population_present: bool,
-    document_pdfs_present: bool = False,
+    document_pdfs_present: "bool | tuple[int, int]" = False,
 ) -> list:
     """Map an ``ExtractCoverage`` (value-population-aware) onto the in-scope checks.
 
@@ -167,9 +179,25 @@ def derive_coverage_statuses(
     # ext-3: the four document-pre-pass checks, keyed on the document_pdfs surface bool.
     # present → full; absent → unavailable (cannot-run, shared PDF-ingest gate). All four
     # are identical at this granularity (binary provider, no present-but-sparse middle state).
+    # D-40: three states through the EXISTING LEVELS vocabulary. A bool keeps its exact
+    # pre-D-40 meaning (False -> unavailable, True -> full) so every existing caller and
+    # locked test is byte-identical; a COMPUTED (matched, total) join tuple adds the
+    # honest middle: 0 matched -> unavailable (same reason constant), all matched ->
+    # full, otherwise degraded naming the numbers. Flipping a bool on a partial set
+    # would put "examined" on a signed paper for items that had no document.
     for check in _DOC_PREPASS_CHECKS:
-        if document_pdfs_present:
+        if document_pdfs_present is True:
             statuses.append(CoverageStatus(check, FULL))
+        elif isinstance(document_pdfs_present, tuple):
+            matched, total = document_pdfs_present
+            if matched <= 0:
+                statuses.append(CoverageStatus(check, UNAVAILABLE, _doc_unavailable_reason(check)))
+            elif matched >= total:
+                statuses.append(CoverageStatus(check, FULL))
+            else:
+                statuses.append(
+                    CoverageStatus(check, DEGRADED, _doc_degraded_reason(check, matched, total))
+                )
         else:
             statuses.append(CoverageStatus(check, UNAVAILABLE, _doc_unavailable_reason(check)))
 

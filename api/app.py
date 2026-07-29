@@ -774,7 +774,8 @@ async def post_review_upload(
                     "sha256": f"sha256:{hashlib.sha256(body).hexdigest()}",
                 }
                 resp = _xero_f5_review_response(
-                    reader, xero_period, gst_ledger, source_file=source_file
+                    reader, xero_period, gst_ledger, source_file=source_file,
+                    review_id=rid,
                 )
             elif is_xero_sales:
                 resp = _xero_sales_review_response(reader)
@@ -1168,9 +1169,93 @@ def _export_stated_currency(reader, period: dict) -> Optional[str]:
     return stated.pop() if len(stated) == 1 else None
 
 
+def _xero_document_context(reader, period: dict, rid: Optional[str]):
+    """(line_source, provider, join) for a review session's uploaded documents (T-E(2)).
+
+    join = (matched, total), COMPUTED from the actual reference join (D-40 — never a
+    flag, never an assumed length): total = the distinct documents the export carries
+    (the review's own document population); matched = those with an uploaded document
+    in reviews/<rid>/documents/. Returns (None, None, None) when the session has no
+    documents — every caller then behaves exactly as before T-E(2).
+    """
+    if not rid:
+        return None, None, None
+    try:
+        mapping = review_store.document_map(rid)
+    except review_store.ReviewStoreError:
+        return None, None, None
+    if not mapping:
+        return None, None, None
+    docs = []
+    for entity in ("Invoices", "PurchaseInvoices", "CreditNotes", "PurchaseCreditNotes"):
+        docs.extend(reader.fetch_invoices(entity, period["start"], period["end"]))
+    by_doc: Dict[str, dict] = {}
+    for d in docs:
+        ref = str(d.get("DocNum"))
+        li = by_doc.setdefault(ref, {
+            "doc_num": ref, "doc_date": d.get("DocDate"),
+            "card_name": d.get("CardName"), "line_index": 0,
+            "line_total": 0.0, "tax_total": 0.0,
+        })
+        for ln in d.get("DocumentLines") or []:
+            li["line_total"] += float(ln.get("LineTotal") or 0)
+            li["tax_total"] += float(ln.get("TaxTotal") or 0)
+    items = list(by_doc.values())
+    provider = MappedDocumentProvider(review_store.documents_dir(rid))
+    matched = sum(1 for it in items if provider.get_document(it["doc_num"]) is not None)
+    return (lambda: items), provider, (matched, len(items))
+
+
+def _serialize_document_candidates(cands) -> list:
+    """DocumentCandidate -> QueueItem rows (EXACTLY viewmodel.QUEUE_ITEM_KEYS; T-E(2)).
+
+    fingerprint None -> the panel renders decision controls DISABLED with an honest
+    reason (B3a-2 no-silent-dead-buttons), exactly like ledger-recon rows. The
+    candidate framing names the extraction provenance: born-digital is deterministic
+    end to end; a scanned document's model-assisted extraction says so (D-46).
+    """
+    rows = []
+    for c in (cands or []):
+        prov = (
+            "born-digital (deterministic extraction)"
+            if getattr(c, "extraction_source", "") == "born_digital"
+            else "model-assisted extraction (scanned image)"
+        )
+        rows.append({
+            "finding_id": f"doccheck:{c.check_id}:{c.doc_num}",
+            "check_id": c.check_id,
+            "finding_type": "probabilistic",
+            "group": "needs_review",
+            "vendor": None,
+            "severity": c.severity,
+            "description": c.message,
+            "recommendation": None,
+            "doc_num": c.doc_num,
+            "doc_date": None,
+            "error_code": c.check_id,
+            "display_name": str(c.check_id).replace("_", " "),
+            "iras_basis": None,
+            "iras_basis_caveat": None,
+            "demoted": False,
+            "annotation": None,
+            "prior_dispositions": [],
+            "fingerprint": None,
+            "candidate_framing_text": (
+                f"Invoice cross-reference candidate ({prov}) — a reviewer adjudicates "
+                "against the source document; this is a candidate, not a verdict."
+            ),
+            "completeness": None,
+            "inputs_hash": None,
+            "proposal_id": None,
+            "proposal_status": None,
+            "validation_status": "unvalidated",
+        })
+    return rows
+
+
 def _xero_f5_review_response(
     reader, period: dict, gst_ledger: Optional[dict] = None,
-    *, source_file: Optional[dict] = None,
+    *, source_file: Optional[dict] = None, review_id: Optional[str] = None,
 ) -> dict:
     """Run the real (UNVALIDATED) engine review over an uploaded Xero IRAS-F5 export.
 
@@ -1206,8 +1291,16 @@ def _xero_f5_review_response(
     # no-LLM artefact) and no provider (documents pass skipped) keep this hermetic.
     # T2.24 (fork b/c): gst_ledger is supplied only on the F5 path and only when a ledger was
     # uploaded; None → run_chain adds no ledger keys and the recon is a clean no-op.
+    # T-E(2): when the review session carries uploaded documents, thread them into
+    # Phase 3 — a per-document line_source built from the reader's own rows, the
+    # review's MappedDocumentProvider, and the COMPUTED join on the reader's coverage
+    # rows (D-40). Without documents all three are None and this is byte-identical.
+    doc_line_source, doc_provider, doc_join = _xero_document_context(reader, period, review_id)
+    if doc_join is not None:
+        reader.document_join = doc_join
     inputs = ReviewInputs(
-        line_source=lambda: [], provider=None, reader=reader, gst_ledger=gst_ledger
+        line_source=doc_line_source or (lambda: []), provider=doc_provider,
+        reader=reader, gst_ledger=gst_ledger
     )
     # M2 (t-xero-signoff): a plain upload is a PURE review — no unsigned PDF, no unsigned
     # bundle lands on disk. Persistence happens only at sign time (POST /sign/upload).
@@ -1240,6 +1333,9 @@ def _xero_f5_review_response(
         decision_entries=load_decision_entries(cfg.client_id),
         dossiers=upload_dossiers.dossiers,
     ) + serialize_ledger_recon_queue(result.compile_output)
+    # T-E(2): document cross-reference candidates join the queue (fingerprint None ->
+    # honest disabled decision controls, the ledger-recon precedent).
+    queue = queue + _serialize_document_candidates(result.document_candidates)
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
     if upload_dossiers.capped:
         log.warning("dossier cap exceeded on xero_f5_upload — generation skipped")
@@ -1458,6 +1554,7 @@ async def post_sign_upload(
     ledger: Optional[UploadFile] = File(None),
     reviewer_name: str = Form(...),
     firm_name: str = Form(""),
+    review_id: Optional[str] = Form(None),
 ) -> dict:
     """Sign an uploaded Xero F5 review — the ONE persist event on the upload path (B4).
 
@@ -1565,6 +1662,12 @@ async def post_sign_upload(
                 firm_name=firm,
             )
 
+            # T-E(2)/D-45: the optional review session, validated by the SAME guard the
+            # review upload uses (422 malformed, 404 unknown) BEFORE any path is built.
+            # Absent -> None -> this sign is byte-identical to pre-D-45 behaviour: the
+            # re-run cannot see uploaded documents, and the paper says so honestly.
+            rid = _validated_upload_review_id(review_id)
+
             def _mk_inputs(adjudications: Optional[dict] = None) -> ReviewInputs:
                 """Fresh reader + inputs per review() run.
 
@@ -1573,9 +1676,19 @@ async def post_sign_upload(
                 statefulness across two run_chain invocations.
                 """
                 if source_kind == "xero_f5_signed":
+                    # D-45: thread the session's documents into the SIGN re-run so the
+                    # sealed paper carries what the screen showed. The join lands on the
+                    # reader BEFORE review() runs -> run_chain embeds the same COMPUTED
+                    # coverage rows the review response emitted (one value, two surfaces).
+                    sign_reader = XeroF5ChainReader(dest)
+                    doc_ls, doc_prov, doc_join = _xero_document_context(
+                        sign_reader, xero_period, rid
+                    )
+                    if doc_join is not None:
+                        sign_reader.document_join = doc_join
                     return ReviewInputs(
-                        line_source=lambda: [], provider=None,
-                        reader=XeroF5ChainReader(dest), gst_ledger=gst_ledger,
+                        line_source=doc_ls or (lambda: []), provider=doc_prov,
+                        reader=sign_reader, gst_ledger=gst_ledger,
                         adjudications=adjudications,
                     )
                 # Sales sign runs the SAME inputs as the sales review branch — including

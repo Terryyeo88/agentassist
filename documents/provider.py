@@ -232,6 +232,12 @@ class MappedDocumentProvider:
     def __init__(self, documents_dir: Path | str) -> None:
         self._dir = Path(documents_dir)
 
+    def get_document(self, doc_num) -> Path | None:
+        """DocumentProvider-shaped alias so run_documents_pass can consume this
+        provider: the FULL reference (str on Xero, int on SAP) passes VERBATIM to
+        the map lookup — never parsed, never digit-stripped (D-34/D-42)."""
+        return self.get_by_reference(str(doc_num))
+
     def get_by_reference(self, reference: str) -> Path | None:
         map_path = self._dir / "document_map.json"
         if not map_path.is_file():
