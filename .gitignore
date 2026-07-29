@@ -49,9 +49,11 @@ exploration-notes/t1.4-reports/
 exploration-notes/t1.6-tool-outputs/*.json
 *.pdf
 !tests/fixtures/documents/*.pdf
-# Xero-imports fixture corpus: synthetic source-invoice PDFs named row-by-row in
-# fixture_manifest.csv — tracked by the same negation idiom as the line above.
-!tests/fixtures/Xero-imports/**/*.pdf
+# Xero demo-corpus source documents: synthetic source-invoice PDFs named row-by-row
+# in fixture_manifest.csv — tracked by the same negation idiom as the line above.
+# Rule renamed with the #51 canonical-layout move (was !tests/fixtures/Xero-imports/**/*.pdf;
+# no PDFs remain under Xero-imports/, so the old negation was dead).
+!tests/fixtures/xero-demo-2026Q2/source_documents/*.pdf
 # Knowledge-base reference PDFs are TRACKED by declaration (θ ruling,
 # 2026-07-19): the manifest (knowledge-base/sources.md) asserts local paths
 # resolve in a CLONE, so the corpus must be in git — the same negation idiom
