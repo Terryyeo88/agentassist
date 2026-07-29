@@ -98,6 +98,20 @@ clean linear diff) and reporting how many commits master advanced. Offline → `
 (warn-and-allow). Like step-0 it **tells only** — it never auto-rebases, auto-pulls, or mutates
 anything, and it is advisory (no hook: skipping it doesn't block you).
 
+**Pre-merge — CI status check (after the PR is opened, before requesting merge).** Local
+acceptance is the leg the agent reports; CI is the leg it never looked at — and CI was red from
+`c2aafe8` to `e8f8e19` (a `requirements.txt` parse failure, before flake8/import-scan/pytest ever
+ran) while roughly five commits and PR #165 landed against a build that never got past
+`pip install`. The `t-` branch-prefix rule exists so CI runs; the run buys nothing unless the
+result is read. Before requesting merge on any PR:
+
+```
+gh pr checks <n>
+```
+
+Print the output in the report. A failing or pending check is a **STOP** — report it and wait;
+never request merge over a red or unfinished CI run.
+
 ---
 
 ## Commands (exact)
