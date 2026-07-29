@@ -28,8 +28,10 @@ export interface QueueItem {
   description: string | null;
   recommendation: string | null;
   // Xero findings carry a non-numeric DocNum (e.g. "BILL-3003"); the SAP path sends an int.
-  // Widened to match reality — no contract/key change, the backend already returns whatever
-  // the source provides. The /document/{doc_ref} route accepts either form.
+  // Widened to match reality — no contract/key change, the backend returns whatever the
+  // source provides. NOTE (D-34): GET /document/{doc_ref} resolves the SAP corpus ONLY and
+  // REFUSES a Xero reference — it 404s rather than substituting a digit-colliding document.
+  // Uploaded documents are served by GET /review/{review_id}/document/{doc_ref} (D-42).
   doc_num: number | string | null;
   doc_date: string | null;
   error_code: string | null;
@@ -359,9 +361,36 @@ export type CommandResponse =
  * in the shared central-screen shape); any other .xlsx stays coverage-only (no `queue`).
  * Never hits GET /review or POST /command — it never touches the frozen B1 review (box-isolation).
  */
+
+/**
+ * createReviewSession — POST /review-session -> { review_id }.
+ *
+ * D-43: the session is created LAZILY, ON UPLOAD, and ALWAYS. Not eagerly on mount
+ * (POST /review-session writes reviews/<rid>/ to disk, so a session per page view
+ * litters the store), and not conditionally on documents being attached (that makes one
+ * button do two things and 422s anyone who attaches files in the wrong order).
+ *
+ * The review_id is the key for everything session-scoped: retained upload bytes,
+ * accumulated slices, and — since T-E(1) / PR #166 — uploaded source documents at
+ * reviews/<rid>/documents/, served by GET /review/{review_id}/document/{doc_ref}.
+ */
+export async function createReviewSession(): Promise<string> {
+  const resp = await fetch(`${BASE}/review-session`, { method: "POST" });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new Error(
+      (detail as { detail?: string }).detail || `Review session failed: ${resp.status}`,
+    );
+  }
+  const body = (await resp.json()) as { review_id: string };
+  return body.review_id;
+}
+
 export async function uploadExtract(
   file: File,
   ledger?: File | null,
+  reviewId?: string,
+  documents?: File[],
 ): Promise<UploadCoverageResponse> {
   // Multipart: the required primary `file` + an OPTIONAL `ledger` (the Xero 820
   // account-transactions export). The server runs the ledger↔declared-return
@@ -369,6 +398,14 @@ export async function uploadExtract(
   const form = new FormData();
   form.append("file", file);
   if (ledger) form.append("ledger", ledger);
+  // D-37: review_id is REQUIRED by the backend whenever `documents` are supplied. Without
+  // a session the upload is stateless and the documents would be discarded with the
+  // request, so the backend 422s naming review_id rather than dropping them silently.
+  if (reviewId) form.append("review_id", reviewId);
+  // D-38: source documents arrive as a REPEATED multipart part — the backend takes
+  // `documents: Optional[List[UploadFile]]`, one append per file, never a zip. Caps are
+  // the server's (D-39): 10 MiB per file, 50 MiB per upload, 50 files, each an honest 413.
+  for (const d of documents ?? []) form.append("documents", d);
   const resp = await fetch(`${BASE}/review/upload`, {
     method: "POST",
     body: form,

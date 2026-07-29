@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 import {
+  createReviewSession,
   postDecision,
   postSignUpload,
   uploadExtract,
@@ -72,6 +73,15 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // export to run the ledger↔declared-return reconciliation (T2.24). Stored, not submitted;
   // the primary upload carries it. Only used when the primary is a Xero F5 export.
   const [ledgerFile, setLedgerFile] = useState<File | null>(null);
+  // C-8: source-document PDFs attached BEFORE uploading (like the ledger). Sent as repeated
+  // "documents" multipart parts (D-38); the backend persists them under the review session
+  // (reviews/<rid>/documents/, D-36) and serves them to the viewer via the review-scoped
+  // route (D-42). Server caps apply (D-39): 10 MiB/file, 50 MiB/upload, 50 files.
+  const [documentFiles, setDocumentFiles] = useState<File[]>([]);
+  // C-8 (D-43): the review session, created LAZILY ON UPLOAD, ALWAYS — one session per
+  // upload flow. Threaded to ReviewScreen -> DocumentViewer, which SELECTS the
+  // review-scoped document route when present (surface selection, not fallback).
+  const [reviewId, setReviewId] = useState<string | null>(null);
   // B3a-2: the primary workbook is RETAINED so a decision can re-apply (re-upload the same
   // file) and sign-off can re-POST it to /sign/upload — the server is stateless per upload.
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -103,7 +113,11 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
     setLedgerFile(event.target.files?.[0] ?? null);
   }
 
-  function onFile(event: ChangeEvent<HTMLInputElement>) {
+  function onDocuments(event: ChangeEvent<HTMLInputElement>) {
+    setDocumentFiles(Array.from(event.target.files ?? []));
+  }
+
+  async function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     setBusy(true);
@@ -111,14 +125,37 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
     setNotice("");
     setUploadedFile(file);
     setDecided({});
-    uploadExtract(file, ledgerFile)
-      .then((resp) => {
-        setCoverage(resp);
-        // Default the selection to the first finding so its case-file card renders.
-        setSelectedId(resp.queue && resp.queue.length ? resp.queue[0].finding_id : null);
-      })
-      .catch((e) => setErr(serverMessage(e)))
-      .finally(() => setBusy(false));
+    try {
+      // C-8 (D-43): create the session on EVERY upload — lazily here, never on mount
+      // (POST /review-session writes reviews/<rid>/ to disk; a session per page view
+      // litters the store) and never conditionally on documents (one button must not do
+      // two different things). Failure handling is asymmetric on purpose: with documents
+      // attached a failed session is FATAL (they need the session — the backend would
+      // 422 them, and dropping them silently is the D-37 sin); with none, the upload
+      // proceeds stateless, byte-identical to the pre-session flow.
+      let rid: string | undefined;
+      try {
+        rid = await createReviewSession();
+        setReviewId(rid);
+      } catch (sessionErr) {
+        if (documentFiles.length > 0) throw sessionErr;
+        rid = undefined;
+        setReviewId(null);
+      }
+      const resp = await uploadExtract(
+        file,
+        ledgerFile,
+        rid,
+        documentFiles.length > 0 ? documentFiles : undefined,
+      );
+      setCoverage(resp);
+      // Default the selection to the first finding so its case-file card renders.
+      setSelectedId(resp.queue && resp.queue.length ? resp.queue[0].finding_id : null);
+    } catch (e) {
+      setErr(serverMessage(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   // The coverage-degrade ASK (Decision 4, B1): a companion (supplier-master) sheet is needed
@@ -318,6 +355,29 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           )}
 
           <label className="xero-file-label">
+            Optional — source-document PDFs (attach before uploading)
+            {/* Deliberately NOT class "xero-file-input": existing helpers select the primary
+                input via `input.xero-file-input:not(.xero-ledger-input)`, and a third input
+                carrying that class would match first and swallow their upload. */}
+            <input
+              className="xero-documents-input"
+              type="file"
+              accept=".pdf"
+              multiple
+              onChange={onDocuments}
+            />
+          </label>
+          {documentFiles.length > 0 && (
+            <p className="xero-documents-attached">
+              {documentFiles.length} source document{documentFiles.length === 1 ? "" : "s"}{" "}
+              attached — each is kept with this review session and shown beside the finding
+              that carries its reference. Filename is the reference:{" "}
+              <span className="mono">BILL-3002.pdf</span> attaches to finding{" "}
+              <span className="mono">BILL-3002</span>.
+            </p>
+          )}
+
+          <label className="xero-file-label">
             Upload .xlsx GST export
             <input className="xero-file-input" type="file" accept=".xlsx" onChange={onFile} />
           </label>
@@ -421,6 +481,9 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
                   // non-Xero payload here (defence-in-depth behind Root's mount separation).
                   expectedSource="xero"
                   sourceKind={coverage?.source_kind}
+                  // C-8: the session this upload created (D-43); DocumentViewer selects the
+                  // review-scoped route with it. null -> omitted (prop is string | undefined).
+                  reviewId={reviewId ?? undefined}
                 />
               </section>
             ) : (

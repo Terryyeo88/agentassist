@@ -1854,3 +1854,26 @@ what the software **knows**; no validation rung moves; `validation_status` unval
   currently fetches `/api/document/{ref}`.
 - +10 tests → 2914 pass; coverage rows byte-identical with documents attached; response
   key set unchanged; checks NOT run — built ≠ validated, T2.11 unmoved.
+
+
+### `D-2026-07-29-c8-document-viewer` — C-8: viewer wired to the review route (D-43/D-44; D-45 filed) *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+- **D-43** session created lazily, ON UPLOAD, ALWAYS — one per upload flow; rests on
+  one-button-one-behaviour + accumulation (a documentless upload without a rid forfeits
+  re-upload-into-the-same-session). Failure asymmetry: fatal only with documents attached.
+- **D-44** api.ts hand-edited by Terry: `createReviewSession()` + two trailing optional
+  `uploadExtract` params; every existing caller unchanged.
+- **Surface selection, not fallback** (Terry's framing): two corpora, two routes, one
+  attempt each, chosen by mounted surface; with a reviewId a 404 is FINAL (T9 pins one
+  fetch, `/api/document/` never called). Absence-inference is load-bearing — safe only
+  because D-34 refuses cross-namespace refs.
+- **4E browser check PASSED**: real Chromium, full corpus upload, E4 BILL-3002 beside the
+  genuine invoice, `200 application/pdf` on the review route.
+- **Found mid-build & FILED**: the new input's `xero-file-input` class shadowed existing
+  helpers' `querySelector` — 16 tests red from a CSS class; class selection is the
+  `calls[0]` brittleness family. Hand-amendment: ONE file (LedgerUpload, Terry-authored).
+- **D-45 (established, not fixed)**: `/sign/upload` has no review_id and `provider=None` —
+  the sign re-run cannot see uploaded documents; T-E(2) must thread the session (Terry
+  leans must-thread) or state the screen/paper divergence on the paper.
+- **Open item**: the namespaces overlap in FORM (`INV-2003` matches D-34's regex; 404s on
+  value alone). vitest 139 pass; four document checks still DO NOT run; T2.11 unmoved.
