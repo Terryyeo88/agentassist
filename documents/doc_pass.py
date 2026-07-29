@@ -35,7 +35,7 @@ from __future__ import annotations
 from documents.ingest import ingest
 from documents.legibility import assess_legibility
 from documents.provider import DocumentProvider
-from documents.reconcile import DocumentCandidate, reconcile
+from documents.reconcile import DocumentCandidate, coerce_doc_num, reconcile
 
 
 def run_documents_pass(
@@ -70,11 +70,24 @@ def run_documents_pass(
     """
     candidates: list[DocumentCandidate] = []
     for line_item in line_items:
-        doc_num = int(line_item["doc_num"])
+        doc_num = coerce_doc_num(line_item["doc_num"])
         pdf_path = provider.get_document(doc_num)
         if pdf_path is None:
             continue
-        extracted = ingest(pdf_path)
+        try:
+            extracted = ingest(pdf_path)
+        except Exception:
+            # T-E(2): an unreadable/corrupt supplied document must never fail the
+            # review. Route it to manual review like an illegible one — the honest
+            # degrade — and keep going. (An uploaded "document" is untrusted bytes.)
+            if legibility_rows is not None:
+                legibility_rows.append({
+                    "check": f"Document legibility (doc {doc_num})",
+                    "level": "unavailable",
+                    "reason": "manual review required — document could not be read as a PDF",
+                    "validation_status": "unvalidated",
+                })
+            continue
         # T2.14 legibility gate: an unreadable/partial document is routed to
         # "manual review required" rather than fed to reconcile with unreliable
         # fields — surfaces a data-quality caveat, never a tax verdict.

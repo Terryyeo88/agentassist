@@ -55,13 +55,30 @@ from documents.ingest import ExtractedInvoice
 AMOUNT_TOLERANCE: float = 0.01
 
 
+def coerce_doc_num(value):
+    """Tolerant doc_num coercion (T-E(2) widening; Gate-2 proved byte-identical seals
+    for int inputs — A1==B 66d0a4fc…, A1-show==B-show-widened 2b8bdd0b…).
+
+    An int returns UNCHANGED; a numeric string coerces to int (the historical SAP
+    behaviour); a non-numeric reference ("BILL-3002", the Xero path) passes through
+    VERBATIM — the full reference is the document's own identity (D-34/D-42).
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return value
+
+
 # ---------------------------------------------------------------------------
 # Output data model
 # ---------------------------------------------------------------------------
 
 @dataclass
 class DocumentCandidate:
-    doc_num: int
+    # int on the SAP path; the verbatim reference string on the Xero path (T-E(2)).
+    doc_num: "int | str"
     check_id: str
     severity: str
     message: str
@@ -98,7 +115,7 @@ def reconcile(
         as a candidate for human review, never as a compliance assertion.
     """
     candidates: list[DocumentCandidate] = []
-    doc_num = int(line_item["doc_num"])
+    doc_num = coerce_doc_num(line_item["doc_num"])
     src = extracted.source
 
     def _make(

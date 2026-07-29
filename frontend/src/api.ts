@@ -227,12 +227,19 @@ export async function postSignUpload(
   ledger: File | null | undefined,
   reviewer_name: string,
   firm_name: string,
+  reviewId?: string,
 ): Promise<SignUploadResponse> {
   const form = new FormData();
   form.append("file", file);
   if (ledger) form.append("ledger", ledger);
   form.append("reviewer_name", reviewer_name);
   form.append("firm_name", firm_name);
+  // D-45: the sign path re-runs review() over the re-posted workbook. Without the
+  // review_id it cannot reach reviews/<rid>/documents/, so the four document checks
+  // are skipped and the SIGNED PAPER OMITS FINDINGS THE SCREEN SHOWED. A paper that
+  // omits what the reviewer adjudicated is the failure this architecture exists to
+  // prevent.
+  if (reviewId) form.append("review_id", reviewId);
   const resp = await fetch(`${BASE}/sign/upload`, { method: "POST", body: form });
   if (!resp.ok) {
     const detail = await resp.json().catch(() => ({}));

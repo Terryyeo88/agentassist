@@ -1223,6 +1223,33 @@ def _extra_candidates_subsections(m: ReportModel, story: list) -> None:
             story.append(Paragraph(sec.disclaimer, _SMLX_AI))
 
 
+def _esc_xml(text: str) -> str:
+    """Minimal XML escape for Paragraph markup (candidate messages carry '&')."""
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _document_crossref(m: ReportModel, story: list) -> None:
+    """Section — Source-Document Cross-Reference (T-E(2)/D-46). UNGATED.
+
+    Deterministic comparisons over values extracted from supplied source documents;
+    show_ai_candidates gates reasoning-layer (LLM) candidates only (the legibility-rows
+    precedent for ungated rendering). Extraction provenance renders per candidate.
+    NO severity word renders here (the negative paper pins ban them).
+    """
+    sec = getattr(m, "document_crossref", None)
+    if sec is None or not getattr(sec, "show", False):
+        return
+    story.append(Paragraph("Source-Document Cross-Reference", _H2))
+    story.append(Paragraph(_esc_xml(sec.disclaimer), _SMLX))
+    for r in sec.rows:
+        story.append(Paragraph(
+            f"<b>{_esc_xml(r.doc_num)}</b> — {_esc_xml(r.check_label)} · {_esc_xml(r.provenance)}",
+            _BODY,
+        ))
+        story.append(Paragraph(_esc_xml(r.message), _SMLX))
+    story.append(Spacer(1, 6))
+
+
 def _judgment(m: ReportModel, story: list) -> None:
     """Append Section 5 — Judgment items requiring reviewer decision.
 
@@ -2266,6 +2293,7 @@ def render_pdf(model: ReportModel, out_path: str | Path) -> Path:
     _check_coverage(model, story)
     _ledger_recon(model, story)
     _cross_findings(model, story)
+    _document_crossref(model, story)
     _judgment(model, story)
     _not_examined(model, story)
     # t-accumulated-sign: accumulated evidence renders LAST before sign-off (no-op
