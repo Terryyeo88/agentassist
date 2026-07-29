@@ -104,14 +104,8 @@ a { color: var(--accent); }
 }
 .nav-tab.active { color: var(--accent); }
 .topbar .spacer { flex: 1; }
-.bell {
-  position: relative; width: 34px; height: 34px; border-radius: 999px;
-  border: 1px solid var(--line-strong); background: transparent; color: var(--ink-nav); cursor: pointer;
-}
-.bell-dot {
-  position: absolute; top: 7px; right: 8px; width: 6px; height: 6px;
-  border-radius: 999px; background: var(--accent);
-}
+/* C-5: `.bell` / `.bell-dot` removed with the dead notifications control they styled
+   (TopBar.tsx). Nothing else referenced either class. */
 .reviewer-pill {
   border: 1px solid var(--line-strong); background: var(--paper-sunk); color: var(--ink);
   border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
