@@ -106,6 +106,12 @@ export interface DecisionResponse {
   fingerprint: string;
   entry_id: string;
   entry_hash: string;
+  // C-6(a): who adjudicated, and WHEN — both read off the appended ledger record by the
+  // endpoint, never derived client-side. `timestamp` is the store's own ISO-8601 append-time
+  // stamp and `reviewer` the recorded reviewer; both are hashed into the append-only chain.
+  // A surface renders these verbatim — a browser clock would be a guess, not the record.
+  reviewer: string;
+  timestamp: string;
   chain_length: number;
   validation_status: string;
   disclaimer: string;
