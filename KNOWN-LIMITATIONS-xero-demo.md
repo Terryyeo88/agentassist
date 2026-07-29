@@ -683,3 +683,22 @@ no binding test is not a copy, it is a fork.** Filed for a ruling; no mechanism 
 > change.** Ingestion (an upload slot, a namespace-keyed provider) is T-E: see open item #47's
 > INV-INV trap and NEW open item #51 — the committed `source_invoices/source_invoices/` double
 > nesting + `<XeroReference>.pdf` naming needs a canonical-layout ruling before T-E reads it.
+
+
+## D-2026-07-29 — source-document ingestion (T-E(1)): documents arrive; checks still don't run
+
+> Documents can now be uploaded with a Xero export (`documents` multipart list, review_id
+> REQUIRED — D-37's honest 422), persist at `reviews/<rid>/documents/<sha256>.pdf` with a
+> stem-keyed `document_map.json` (D-36), and serve back via the review-scoped
+> `GET /review/{rid}/document/{ref}` (D-42 — separate route, no shared resolver with the
+> SAP fixture route; D-34's lesson applied structurally). Caps: 10 MiB/file, 50 MiB/upload,
+> 50 files, honest 413s (D-39).
+>
+> **STILL TRUE: the four document checks (gst_amount_mismatch / correct_period /
+> total_inconsistency / reg11_supplier_gst_absent) DO NOT RUN.** Coverage honestly reads
+> `unavailable` for all four even when documents are attached, because nothing compares
+> the document to the books — that is T-E(2), gated on D-40 (a bool cannot honestly
+> describe a 10-documents-for-38-baits partial set). **D-41 pilot preconditions,
+> unresolved:** no auth on any route, no rate limit, client documents persisting on disk
+> indefinitely — fine on localhost with synthetic data, blocking before a real client's
+> documents arrive. C-8 (Collin): frontend must send review_id and use the new route.
