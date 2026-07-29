@@ -1825,3 +1825,32 @@ what the software **knows**; no validation rung moves; `validation_status` unval
 - **FILED, not fixed — open item #51:** `tests/fixtures/Xero-imports/source_invoices/source_invoices/`
   double nesting + `<XeroReference>.pdf` naming resolvable by no shipped provider; canonical
   layout needs a ruling before T-E reads it.
+
+
+### `D-2026-07-29-doc-ingestion` — T-E(1) source-document ingestion (rulings **D-36..D-39, D-42**; **D-40/D-41 open**) *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+- **D-36** extend `review_store`, don't invent a store: `reviews/<rid>/documents/<sha256>.pdf`
+  + `document_map.json` {reference: sha256}; the content-hash idiom already existed at
+  `review_store.upload_bytes_path`.
+- **D-37** review_id REQUIRED with documents — honest 422; without a session the upload is
+  stateless and tmp_dir dies at end of request; never a silent drop.
+- **D-38** `List[UploadFile]`, not zip (no first-party zip handling exists; member
+  validation would all be new attack surface).
+- **D-39** caps: per-file 10 MiB / total 50 MiB / count 50, each an honest 413 naming the
+  limit — unbounded reads × N files is an accidental DoS.
+- **D-42** separate review-scoped route `GET /review/{rid}/document/{ref}`; the old
+  `GET /document/{ref}` untouched. Structural reason: two corpora, two routes, no shared
+  resolver — a regex extension would have reintroduced the D-34 substitution. Payoff:
+  hand-amendment package EMPTY (all 10 existing route tests green unamended).
+- **D-40 OPEN, gates T-E(2):** `document_pdfs_present` is a bool; a partial document set
+  (10 documents, 38 baits on 2026Q2) cannot be honestly described by one. Terry rules the
+  shape (recommendation on record: degraded-with-a-count).
+- **D-41 PILOT PRECONDITIONS, unresolved:** no auth on ANY route, no rate limit, client
+  documents persisting on disk indefinitely. Blocking before a real client engagement,
+  not before the demo.
+- **D-35:** a sealed bundle is NOT reproducible (reportlab wall-clock CreationDate);
+  verify against the manifest, never by re-sealing.
+- **C-8 (Collin):** frontend sends review_id + uses the new route; DocumentViewer
+  currently fetches `/api/document/{ref}`.
+- +10 tests → 2914 pass; coverage rows byte-identical with documents attached; response
+  key set unchanged; checks NOT run — built ≠ validated, T2.11 unmoved.
