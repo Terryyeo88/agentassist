@@ -405,6 +405,17 @@ button.link:hover { color: var(--ink); }
 .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 .modal .err { color: var(--danger); font-size: 13px; margin-top: 8px; }
 .modal .ok { color: var(--ok); font-size: 13px; margin-top: 8px; }
+/* C-4′ (D-1): the working-paper download stays an <a> (its route is a GET + `download`),
+   so the element-scoped `button` / `button.primary` rules above never matched it and it
+   shipped as bare accent text. Mirror the house primary button here, scoped to .modal —
+   NOT a global `.button` rule, which would restyle every other `button`-classed node. */
+.modal a.button.primary {
+  display: inline-block; margin-top: 14px; text-decoration: none;
+  font-family: var(--font-sans); font-size: 13px; font-weight: 500; padding: 9px 14px;
+  border-radius: var(--r-md); cursor: pointer; border: 1px solid var(--cta);
+  background: var(--cta); color: #fff;
+}
+.modal a.button.primary:hover { background: color-mix(in srgb, var(--cta) 88%, #000); }
 
 /* ── Footer / states ──────────────────────────────────────────── */
 .footer {
