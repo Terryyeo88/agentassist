@@ -97,7 +97,7 @@ from feeders.xero_sales_reader import (
 )
 from ui.artifacts import VALIDATION_STATUS, DemoArtifacts, load_demo_artifacts
 from ui.sign import DEFAULT_OUTPUT_DIR, sign_working_paper
-from documents.provider import FixtureDocumentProvider
+from documents.provider import FixtureDocumentProvider, MappedDocumentProvider
 
 log = logging.getLogger(__name__)
 
@@ -399,6 +399,30 @@ def get_document(doc_ref: str) -> FileResponse:
     return FileResponse(Path(path), media_type="application/pdf", filename=f"INV-{doc_num}.pdf")
 
 
+@app.get("/review/{review_id}/document/{doc_ref}")
+def get_review_document(review_id: str, doc_ref: str) -> FileResponse:
+    """Serve an UPLOADED source document, scoped to its review session (T-E(1), D-42).
+
+    A SEPARATE route, deliberately NOT an extension of GET /document/{doc_ref}: two
+    corpora, two routes, no shared resolver. The route above resolves the SAP fixture
+    namespace by the document's own identity; this one resolves ONLY this review's
+    uploaded set, passing the FULL reference VERBATIM through document_map.json —
+    never parsed, stripped, or pattern-matched. Putting a corpus's naming convention
+    into a shared resolver is what caused the D-34 substitution, and a third corpus
+    would have repeated it. Malformed review_id, unknown review_id, and unmapped
+    reference all return the SAME honest 404 — a wrong review must not learn what
+    another review holds.
+    """
+    try:
+        docs_dir = review_store.documents_dir(review_id)
+    except review_store.ReviewStoreError:
+        raise HTTPException(status_code=404, detail="No source document on file")
+    path = MappedDocumentProvider(docs_dir).get_by_reference(doc_ref)
+    if path is None:
+        raise HTTPException(status_code=404, detail="No source document on file")
+    return FileResponse(path, media_type="application/pdf", filename=f"{doc_ref}.pdf")
+
+
 @app.get("/review/{client}/{period}")
 def get_review(client: str, period: str) -> dict:
     """Serialised review view-model for the frozen demo client/period.
@@ -560,10 +584,19 @@ def _validated_upload_review_id(review_id: Optional[str]) -> Optional[str]:
     return rid
 
 
+# T-E(1) source-document caps (D-39). Hard limits with an honest 413 — an unbounded
+# read times N multipart files is a denial of service shipped by accident. Module-level
+# so tests can shrink them without amending anything.
+_DOC_MAX_FILE_BYTES = 10 * 1024 * 1024   # 10 MiB per document
+_DOC_MAX_TOTAL_BYTES = 50 * 1024 * 1024  # 50 MiB per upload
+_DOC_MAX_COUNT = 50                      # documents per upload
+
+
 @app.post("/review/upload")
 async def post_review_upload(
     file: UploadFile = File(...),
     ledger: Optional[UploadFile] = File(None),
+    documents: Optional[List[UploadFile]] = File(None),
     review_id: Optional[str] = Form(None),
 ) -> dict:
     """View over an UPLOADED client GST export (source-selector Xero branch).
@@ -607,6 +640,59 @@ async def post_review_upload(
     # 404 unknown) BEFORE any store write can happen. Absent → None → the stateless
     # path below is byte-identical to today (R1 pin).
     rid = _validated_upload_review_id(review_id)
+
+    # --- T-E(1) source documents (D-36..D-39): validate-then-persist, BEFORE the ----
+    # workbook branches run. Documents belong to the review SESSION, not the request:
+    # D-37 makes review_id REQUIRED when documents are supplied — an honest 422, never
+    # a silent drop into the request-scoped tmp_dir below (which dies in the finally).
+    # Validation is all-or-nothing; the store writes only after every part passes.
+    # The four document checks DO NOT run in T-E(1): nothing here touches coverage
+    # rows, findings, boxes, or the response key set.
+    doc_parts = [d for d in (documents or []) if (d.filename or "").strip()]
+    if doc_parts:
+        if rid is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Source documents require a review_id (create a session via "
+                    "POST /review-session). Without one the upload is stateless and "
+                    "the documents would be discarded with the request."
+                ),
+            )
+        if len(doc_parts) > _DOC_MAX_COUNT:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Too many documents: the file-count limit is {_DOC_MAX_COUNT} "
+                    "per upload."
+                ),
+            )
+        doc_files: list = []
+        doc_total = 0
+        for part in doc_parts:
+            doc_body = await part.read()
+            if len(doc_body) > _DOC_MAX_FILE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"Document {part.filename!r} exceeds the per-file limit of "
+                        f"{_DOC_MAX_FILE_BYTES} bytes."
+                    ),
+                )
+            doc_total += len(doc_body)
+            if doc_total > _DOC_MAX_TOTAL_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        "Documents exceed the total upload limit of "
+                        f"{_DOC_MAX_TOTAL_BYTES} bytes."
+                    ),
+                )
+            doc_files.append((part.filename, doc_body))
+        try:
+            review_store.save_documents(rid, doc_files)
+        except review_store.ReviewStoreError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="aa-extract-upload-"))
     try:

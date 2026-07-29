@@ -23,6 +23,7 @@ Runtime is read-only: no POST/PATCH/DELETE to SAP in any provider.
 """
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -209,6 +210,41 @@ class UploadProvider:
     def get_document(self, doc_num: int) -> Path | None:
         p = self._dir / f"INV-{doc_num}.pdf"
         return p if p.exists() else None
+
+
+# ---------------------------------------------------------------------------
+# MappedDocumentProvider — uploaded review documents, full-reference keyed
+# ---------------------------------------------------------------------------
+
+class MappedDocumentProvider:
+    """Serves uploaded source documents by FULL reference string (T-E(1), D-36/D-42).
+
+    Resolves through ``documents_dir/document_map.json`` ({reference: sha256}) and
+    returns ``documents_dir/<sha256>.pdf``. The reference is looked up VERBATIM —
+    never parsed, stripped, or pattern-matched: one resolver spanning two naming
+    conventions is what produced the D-34 cross-corpus substitution. Deliberately
+    DISTINCT from UploadProvider, which serves the SAP corpus's INV-<doc_num>.pdf
+    convention from a flat directory. The map is re-read per call, so documents
+    uploaded after construction are visible. Returns None on any miss — absent map,
+    unreadable map, unmapped reference, or missing blob — never raises.
+    """
+
+    def __init__(self, documents_dir: Path | str) -> None:
+        self._dir = Path(documents_dir)
+
+    def get_by_reference(self, reference: str) -> Path | None:
+        map_path = self._dir / "document_map.json"
+        if not map_path.is_file():
+            return None
+        try:
+            mapping = json.loads(map_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        sha = mapping.get(reference)
+        if not isinstance(sha, str):
+            return None
+        p = self._dir / f"{sha}.pdf"
+        return p if p.is_file() else None
 
 
 # ---------------------------------------------------------------------------
