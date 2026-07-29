@@ -32,6 +32,7 @@ Zero anthropic import. Zero SDK import. Stdlib only.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -138,6 +139,68 @@ def save_upload_bytes(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
     return path
+
+
+# --- T-E(1) source documents (D-36): reviews/<rid>/documents/ ---------------------
+
+# Filename fragments that could traverse or surprise once a name touches a path.
+_DOC_NAME_BAD_FRAGMENTS = ("..", "/", "\\")
+
+
+def documents_dir(review_id: str) -> Path:
+    """reviews/<rid>/documents/ — content-hashed source PDFs + document_map.json."""
+    return _REVIEWS_ROOT / _validated_review_id(review_id) / "documents"
+
+
+def document_map(review_id: str) -> dict:
+    """The {reference: sha256} map of a review's uploaded source documents ({} if none)."""
+    path = documents_dir(review_id) / "document_map.json"
+    if not path.is_file():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_documents(review_id: str, files: "list[tuple[str, bytes]]") -> dict:
+    """Persist uploaded source documents (D-36): content-hashed blobs + stem-keyed map.
+
+    ``files`` is ``[(filename, bytes)]``. Each filename must be a plain
+    ``<reference>.pdf`` — no path separators, no ``..`` (validated HERE, at the write
+    site, so no caller can bypass it). The reference is the filename stem VERBATIM
+    (D-2026-07-29 / #51): the Xero reference is the document's own identity — never
+    normalised to INV-<n>, which would recreate the D-34 namespace collision.
+    Validate-all-then-write-all: one rejected filename means NOTHING is written.
+    Blob naming mirrors the uploads/<sha256><suffix> retention idiom above
+    (idempotent by content). Returns the updated {reference: sha256} map.
+    """
+    validated: list[tuple[str, bytes]] = []
+    for filename, data in files:
+        name = (filename or "").strip()
+        if (
+            not name.lower().endswith(".pdf")
+            or any(bad in name for bad in _DOC_NAME_BAD_FRAGMENTS)
+            or Path(name).name != name
+            or not Path(name).stem
+        ):
+            raise ReviewStoreError(
+                "source documents must be plain '<reference>.pdf' filenames "
+                f"(no path separators); got {filename!r}"
+            )
+        validated.append((Path(name).stem, data))
+
+    dest = documents_dir(review_id)
+    dest.mkdir(parents=True, exist_ok=True)
+    mapping = document_map(review_id)
+    for reference, data in validated:
+        sha = hashlib.sha256(data).hexdigest()
+        blob = dest / f"{sha}.pdf"
+        if not blob.is_file():
+            blob.write_bytes(data)
+        mapping[reference] = sha
+    (dest / "document_map.json").write_text(
+        json.dumps(mapping, ensure_ascii=False, sort_keys=True, indent=1),
+        encoding="utf-8",
+    )
+    return mapping
 
 
 def append_signed(review_id: str, signed_record: dict) -> None:
