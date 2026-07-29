@@ -1,0 +1,14 @@
+*ContactName,EmailAddress,POAddressLine1,POAddressLine2,POAddressLine3,POAddressLine4,POCity,PORegion,POPostalCode,POCountry,*InvoiceNumber,*InvoiceDate,*DueDate,Total,InventoryItemCode,Description,*Quantity,*UnitAmount,*AccountCode,*TaxType,TaxAmount,TrackingName1,TrackingOption1,TrackingName2,TrackingOption2,Currency
+Keppel Data Services Pte Ltd,,,,,,,,,,BILL-3008,07/04/2026,07/05/2026,,,Cloud hosting - April,1,3200.00,400,Standard-Rated Purchases,288.00,,,,,SGD
+Bras Basah Print Pte Ltd,,,,,,,,,,BILL-3009,16/04/2026,16/05/2026,,,Printed collateral,1,900.00,400,Standard-Rated Purchases,81.00,,,,,SGD
+Serangoon Facilities Pte Ltd,,,,,,,,,,BILL-3010,24/04/2026,24/05/2026,,,Office cleaning - Q2,1,1800.00,400,Standard-Rated Purchases,162.00,,,,,SGD
+Bugis Software Pte Ltd,,,,,,,,,,BILL-3011,08/05/2026,07/06/2026,,,Developer tooling licences,1,2600.00,400,Standard-Rated Purchases,234.00,,,,,SGD
+Harbourfront Logistics Pte Ltd,,,,,,,,,,BILL-3012,15/05/2026,14/06/2026,,,Courier and delivery - May,1,640.00,400,Standard-Rated Purchases,57.60,,,,,SGD
+Tanjong Media Pte Ltd,,,,,,,,,,BILL-3013,27/05/2026,26/06/2026,,,Media buying fee,1,4100.00,400,Standard-Rated Purchases,369.00,,,,,SGD
+Jurong Cold Chain Pte Ltd,,,,,,,,,,BILL-3014,06/06/2026,06/07/2026,,,Storage - June,1,1450.00,400,Standard-Rated Purchases,130.50,,,,,SGD
+Novena Clinic Supplies Pte Ltd,,,,,,,,,,BILL-3015,22/06/2026,22/07/2026,,,First aid restock,1,380.00,485,Standard-Rated Purchases,34.20,,,,,SGD
+Keppel Data Services Pte Ltd,,,,,,,,,,BILL-3016,13/05/2026,12/06/2026,,,Support contract renewal (stale rate),1,5200.00,400,SI-Stale (5%) [test],260.00,,,,,SGD
+Serangoon Facilities Pte Ltd,,,,,,,,,,BILL-3017,03/06/2026,03/07/2026,,,Maintenance retainer (stale rate),1,2800.00,400,SI-Stale (5%) [test],140.00,,,,,SGD
+Bras Basah Print Pte Ltd,,,,,,,,,,BILL-3018,19/05/2026,18/06/2026,,,Annual report printing (no GST charged),1,3600.00,400,SI-Stale (0%) [test],0.00,,,,,SGD
+Jurong Cold Chain Pte Ltd,,,,,,,,,,Q-4417,01/06/2026,01/07/2026,,,Chiller unit (quotation),1,4800.00,400,Standard-Rated Purchases,432.00,,,,,SGD
+Jurong Cold Chain Pte Ltd,,,,,,,,,,INV-8823,09/06/2026,09/07/2026,,,Chiller unit (tax invoice),1,4800.00,400,Standard-Rated Purchases,432.00,,,,,SGD
