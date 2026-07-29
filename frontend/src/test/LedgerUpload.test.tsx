@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { XeroUploadPanel } from "../components/XeroUploadPanel";
 
 /**
@@ -8,6 +8,14 @@ import { XeroUploadPanel } from "../components/XeroUploadPanel";
  * The Xero upload panel gains an OPTIONAL second file input (the 820 account-transactions
  * ledger export). uploadExtract switches to multipart FormData carrying the primary `file`
  * plus the optional `ledger`. Omitting the ledger sends only `file`.
+ *
+ * AMENDED (C-8 / D-43, 2026-07-29). The upload flow now makes TWO requests: POST
+ * /review-session, then POST /review/upload — the session is created lazily, on upload,
+ * always. Two assertions here selected the upload as calls[0] and pinned
+ * toHaveBeenCalledTimes(1); both were POSITIONAL PROXIES for the property this file
+ * actually protects, which is that the ledger part rides on the upload request. They now
+ * select by URL, which is what they always meant. Nothing is weakened: the route
+ * assertion has not been dropped, it has become the selector.
  */
 
 const OK_BODY = {
@@ -21,7 +29,16 @@ const OK_BODY = {
 function captureFetch() {
   const calls: { url: string; body: unknown }[] = [];
   const fn = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-    calls.push({ url: String(input), body: init?.body });
+    const url = String(input);
+    calls.push({ url, body: init?.body });
+    // C-8 (D-43): answer each route with its OWN shape. Before the amendment this mock
+    // returned OK_BODY for everything, so the new session POST would have yielded
+    // review_id: undefined — a backend that does not exist.
+    if (url.includes("/review-session")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ review_id: "rev-test-0001" }), { status: 200 }),
+      );
+    }
     return Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }));
   });
   return { fn, calls };
@@ -58,11 +75,16 @@ describe("Xero upload — optional ledger (PR-3)", () => {
     Object.defineProperty(primaryInput, "files", { value: [xlsx("F5.xlsx")] });
     fireEvent.change(primaryInput);
 
-    expect(fn).toHaveBeenCalledTimes(1);
-    const { url, body } = calls[0];
-    expect(url).toContain("/review/upload");
-    expect(body).toBeInstanceOf(FormData);
-    const form = body as FormData;
+    // C-8 (D-43): the upload flow now makes TWO requests — POST /review-session then
+    // POST /review/upload. Select the upload call by URL rather than by position: this
+    // test protects "the ledger was sent on the upload request", never "the upload was
+    // first". The route assertion has not been dropped — it is now the selector.
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes("/review/upload"))).toBe(true),
+    );
+    const upload = calls.find((c) => c.url.includes("/review/upload"))!;
+    expect(upload.body).toBeInstanceOf(FormData);
+    const form = upload.body as FormData;
     expect((form.get("file") as File).name).toBe("F5.xlsx");
     expect((form.get("ledger") as File).name).toBe("Account_Transactions.xlsx");
   });
@@ -76,8 +98,11 @@ describe("Xero upload — optional ledger (PR-3)", () => {
     Object.defineProperty(primaryInput, "files", { value: [xlsx("F5.xlsx")] });
     fireEvent.change(primaryInput);
 
-    expect(fn).toHaveBeenCalledTimes(1);
-    const form = calls[0].body as FormData;
+    // Same URL selection as above, same reason.
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes("/review/upload"))).toBe(true),
+    );
+    const form = calls.find((c) => c.url.includes("/review/upload"))!.body as FormData;
     expect((form.get("file") as File).name).toBe("F5.xlsx");
     expect(form.get("ledger")).toBeNull();
   });
