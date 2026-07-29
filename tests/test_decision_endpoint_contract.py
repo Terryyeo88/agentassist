@@ -50,6 +50,8 @@ DECISION_KEYS: tuple[str, ...] = (
     "fingerprint",
     "entry_id",
     "entry_hash",
+    "reviewer",
+    "timestamp",
     "chain_length",
     "validation_status",
     "disclaimer",
