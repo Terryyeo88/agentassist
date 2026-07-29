@@ -197,7 +197,8 @@ SIGN_UPLOAD_KEYS: tuple[str, ...] = (
 # fingerprint — NEVER a verdict, and never a write to client data.
 DECISION_KEYS: tuple[str, ...] = (
     "client_id", "finding_id", "action", "disposition", "fingerprint",
-    "entry_id", "entry_hash", "chain_length", "validation_status", "disclaimer",
+    "entry_id", "entry_hash", "reviewer", "timestamp", "chain_length",
+    "validation_status", "disclaimer",
 )
 
 # The four reviewer actions (mirrors frontend/src/components/FindingDetail.tsx DECISIONS)
@@ -510,6 +511,15 @@ def post_decision(req: DecisionRequest) -> dict:
         "fingerprint": req.fingerprint,
         "entry_id": entry["entry_id"],
         "entry_hash": entry["entry_hash"],
+        # C-6(a): the reviewer and the WHEN, read straight off the record just appended —
+        # never re-derived here. `entry["timestamp"]` is the store's own append-time UTC
+        # ISO-8601 stamp (agent/decision_ledger.py: "ISO-8601 timestamp of the adjudication"),
+        # and both fields are hashed into the chain, so what a surface renders is the
+        # tamper-evident ledger value rather than a client-side clock or a re-typed name.
+        # Both are already present in `entry` (asdict of AdjudicationEntry) — this reads two
+        # more keys off a dict already in hand; it adds no call and no new import.
+        "reviewer": entry["reviewer"],
+        "timestamp": entry["timestamp"],
         "chain_length": len(load_decision_entries(req.client_id)),
         "validation_status": VALIDATION_STATUS,
         "disclaimer": DISCLAIMER,

@@ -13,12 +13,17 @@ import type { DecisionResponse } from "../api";
  * EMPTY ON LOAD, ALWAYS. A seeded "prior" row would be an invented backend state — the exact
  * thing the no-fabricated-values rule forbids. The empty state is the honest state.
  *
- * WHAT A ROW MAY CONTAIN. Measured from a real POST /decision response, whose ten keys are:
- * client_id, finding_id, action, disposition, fingerprint, entry_id, entry_hash, chain_length,
- * validation_status, disclaimer. Note what is NOT there: no timestamp and no reviewer name.
- * The store records both, but the response does not return them, so this view does not show a
- * "When" or "Reviewer" column — a browser-side clock would be this page's guess at when
- * something happened, not the ledger's record of it.
+ * WHAT A ROW MAY CONTAIN. Measured from a real POST /decision response, whose TWELVE keys are:
+ * client_id, finding_id, action, disposition, fingerprint, entry_id, entry_hash, reviewer,
+ * timestamp, chain_length, validation_status, disclaimer.
+ *
+ * C-6(a) ADDED `reviewer` + `timestamp`, so the "When" and "Reviewer" columns are now honest and
+ * are shown. They were previously absent for a reason worth keeping in mind: the response did not
+ * carry them, and filling the cells from `new Date()` or from the locally-typed reviewer-of-record
+ * would have been this page's GUESS at what happened rather than the ledger's record of it. Both
+ * values now render VERBATIM from the response — the store's own ISO-8601 append-time stamp and
+ * the reviewer it actually recorded, both hashed into the append-only chain. Do not reformat,
+ * localise, or substitute either one: the point is that the cell IS the record.
  *
  * `/audit` is deliberately not called: it returns the SAP agent's Tier-1/Tier-2 justification
  * ledger, and an uploaded export runs no agent, so there is no tool chain to show.
@@ -57,6 +62,8 @@ export function XeroAuditView({ decisions }: { decisions: DecisionResponse[] }) 
             <span role="columnheader">Finding</span>
             <span role="columnheader">Action</span>
             <span role="columnheader">Disposition</span>
+            <span role="columnheader">When</span>
+            <span role="columnheader">Reviewer</span>
             <span role="columnheader">Entry hash</span>
           </div>
           {decisions.map((d, i) => (
@@ -65,6 +72,9 @@ export function XeroAuditView({ decisions }: { decisions: DecisionResponse[] }) 
               <span className="mono xaudit-finding" role="cell">{d.finding_id}</span>
               <span className="xaudit-action" role="cell">{d.action}</span>
               <span className="xaudit-disp" role="cell">{d.disposition}</span>
+              {/* Verbatim, both of them — the ledger's own stamp and recorded reviewer. */}
+              <span className="mono xaudit-when" role="cell">{d.timestamp}</span>
+              <span className="xaudit-reviewer" role="cell">{d.reviewer}</span>
               <span className="mono xaudit-hash" role="cell" title={d.entry_hash}>
                 {d.entry_hash}
               </span>
