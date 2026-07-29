@@ -65,11 +65,13 @@ export function TopBar({ validationStatus, reviewerName, view, setView, onToggle
         {validationStatus} — pending specialist review
       </span>
 
-      <button className="bell" aria-label="Notifications">
-        <span className="bell-dot" aria-hidden="true" />
-        <span aria-hidden="true">◔</span>
-      </button>
-
+      {/* C-5: a notifications bell used to sit here. It had no onClick, no state, and no prop
+          feeding it — and nothing to feed it: `api.ts` exposes no notifications field and the
+          backend serves no notifications route. §8 forbids a control that silently does nothing,
+          and its always-on `.bell-dot` was worse than dead — a permanent "you have unread items"
+          signal with no data behind it. §8's other outcome (disable + a visible specific reason)
+          was rejected because there is no honest reason text for a feature that does not exist.
+          Do not re-add a bell until a real notifications source exists to drive it. */}
       {onOpenSign ? (
         <button className="reviewer-pill" onClick={onOpenSign}>
           {reviewerName || "Sign in"}
