@@ -99,10 +99,17 @@ def _extract_born_digital(text: str) -> ExtractedInvoice:
     Patterns match the layout emitted by generate_invoices.py and are designed
     to be robust to minor whitespace variation in pdfplumber's output.
     """
-    # Supplier name: rendered as the first text element on the page (top-left,
-    # 14pt bold) — pdfplumber returns it as the first non-empty line.
+    # Supplier name: the first non-empty line (the SAP fixture layout renders the
+    # supplier top-left, 14pt bold) — UNLESS that line is the bare "TAX INVOICE"
+    # document-type header, in which case the supplier is the NEXT non-empty line.
+    # Covers the 2026Q2 Xero corpus layout (e.g. BILL-3001.pdf, whose first line is
+    # "TAX INVOICE" and second is "GoodVendor Pte Ltd"); the SAP fixtures put the
+    # header at line 4, so their extraction is unchanged. Without this, every corpus
+    # document extracted supplier_name="TAX INVOICE" — a WRONG value, worse than an
+    # absent one.
     supplier_name: str | None = next(
-        (ln.strip() for ln in text.splitlines() if ln.strip()),
+        (ln.strip() for ln in text.splitlines()
+         if ln.strip() and ln.strip().upper() != "TAX INVOICE"),
         None,
     )
 
@@ -110,18 +117,36 @@ def _extract_born_digital(text: str) -> ExtractedInvoice:
     m = re.search(r'GST Reg No:\s*([A-Z0-9]{6,12})', text)
     gst_reg: str | None = m.group(1) if m else None
 
-    # Invoice number in the form "INV-<digits>"
-    m = re.search(r'(INV-\d+)', text)
+    # Invoice number. The "Invoice No:" label appears in BOTH corpora and is tried
+    # FIRST: the bare INV-<digits> fallback (the original SAP-fitted pattern) grabbed
+    # a vendor Reference ("INV-7742" on BILL-3005.pdf) as the invoice number — a
+    # wrong value. On every SAP fixture the label yields the identical value (the
+    # control-set test pins it), so label-first changes no SAP extraction. The bare
+    # INV-<digits> form remains as the fallback for label-less documents.
+    m = re.search(r'Invoice No:\s*([A-Za-z][A-Za-z0-9-]*\d)', text)
+    if not m:
+        m = re.search(r'(INV-\d+)', text)
     inv_num: str | None = m.group(1) if m else None
 
-    # Invoice date as YYYY-MM-DD (label appears on its own pdfplumber "line"
-    # because "Invoice Date:" is at meta_x and the value at meta_x + 2.8cm —
-    # same y-coordinate, so pdfplumber joins them on one line)
+    # Invoice date as YYYY-MM-DD. The specific "Invoice Date:" label (SAP fixture
+    # layout) runs first and unchanged; the bare "Date:" label (2026Q2 Xero corpus,
+    # e.g. BILL-3002.pdf's "Invoice No: BILL-3002 Date: 2026-04-22") is a FALLBACK
+    # reached only when the specific form is absent. Lookbehinds keep a due/payment/
+    # statement date from ever being read as the invoice date ("Due:" is the corpus's
+    # own other date label; "Due Date:" et al. are the guarded near-misses).
     m = re.search(r'Invoice Date:\s*(\d{4}-\d{2}-\d{2})', text)
+    if not m:
+        m = re.search(
+            r'(?<!Due )(?<!Payment )(?<!Statement )\bDate:\s*(\d{4}-\d{2}-\d{2})', text
+        )
     inv_date: str | None = m.group(1) if m else None
 
-    # Subtotal excluding GST
+    # Subtotal excluding GST. Specific SAP-fixture label first; bare "Subtotal:"
+    # (2026Q2 corpus, e.g. BILL-3001.pdf) as fallback — it cannot match the SAP form,
+    # where the colon follows "(excl. GST)", not "Subtotal".
     m = re.search(r'Subtotal \(excl\. GST\):\s*([\d,]+\.\d{2})', text)
+    if not m:
+        m = re.search(r'Subtotal:\s*([\d,]+\.\d{2})', text)
     excl_gst: float | None = _parse_money(m.group(1)) if m else None
 
     # GST rate label (e.g. "7%") and GST amount on the same line
@@ -129,8 +154,12 @@ def _extract_born_digital(text: str) -> ExtractedInvoice:
     gst_rate: str | None = m.group(1) if m else None
     gst_amount: float | None = _parse_money(m.group(2)) if m else None
 
-    # Total including GST
+    # Total including GST. Specific SAP-fixture label first; bare "Total:" (2026Q2
+    # corpus, e.g. BILL-3001.pdf) as fallback — \b plus the capital T keeps it off
+    # "Subtotal:" ("Subtotal" is one word; there is no boundary before its "total").
     m = re.search(r'TOTAL \(incl\. GST\):\s*([\d,]+\.\d{2})', text)
+    if not m:
+        m = re.search(r'\bTotal:\s*([\d,]+\.\d{2})', text)
     total: float | None = _parse_money(m.group(1)) if m else None
 
     vals: dict[str, object] = {
