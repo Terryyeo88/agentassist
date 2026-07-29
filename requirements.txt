@@ -12,4 +12,5 @@ uvicorn
 pytest
 pytest-xdist
 anthropic
-claude-agent-sdk==0.2.99python-multipart==0.0.29
+claude-agent-sdk==0.2.99
+python-multipart==0.0.29
