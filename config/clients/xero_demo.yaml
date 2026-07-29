@@ -18,8 +18,16 @@
 client_id: xero_demo                       # Must match the filename stem exactly.
 client_name: "Xero Demo Pte Ltd"
 gst_registration_number: ""                # Synthetic demo — no real GST reg number.
-applicable_gst_rate: 0.09                  # Fixture is 9% data. NB: not yet threaded
-                                           # into _classify_line (E4 default 0.07) — DEBT-5.
+applicable_gst_rate: 0.09                  # Fixture is 9% data. Threaded into E4 via
+                                           # orchestrator/steps.py:321,348 (expected_rate=
+                                           # client_config.applicable_gst_rate); no 0.07
+                                           # default exists — DEBT-4 made expected_rate
+                                           # REQUIRED with a None guard (sap_b1_server.py:749,
+                                           # 781). Verified over the 2026Q2 corpus: 54 lines
+                                           # at 9%, E4 fired on exactly 3 (vs all 54 against
+                                           # 0.07). A prior note here claimed "not yet
+                                           # threaded / E4 default 0.07" — both halves false;
+                                           # that drift is #50 at the config layer.
 
 source_system: xero                        # != "sap_b1" -> file-import client. Suppresses the
                                            # SO->SR / SI->TX SAP-default tax-code remap AND makes
@@ -54,18 +62,13 @@ report:
   reviewer_name: ""
   firm_name: ""
 
-# =============================================================================
-# D-2026-07-27-dup-window (G4b) — windowed duplicate-purchase surfacer (DUP_WINDOW).
-#
-# THE WINDOW VALUE IS A DEMO PARAMETER, FITTED TO THE COMMITTED FIXTURE — NOT A
-# VALIDATED THRESHOLD. The committed corpus fires ONLY at window >= 7: exactly the
-# BILL-3004/3005 bait pair's 7-day gap, so this number is reverse-derived FROM the
-# fixture. Stated (here), it is a demo parameter; unstated, it would be
-# contamination. No IRAS source prescribes any window (ASK Step 3D.1.1(d)
-# prescribes the QUESTION — input tax not claimed twice on the same transaction —
-# never a matching key, window, or tolerance): this value is a NON-REGULATORY
-# TUNING PARAMETER, OURS, and the loader still refuses to guess one (an enabled
-# check with no declared days is a ConfigError, never a default).
-# =============================================================================
+# D-2026-07-29 (supersedes the fitted value): the window is ONE GST FILING
+# PERIOD (92 days), because the question ASK 3D.1.1(d) asks is whether input
+# tax was claimed twice on the same transaction, and the return is the unit
+# in which a claim is made. This rationale is NOT fixture-derived — it is
+# derived from the filing period. It remains a NON-REGULATORY TUNING
+# PARAMETER, OURS: no IRAS source prescribes any window, key, or tolerance.
+# ASK 3D.1.1(d) prescribes the QUESTION only. Prior value was 7, reverse-
+# derived from the BILL-3004/3005 bait gap and recorded as such.
 dup_window_enabled: true
-dup_window_days: 7
+dup_window_days: 92
