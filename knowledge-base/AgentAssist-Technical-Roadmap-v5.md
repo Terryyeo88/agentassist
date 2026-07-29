@@ -1804,3 +1804,24 @@ what the software **knows**; no validation rung moves; `validation_status` unval
 `show_ai_candidates` False, T2.11 unmoved. `exploration-notes/iras-ask-coverage-analysis.md`:
 **annotated only — NO coverage cell moved** (3D.1.1.h stays ✓; detection is unchanged).
 `docs/merge-gates.md`: checked — no change required. Docs-sync `.md`-only, separate commit from code.
+
+
+### `D-2026-07-29-doc-route-namespace` — document route refuses cross-namespace references (build tag **D-34**) *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+- **Defect (run-proven):** `GET /document/BILL-3002` → 200 with `INV-3002.pdf` bytes (sha
+  `98d08a5e…`, Office Essentials Pte Ltd, 2024-08-20) substituted for the Xero document
+  `BILL-3002.pdf` (sha `9107458253…`, OldRate Supplies Pte Ltd, 2026-04-22). Root cause: the
+  digits shim erased the corpus namespace before the provider resolved in a different one —
+  safe with one corpus, unsafe the moment a second one's references arrived.
+- **Fix:** serve only the document's own identity (`<n>` / `INV-<n>`); refuse all else with the
+  honest 404, byte-identical to the absent case. Before/after over the 47 measured refs:
+  wrongly-resolving 2 → 0; the sixteen correct refs byte-unchanged; honest 404s 29 → 31.
+  +4 tests → 2904 pass. R1 of `test_document_route_refs.py` hand-amended by Terry
+  (substitution-pin → refusal-pin).
+- **T-E precondition, not T-E:** no ingestion, no bundle parameter, the four document checks stay
+  `unavailable`, `document_pdfs_present` untouched. An uploaded-document provider must key on the
+  FULL reference; a CompositeProvider keeping the SAP fixture dir as fallback would reintroduce
+  the substitution for every colliding stem.
+- **FILED, not fixed — open item #51:** `tests/fixtures/Xero-imports/source_invoices/source_invoices/`
+  double nesting + `<XeroReference>.pdf` naming resolvable by no shipped provider; canonical
+  layout needs a ruling before T-E reads it.

@@ -668,3 +668,18 @@ the only artefact that had been checked against source.
 incomplete registry-citation list, the four demo artefacts, `run_baseline_tests.py:125`, and the two
 citation surfaces (`report/sections.py:866` / `report/constants.py:80` vs the registry). **A copy with
 no binding test is not a copy, it is a fork.** Filed for a ruling; no mechanism proposed here.
+
+
+## D-2026-07-29 — source-document viewer: refuse, never substitute (D-34)
+
+> `GET /document/{doc_ref}` previously resolved ANY reference by its last digit run against the
+> SAP fixture corpus: `BILL-3002` → 200 serving `INV-3002.pdf` (sha `98d08a5e…`, Office Essentials
+> Pte Ltd, 2024-08-20) as the source document for the Xero E4 finding — while the committed Xero
+> document `BILL-3002.pdf` is sha `9107458253…` (OldRate Supplies Pte Ltd, 2026-04-22).
+> Wrong-document-with-200 was the one state neither the viewer nor the route could detect. A
+> reference is now served only when the full string is the document's own identity (`"3005"` /
+> `"INV-3005"`); `BILL-*` / `Q-*` / `#N` refuse with the SAME honest 404 as an absent document.
+> **The Xero path still shows NO source documents — it now does so honestly; that is the whole
+> change.** Ingestion (an upload slot, a namespace-keyed provider) is T-E: see open item #47's
+> INV-INV trap and NEW open item #51 — the committed `source_invoices/source_invoices/` double
+> nesting + `<XeroReference>.pdf` naming needs a canonical-layout ruling before T-E reads it.

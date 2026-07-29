@@ -366,22 +366,33 @@ def get_working_paper(path: str) -> FileResponse:
     return FileResponse(candidate, media_type="application/pdf", filename=candidate.name)
 
 
-_DOC_REF_DIGITS = re.compile(r"\d+")
+# D-34: a reference is served ONLY when the FULL string is the document's own identity —
+# the bare doc_num form ("3005") or the invoice-number form ("INV-3005", the fixture's
+# filename stem and face value). The previous digits shim (findall(r"\d+") -> last run)
+# erased the corpus namespace: GET /document/BILL-3002 served the SAP fixture
+# INV-3002.pdf (sha 98d08a5e…) — a different company's invoice — while the reference
+# names the Xero corpus document BILL-3002.pdf (sha 9107458253…). Safe while one corpus
+# existed; unsafe the moment a second one's references arrived. Any other-shaped
+# reference (BILL-*, Q-*, …) is refused with the SAME 404 as an absent document.
+# A namespace-aware provider for uploaded documents is T-E's job, not this route's.
+_DOC_REF_IDENTITY = re.compile(r"(?:INV-)?(\d+)")
 
 
 @app.get("/document/{doc_ref}")
 def get_document(doc_ref: str) -> FileResponse:
     """Serve the source invoice PDF for a finding's document reference. Read-only.
 
-    Accepts a numeric SAP doc_num (e.g. "3005") OR a Xero-style reference string
-    (e.g. "BILL-3003"); the LAST run of digits selects the INV-<n>.pdf fixture. 404 (the UI's
-    honest 'no source document on file') when there is no numeric part or no matching file.
-    Path-safety: only extracted digits (an int) reach the provider — the raw string never
-    builds a path, and a str path-param does not match "/"."""
-    digits = _DOC_REF_DIGITS.findall(doc_ref)
-    if not digits:
+    Accepts the document's own identity ONLY: a bare SAP doc_num (e.g. "3005") or the
+    invoice-number form (e.g. "INV-3005"). Any other reference shape — including a
+    Xero-style "BILL-3003" that merely shares a digit run with a fixture — is REFUSED
+    with the honest 404, byte-identical to the absent-document case (D-34: refuse,
+    never substitute across corpora). Path-safety: only the matched digits (an int)
+    reach the provider — the raw string never builds a path, and a str path-param does
+    not match "/"."""
+    m = _DOC_REF_IDENTITY.fullmatch(doc_ref)
+    if m is None:
         raise HTTPException(status_code=404, detail="No source document on file")
-    doc_num = int(digits[-1])
+    doc_num = int(m.group(1))
     path = _DOC_PROVIDER.get_document(doc_num)
     if path is None or not Path(path).is_file():
         raise HTTPException(status_code=404, detail="No source document on file")
