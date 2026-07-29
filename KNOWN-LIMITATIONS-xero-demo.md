@@ -702,3 +702,17 @@ no binding test is not a copy, it is a fork.** Filed for a ruling; no mechanism 
 > unresolved:** no auth on any route, no rate limit, client documents persisting on disk
 > indefinitely — fine on localhost with synthetic data, blocking before a real client's
 > documents arrive. C-8 (Collin): frontend must send review_id and use the new route.
+
+
+## D-2026-07-29 — C-8: the viewer asks the right route (surface selection, not fallback)
+
+> The Xero surface now creates a review session on every upload (D-43), sends attached
+> source-document PDFs as repeated `documents` parts (D-44 api.ts, Terry-edited), and the
+> DocumentViewer fetches `GET /api/review/{rid}/document/{ref}` — verified end to end in a
+> REAL browser: the E4 BILL-3002 finding renders beside the genuine OldRate Supplies
+> invoice (9% / 360.00 on the face vs the ledger's 8% / 320.00). With a reviewId a 404 is
+> FINAL — no second fetch, no reach into the SAP corpus (D-34 at the client). Without one
+> (the SAP surface) the legacy route serves as before. **Still true: the checks do not
+> compare that document to the books — T-E(2), which now carries D-45 (the sign path
+> cannot see uploaded documents; a T-E(2) paper would omit what the screen shows) and
+> D-40 (coverage shape for a partial document set).**
