@@ -1877,3 +1877,21 @@ what the software **knows**; no validation rung moves; `validation_status` unval
   leans must-thread) or state the screen/paper divergence on the paper.
 - **Open item**: the namespaces overlap in FORM (`INV-2003` matches D-34's regex; 404s on
   value alone). vitest 139 pass; four document checks still DO NOT run; T2.11 unmoved.
+
+
+### `D-2026-07-29-extraction-tolerance` — T-E(2a) born-digital label tolerance *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+- **The M3 finding:** zero checks fire on the 2026Q2 corpus; all 10 matched documents
+  refused at the T2.14 gate (invoice_date absent) because `ingest.py:120` demanded the
+  literal "Invoice Date:" and the corpus prints "Date:". Gate right, extractor fitted
+  to our own generator's labels — the fitted-to-a-fixture family.
+- **Fix shape:** specific labels first and unchanged; observed corpus forms as
+  commented fallbacks; due/payment/statement-date guards; wrong-value rule enforced by
+  a hand-read answer key (also fixed supplier_name="TAX INVOICE" ×10 and BILL-3005's
+  Reference-as-invoice-number).
+- **Proofs:** answer key 10/10; SAP control byte-identical; seal `d625b619…`
+  before==after (Gate-2 controls, no re-freeze); +25 tests → 2939 pass; hand-amendment
+  EMPTY.
+- **PILOT finding:** arbitrary layouts will mostly route to "manual review required";
+  durable answer = multimodal path (own ruling needed), not more regexes.
+- Checks still dark; coverage untouched (`unavailable` ×4, correct). T-E(2) next.
