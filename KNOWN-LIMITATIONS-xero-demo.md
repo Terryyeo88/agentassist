@@ -716,3 +716,16 @@ no binding test is not a copy, it is a fork.** Filed for a ruling; no mechanism 
 > compare that document to the books — T-E(2), which now carries D-45 (the sign path
 > cannot see uploaded documents; a T-E(2) paper would omit what the screen shows) and
 > D-40 (coverage shape for a partial document set).**
+
+
+## D-2026-07-29 — extraction was fitted to our own labels (T-E(2a))
+
+> T-E(2)'s measurement found ZERO document checks fire over the 2026Q2 corpus: the
+> born-digital extractor demanded `generate_invoices.py`'s exact labels, the corpus
+> prints ordinary ones ("Date:", "Subtotal:", "Total:"), and the legibility gate —
+> correctly — refused every document. Now fixed with observed-form fallbacks
+> (answer-key-scored: 10/10 documents, every field), SAP control set and the seal
+> byte-identical, gate untouched. **Checks still do not fire — T-E(2) is next.**
+> **PILOT finding: real client invoice layouts will mostly route to "manual review
+> required" on the born-digital path; the durable answer is multimodal extraction
+> (needs its own ruling), not a longer regex list.**
