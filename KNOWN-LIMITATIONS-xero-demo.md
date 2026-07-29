@@ -729,3 +729,17 @@ no binding test is not a copy, it is a fork.** Filed for a ruling; no mechanism 
 > **PILOT finding: real client invoice layouts will mostly route to "manual review
 > required" on the born-digital path; the durable answer is multimodal extraction
 > (needs its own ruling), not a longer regex list.**
+
+
+## D-2026-07-29 — T-E(2): the four document checks RUN on Xero (D-40/D-45/D-46)
+
+> With documents supplied, gst_amount_mismatch / correct_period / total_inconsistency /
+> reg11_supplier_gst_absent now run over the reference join (12 of 36 on the committed
+> corpus — DEGRADED with the computed count, never "full" on a partial set). The signed
+> paper carries the same findings and the same counts as the screen (D-45 closed), and
+> the document candidates render UNGATED with per-candidate extraction provenance
+> (D-46) — show_ai_candidates keeps gating LLM candidates only. 4/4 baits fired, 0/18
+> clean controls. **Consistency, not truth**: a wrong document with matching books is
+> invisible. NO accuracy claim; synthetic corpus only; T2.11 unmoved. FILED: the locked
+> gst_amount_mismatch wording says "SAP-posted" — factually wrong on a Xero paper;
+> hand-amendment territory.

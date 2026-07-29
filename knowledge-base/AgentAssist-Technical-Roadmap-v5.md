@@ -1895,3 +1895,20 @@ what the software **knows**; no validation rung moves; `validation_status` unval
 - **PILOT finding:** arbitrary layouts will mostly route to "manual review required";
   durable answer = multimodal path (own ruling needed), not more regexes.
 - Checks still dark; coverage untouched (`unavailable` ×4, correct). T-E(2) next.
+
+
+### `D-2026-07-29-doc-checks-xero` — T-E(2): document checks on Xero (D-40/D-45/D-46) *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+- **D-40**: three coverage states via existing LEVELS; count COMPUTED from the join
+  (T4 enforces); denominator = 36 per-document join items; corpus numerator 12 of 36;
+  join set on the READER → response and paper share one value. Degraded reason is
+  PROSE — UI must not parse counts from it.
+- **D-45 closed** (three grounds recorded): /sign/upload takes review_id, threads the
+  documents; screen≡paper printed (same four findings, same 12-of-36).
+- **D-46**: ungated Source-Document Cross-Reference section; extraction provenance per
+  candidate; AI-Surfaced stays flag-gated (pinned both directions); no severity word
+  on paper; negative-pin sweep clean (pdfplumber + pdfminer).
+- Gate-2 shas licensed the widening (66d0a4fc / 2b8bdd0b); reasoning-branch int()
+  untouched. 4/4 baits, 0/18 controls; boxes + 5 gate verdicts byte-identical.
+  +17 → 2958 pass; hand-amendment EMPTY; browser-verified.
+- FILED: "SAP-posted" in the locked mismatch wording is wrong on a Xero paper.
