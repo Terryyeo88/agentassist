@@ -38,6 +38,10 @@ interface Props {
   /** The source identity of the payload being rendered (SAP: "b1_demo"; Xero: the upload
    *  response's source_kind). Compared against expectedSource; a mismatch withholds the data. */
   sourceKind?: string | null;
+  /** C-8: the review session this surface's upload created (D-43). Threaded to the
+   *  DocumentViewer, which SELECTS the review-scoped document route when present (D-42's
+   *  two-routes-two-namespaces at the client). The SAP surface omits it. */
+  reviewId?: string;
 }
 
 /**
@@ -60,6 +64,7 @@ export function ReviewScreen({
   reviewOnlyNote,
   expectedSource,
   sourceKind,
+  reviewId,
 }: Props) {
   // C1 source-document viewer: opened by the FindingDetail trigger, rendered as a THIRD pane
   // BESIDE the detail (a flex column inside the grid's detail cell) — never a full-page
@@ -109,7 +114,7 @@ export function ReviewScreen({
           <div className="panel detail">Select a finding from the queue.</div>
         )}
         {openDoc != null && (
-          <DocumentViewer docNum={openDoc} onClose={() => setOpenDoc(null)} />
+          <DocumentViewer docNum={openDoc} reviewId={reviewId} onClose={() => setOpenDoc(null)} />
         )}
       </div>
     </>
