@@ -3,9 +3,10 @@
 BUILD ID: t-dup-window. End-to-end pins over the SIGNED xero_demo paper and the
 response/oracle contracts:
 
-  P1  xero_demo now DECLARES dup_window_enabled: true + dup_window_days: 7 (the
-      G4b fixture-fitted DEMO value -- reverse-derived from the bait pair's 7-day
-      gap; no IRAS source prescribes any window; the loader still refuses to guess).
+  P1  xero_demo now DECLARES dup_window_enabled: true + dup_window_days: 92 (one
+      GST filing period -- D-2026-07-29, superseding the G4b fixture-fitted 7,
+      which was reverse-derived from BILL-3004/3005's 7-day gap; no IRAS source
+      prescribes any window; the loader still refuses to guess).
   P2  (A2) the signed xero_demo F5 paper renders the Windowed Duplicate-Purchase
       Review with the BILL-3004/3005 pair: both doc_nums, both dates, the delta,
       the supplier.
@@ -120,12 +121,14 @@ def _miner_text(pdf_path) -> str:
 
 
 def test_p1_xero_demo_declares_the_demo_window():
-    """FAILS TODAY: xero_demo.yaml carries no dup_window keys."""
+    """xero_demo.yaml declares the window; the value is one GST filing period (D-2026-07-29)."""
     cfg = load_client_config("xero_demo", check_connectivity=False)
     assert cfg.dup_window_enabled is True
-    assert cfg.dup_window_days == 7, (
-        "the committed DEMO value -- fixture-fitted (fires only at >= 7), G4b-labelled "
-        "in the YAML; NOT a validated threshold"
+    assert cfg.dup_window_days == 92, (
+        "one GST filing period. Supersedes the fixture-fitted 7 (D-2026-07-29): the "
+        "prior value was reverse-derived from the BILL-3004/3005 bait gap. Still a "
+        "NON-REGULATORY TUNING PARAMETER, OURS -- no IRAS source prescribes a window, "
+        "key, or tolerance; ASK 3D.1.1(d) prescribes the QUESTION only."
     )
 
 
