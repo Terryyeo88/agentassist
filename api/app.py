@@ -24,6 +24,7 @@ and token-free.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
@@ -1216,36 +1217,60 @@ def _xero_document_context(reader, period: dict, rid: Optional[str]):
     return (lambda: items), provider, (matched, len(items))
 
 
-def _serialize_document_candidates(cands) -> list:
-    """DocumentCandidate -> QueueItem rows (EXACTLY viewmodel.QUEUE_ITEM_KEYS; T-E(2)).
+def _serialize_document_candidates(cands, line_items_by_ref: "Optional[dict]" = None) -> list:
+    """DocumentCandidate -> QueueItem rows via the SAME resolution the viewmodel uses.
 
-    fingerprint None -> the panel renders decision controls DISABLED with an honest
-    reason (B3a-2 no-silent-dead-buttons), exactly like ledger-recon rows. The
-    candidate framing names the extraction provenance: born-digital is deterministic
-    end to end; a scanned document's model-assisted extraction says so (D-46).
+    D-47: this function previously re-implemented an existing projection and violated
+    the declared api.ts contract (completeness / iras_basis_caveat / inputs_hash null
+    on non-nullable fields) — FindingDetail crashed live. Now: display_name and
+    iras_basis resolve through CHECK_REGISTRY (the registry the viewmodel resolves
+    through), the caveat is the shared _IRAS_CAVEAT constant, completeness states the
+    truth (a candidate cannot exist unless the line item AND the source document were
+    both present), inputs_hash is computed over the comparison's inputs, and
+    vendor/doc_date carry the BOOKS' values joined from the very line items
+    reconcile() consumed — passed in by the ONE call site; no second source of truth,
+    no duplicated storage. (The invoice FACE's supplier/date may disagree with the
+    books; that comparison is a FILED ASK B1 item — nothing here silently picks one.)
+
+    finding_type derives from extraction_source (D-47): born-digital extraction is
+    deterministic end to end; a model-assisted (scanned) extraction is probabilistic.
+    D-46's ungated paper rendering rests on exactly this distinction.
+    fingerprint None -> decision controls render DISABLED with an honest reason.
     """
+    from agent.registry import CHECK_REGISTRY  # noqa: PLC0415 — keep module import graph flat
+    from api.viewmodel import _IRAS_CAVEAT  # noqa: PLC0415
+
+    joined = line_items_by_ref or {}
     rows = []
     for c in (cands or []):
+        born = getattr(c, "extraction_source", "") == "born_digital"
         prov = (
-            "born-digital (deterministic extraction)"
-            if getattr(c, "extraction_source", "") == "born_digital"
+            "born-digital (deterministic extraction)" if born
             else "model-assisted extraction (scanned image)"
         )
+        li = joined.get(str(c.doc_num)) or {}
+        spec = CHECK_REGISTRY.get(c.check_id)
+        inputs_hash = "sha256:" + hashlib.sha256(json.dumps({
+            "check_id": c.check_id,
+            "doc_num": str(c.doc_num),
+            "extracted_value": c.extracted_value,
+            "listing_value": c.listing_value,
+        }, sort_keys=True, default=str).encode("utf-8")).hexdigest()
         rows.append({
             "finding_id": f"doccheck:{c.check_id}:{c.doc_num}",
             "check_id": c.check_id,
-            "finding_type": "probabilistic",
+            "finding_type": "deterministic" if born else "probabilistic",
             "group": "needs_review",
-            "vendor": None,
+            "vendor": li.get("card_name"),
             "severity": c.severity,
             "description": c.message,
             "recommendation": None,
             "doc_num": c.doc_num,
-            "doc_date": None,
+            "doc_date": li.get("doc_date"),
             "error_code": c.check_id,
-            "display_name": str(c.check_id).replace("_", " "),
-            "iras_basis": None,
-            "iras_basis_caveat": None,
+            "display_name": (spec.display_name if spec else str(c.check_id).replace("_", " ")),
+            "iras_basis": (spec.iras_basis if spec else None),
+            "iras_basis_caveat": _IRAS_CAVEAT,
             "demoted": False,
             "annotation": None,
             "prior_dispositions": [],
@@ -1254,8 +1279,13 @@ def _serialize_document_candidates(cands) -> list:
                 f"Invoice cross-reference candidate ({prov}) — a reviewer adjudicates "
                 "against the source document; this is a candidate, not a verdict."
             ),
-            "completeness": None,
-            "inputs_hash": None,
+            "completeness": {
+                "required": ["line_item", "source_document"],
+                "present": ["line_item", "source_document"],
+                "missing": [],
+                "satisfied": True,
+            },
+            "inputs_hash": inputs_hash,
             "proposal_id": None,
             "proposal_status": None,
             "validation_status": "unvalidated",
@@ -1345,7 +1375,10 @@ def _xero_f5_review_response(
     ) + serialize_ledger_recon_queue(result.compile_output)
     # T-E(2): document cross-reference candidates join the queue (fingerprint None ->
     # honest disabled decision controls, the ledger-recon precedent).
-    queue = queue + _serialize_document_candidates(result.document_candidates)
+    queue = queue + _serialize_document_candidates(
+        result.document_candidates,
+        {str(it["doc_num"]): it for it in (doc_line_source() if doc_line_source else [])},
+    )
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
     if upload_dossiers.capped:
         log.warning("dossier cap exceeded on xero_f5_upload — generation skipped")
