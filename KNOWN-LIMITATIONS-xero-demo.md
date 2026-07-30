@@ -743,3 +743,17 @@ no binding test is not a copy, it is a fork.** Filed for a ruling; no mechanism 
 > invisible. NO accuracy claim; synthetic corpus only; T2.11 unmoved. FILED: the locked
 > gst_amount_mismatch wording says "SAP-posted" — factually wrong on a Xero paper;
 > hand-amendment territory.
+
+
+## D-2026-07-30 — D-47: the queue-row contract is now bound (a crash reached a user)
+
+> Clicking a document finding white-screened the app: the T-E(2) serializer emitted
+> null on three non-nullable QueueItem fields and FindingDetail crashed. Fixed via the
+> registry/caveat/completeness/inputs-hash resolution every other row uses, books'
+> vendor+date joined from the line items reconcile() consumed, finding_type from
+> extraction_source (D-47), and ONE frontend null-guard. T1 of
+> test_queue_item_contract.py now binds EVERY row to EVERY non-nullable field — the
+> missing control the XERO_UPLOAD_KEYS family keeps re-teaching. SAP paper proven
+> byte-identical (E2). FILED: face-vs-books supplier comparison (ASK B1) unbuilt;
+> suspected_category enum lacks §6.1.6 Category 3 (insurance) — Terry authors enum
+> values; Category 3 unmeasurable until then.

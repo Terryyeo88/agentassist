@@ -1912,3 +1912,22 @@ what the software **knows**; no validation rung moves; `validation_status` unval
   untouched. 4/4 baits, 0/18 controls; boxes + 5 gate verdicts byte-identical.
   +17 → 2958 pass; hand-amendment EMPTY; browser-verified.
 - FILED: "SAP-posted" in the locked mismatch wording is wrong on a Xero paper.
+
+
+### `D-2026-07-30-doccand-projection` — D-47: queue projection contract bound *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+- **The crash**: document finding click → null completeness → FindingDetail unmounted
+  the tree; reached a user. Root cause: a SECOND projection of QueueItem with nothing
+  binding it (M2: three nulls per row on non-nullable fields; M3: SAP/frozen ZERO —
+  confined to the T-E(2) serializer).
+- **Fix**: registry-resolved display_name/iras_basis; shared caveat by reference;
+  truthful completeness; computed inputs_hash; BOOKS' vendor/doc_date via caller-side
+  line-item join (C1 refuted listing_value; C2 confirmed both paths' items from runs;
+  no dataclass change). D-47: finding_type from extraction_source.
+- **The control**: test_queue_item_contract.py T1 — every row × every non-nullable
+  api.ts field. Family named: XERO_UPLOAD_KEYS / t212c reason copy / frontend
+  fixtures / sources.md citations.
+- **E2**: SAP paper byte-identical before/after (6bb2cd6b…), both extractors.
+- FILED: face-vs-books supplier (ASK B1, unbuilt); suspected_category enum lacks
+  Category 3 (insurance) — Terry authors; Category 3 unmeasurable, medical_expenses
+  contaminated. +8 → 2965 pass; browser-verified all four clicks.

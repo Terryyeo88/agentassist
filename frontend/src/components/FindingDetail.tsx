@@ -69,11 +69,15 @@ export function FindingDetail({ item, decision, onRecord, onOpenSign, reviewOnly
   // an incomplete dossier reads "incomplete" and names what is missing; it is never hidden.
   // Value-only field already in QUEUE_ITEM_KEYS (populated on Xero uploads by #133); no contract
   // change. Empty on the frozen path → the block is omitted rather than shown as noise.
-  const comp = item.completeness;
+  // D-47 guard: the contract says completeness is non-nullable and the backend now
+  // binds it (test_queue_item_contract.py T1), but a null must degrade to an omitted
+  // block — never a crash that unmounts the whole tree (it did, live, 2026-07-30).
+  const comp = item.completeness ?? null;
   const completenessHasData =
-    comp.required.length > 0 || comp.present.length > 0 || comp.missing.length > 0;
+    comp != null &&
+    (comp.required.length > 0 || comp.present.length > 0 || comp.missing.length > 0);
   const completenessIncomplete =
-    completenessHasData && (!comp.satisfied || comp.missing.length > 0);
+    comp != null && completenessHasData && (!comp.satisfied || comp.missing.length > 0);
 
   // Prior-decision history (bucket-B): the decision-ledger memory (annotation + prior_dispositions)
   // was previously shown ONLY on demoted rows. Surface it on ANY row that carries prior history, so
