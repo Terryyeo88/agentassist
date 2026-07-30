@@ -98,6 +98,11 @@ def test_accept_happy_path(client, decisions_root):
     # Same disclaimer constant the review payload uses.
     assert body["disclaimer"] == DISCLAIMER
     assert body["fingerprint"] == _FP
+    # §8: reviewer + timestamp are the real ledger facts, surfaced verbatim — not fabricated.
+    assert body["reviewer"] == "Collin"                     # the submitted reviewer_name
+    [entry] = load_decision_entries("acme", root=decisions_root)
+    assert body["reviewer"] == entry["reviewer"]            # matches the persisted record
+    assert body["timestamp"] == entry["timestamp"]          # persisted ledger value, not a fresh clock
 
 
 # ── 422 surface (the pinned rejections in contract B) ────────────────────────────────
