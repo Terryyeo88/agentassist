@@ -1027,7 +1027,7 @@ def _dummy_doc_candidate(doc_num: int = 3003) -> DocumentCandidate:
         check_id="gst_amount_mismatch",
         severity="MEDIUM",
         message="Consider reviewing whether the GST amount on the invoice face "
-                "(900.00) agrees with the SAP-posted tax total (840.00).",
+                "(900.00) agrees with the posted tax total (840.00).",
         extracted_value=900.0,
         listing_value=840.0,
         extraction_source="born_digital",

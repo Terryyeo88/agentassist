@@ -139,7 +139,7 @@ def reconcile(
         )
 
     # ── Check 1: gst_amount_mismatch ─────────────────────────────────────────
-    # Compares the GST amount on the invoice face against the SAP-posted
+    # Compares the GST amount on the invoice face against the posted
     # TaxTotal.  A discrepancy may indicate a data-entry or coding error on
     # either side; both possibilities remain open for the reviewer.
     if extracted.gst_amount is not None:
@@ -152,7 +152,7 @@ def reconcile(
                 severity="MEDIUM",
                 message=(
                     f"Consider reviewing whether the GST amount on the invoice face "
-                    f"({pdf_gst:.2f}) agrees with the SAP-posted tax total "
+                    f"({pdf_gst:.2f}) agrees with the posted tax total "
                     f"({sap_gst:.2f}); the difference of {diff:.2f} may indicate an "
                     f"input or coding error."
                 ),

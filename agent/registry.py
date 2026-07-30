@@ -323,7 +323,7 @@ _CHECKS: list[CheckSpec] = [
     # --- document reconciliation checks (documents/reconcile.py — DocumentCandidate) ---
     CheckSpec(
         check_id="gst_amount_mismatch",
-        display_name="GST amount on invoice PDF differs from SAP line item",
+        display_name="GST amount on invoice PDF differs from the posted line item",
         iras_basis="IRAS GST Act s19 / Regulation 11 — Tax invoice requirements",
         inputs_needed=["document_pdfs", "sap_listing"],
         finding_type="probabilistic",
