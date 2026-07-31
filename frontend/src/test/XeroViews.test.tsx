@@ -262,7 +262,7 @@ describe("Audit view (D-17)", () => {
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     go("Audit");
 
-    expect(screen.getByText(/Decisions/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^Decisions$/i })).toBeInTheDocument();
     expect(screen.queryByText(/this session/i)).toBeNull();
     expect(screen.queryByRole("region", { name: /this session/i })).toBeNull();
     expect(screen.getByText(/No decision has been recorded against this export yet/i))
