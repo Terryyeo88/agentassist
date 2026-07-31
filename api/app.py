@@ -202,6 +202,18 @@ DECISION_KEYS: tuple[str, ...] = (
     "validation_status", "disclaimer",
 )
 
+# GET /decisions/{client_id} response contract (C-6b) — pinned by
+# tests/test_decisions_read_route.py. The READ half of the store the route above writes.
+# `entries` are the stored records VERBATIM (asdict of AdjudicationEntry, oldest first) —
+# not a projection: a surface listing prior decisions must render the ledger's own values,
+# and a re-shaped record here would be this layer's account of the adjudication rather than
+# the tamper-evident one. Note what a stored entry does NOT carry: `finding_id`. The record
+# is keyed on the deterministic fingerprint alone, so a prior-decision row can name the
+# fingerprint and not the finding — an honest gap, not one to fill by inference.
+DECISIONS_READ_KEYS: tuple[str, ...] = (
+    "client_id", "entries", "chain_length", "validation_status", "disclaimer",
+)
+
 # The four reviewer actions (mirrors frontend/src/components/FindingDetail.tsx DECISIONS)
 # mapped onto the controlled T5.5 disposition vocabulary. Per the documented semantics:
 # Accept = genuine issue accepted this period (annotate-only); Decline = the reviewer
@@ -522,6 +534,46 @@ def post_decision(req: DecisionRequest) -> dict:
         "reviewer": entry["reviewer"],
         "timestamp": entry["timestamp"],
         "chain_length": len(load_decision_entries(req.client_id)),
+        "validation_status": VALIDATION_STATUS,
+        "disclaimer": DISCLAIMER,
+    }
+
+
+@app.get("/decisions/{client_id}")
+def get_decisions(client_id: str) -> dict:
+    """Every decision recorded for *client_id*, oldest first (C-6b). Read-only.
+
+    The READ half of the store ``POST /decision`` writes. Until this route existed the
+    entries were loaded server-side only to be folded into some OTHER artefact — a
+    re-applied queue key, a signed paper's adjudication view, a superseded count — so no
+    surface could list prior decisions and the upload Audit view was empty on load by
+    necessity, not by choice.
+
+    SCOPED BY client_id, because that is how the store is laid out
+    (``decisions/<client_id>/ledger.jsonl``): an entry carries no review_id and there is no
+    session index, so a session-scoped read is not a thing this store can answer.
+
+    An empty list is a 200, never a 404 — "this client has adjudicated nothing" is a fact
+    about the client, and a 404 would make it indistinguishable from "no such client".
+    The client_id is validated against the SAME rule the write applies: it names a
+    directory, so one alphabet governs both directions and no path is built until it passes.
+
+    READ-NEVER-WRITE: this endpoint creates nothing — not a directory, not an empty ledger
+    file — and returns the stored records verbatim, including the ``reviewer`` and
+    ``timestamp`` C-6(a) surfaced on the write response. Both are hashed into the
+    append-only chain, so what a surface renders is the ledger's record rather than a
+    re-derivation here.
+    """
+    if not _CLIENT_ID_RE.fullmatch(client_id or ""):
+        raise HTTPException(
+            status_code=422,
+            detail="client_id must match ^[a-z0-9_]+$ (it keys the decision store).",
+        )
+    entries = load_decision_entries(client_id)
+    return {
+        "client_id": client_id,
+        "entries": entries,
+        "chain_length": len(entries),
         "validation_status": VALIDATION_STATUS,
         "disclaimer": DISCLAIMER,
     }
