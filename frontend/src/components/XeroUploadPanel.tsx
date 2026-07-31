@@ -1,9 +1,11 @@
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import {
   createReviewSession,
+  getDecisions,
   postDecision,
   postSignUpload,
   uploadExtract,
+  type DecisionEntry,
   type DecisionResponse,
   type Group,
   type UploadCoverageResponse,
@@ -100,9 +102,14 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // list get their own views.
   const [view, setView] = useState<View>("review");
   // D-17: the decisions THIS SESSION recorded, captured from the POST /decision responses.
-  // This is the only material an Audit view can honestly list — there is no read endpoint for
-  // the decision store, so nothing from an earlier session can ever be shown.
+  // They are kept even though the store now returns prior decisions too: a POST response is
+  // the FRESHER fact (the load happened before it) and it carries finding_id + the action
+  // verb, which the stored record does not.
   const [sessionDecisions, setSessionDecisions] = useState<DecisionResponse[]>([]);
+  // C-6b: the store's OWN records for this upload's client, loaded on arrival. Held apart from
+  // sessionDecisions rather than merged into it — a later re-load returning [] must never be
+  // able to erase what this browser recorded.
+  const [priorDecisions, setPriorDecisions] = useState<DecisionEntry[]>([]);
 
   function selectFromSidebar(id: string) {
     setSelectedId(id);
@@ -169,6 +176,40 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
     coverage?.source_kind === "extract_review" || coverage?.config_scope === "default_demo";
 
   const clientId = coverage ? CLIENT_ID_BY_SOURCE_KIND[coverage.source_kind] : undefined;
+
+  // C-6b populate-on-load. The store is keyed by client_id, and a client_id only exists once an
+  // upload has named a source_kind — so before an upload there is deliberately NO request:
+  // asking the server about a client we cannot name would be a guess, and the empty Audit view
+  // is the honest state until then. A failed load surfaces on the error channel rather than
+  // silently leaving the list looking complete.
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    getDecisions(clientId)
+      .then((entries) => {
+        if (!cancelled) setPriorDecisions(entries);
+      })
+      .catch((e) => {
+        if (!cancelled) setErr(serverMessage(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  // The Audit view's rows: the store's records UNIONED with this session's, deduped on
+  // entry_id — the store's own per-append identity. A decision recorded here is also IN the
+  // store, so it arrives down both paths; counted twice it would put the row count at odds
+  // with the chain length printed beside it. The session copy wins the collision because it
+  // carries finding_id and the action verb the stored record cannot supply.
+  const recordedThisSession = new Set(sessionDecisions.map((d) => d.entry_id));
+  const auditDecisions = [
+    ...priorDecisions.filter((e) => !recordedThisSession.has(e.entry_id)),
+    ...sessionDecisions,
+  ];
+  // The envelope's chain_length is computed as len(entries) (api/app.py), so the loaded array's
+  // own length IS that number — read off the same data, not a second guess at it.
+  const priorChainLength = clientId ? priorDecisions.length : null;
   // Sign is F5-only: POST /sign/upload 422s on any other export format. Decisions and sign
   // have DIFFERENT eligibility — extract/sales get decisions, never a Sign button.
   const canSign = coverage?.source_kind === "xero_f5_upload" && uploadedFile !== null;
@@ -497,7 +538,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
         {view === "audit" && (
           <main className="view xero-audit-view">
             {extractCaveat}
-            <XeroAuditView decisions={sessionDecisions} />
+            <XeroAuditView decisions={auditDecisions} storedChainLength={priorChainLength} />
             {/* SAP-only surfaces, present but DISABLED with an honest reason — they belong with
                 the audit story, which is where a reviewer looks for them. */}
             <section className="disabled-surfaces" aria-label="Unavailable on uploads">

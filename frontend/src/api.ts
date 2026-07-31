@@ -118,6 +118,40 @@ export interface DecisionResponse {
 }
 
 /*
+ * GET /decisions/{client_id} (C-6b) — the READ half of the decision store. Mirrors
+ * DECISIONS_READ_KEYS in api/app.py and, for the rows, dataclasses.asdict(AdjudicationEntry)
+ * in agent/decision_ledger.py.
+ *
+ * A stored entry is NOT a DecisionResponse. It carries what the LEDGER records; the write
+ * response additionally echoes what the CALLER supplied. Two differences matter to any
+ * surface rendering these:
+ *   - no `finding_id` — the record is keyed on the deterministic fingerprint alone, so a
+ *     prior-decision row cannot name the finding. Render the absence, never infer it.
+ *   - no `action` — the UI verb rides inside `reason` as "[Mark known] <note>" (api/app.py
+ *     writes it there so the two KNOWN_ACCEPTED-mapped verbs stay distinguishable forever).
+ */
+export interface DecisionEntry {
+  entry_id: string;
+  fingerprint: string;
+  disposition: string;
+  reviewer: string;
+  reason: string | null;
+  period: string | null;
+  timestamp: string;
+  prev_hash: string;
+  entry_hash: string;
+  fingerprint_version: string | null;
+}
+
+export interface DecisionsEnvelope {
+  client_id: string;
+  entries: DecisionEntry[];
+  chain_length: number;
+  validation_status: string;
+  disclaimer: string;
+}
+
+/*
  * Source-selector Xero branch. Honest response shapes from POST /review/upload, keyed by
  * `source_kind`. The contract authority is the exact-set key pins in the backend tests
  * (tests/test_upload_keys_binding.py binds each branch's live response to its api/app.py
@@ -268,6 +302,23 @@ export async function postDecision(req: DecisionRequest): Promise<DecisionRespon
     throw new Error((detail as { detail?: string }).detail || `Decision failed: ${resp.status}`);
   }
   return (await resp.json()) as DecisionResponse;
+}
+
+/**
+ * Every decision recorded for `client_id`, oldest first (C-6b). Mirrors fetchAudit: envelope
+ * in, `.entries` out. An empty store is a 200 with `entries: []` — the absence of decisions
+ * is a fact, so it needs no special-casing here.
+ */
+export async function getDecisions(client_id: string): Promise<DecisionEntry[]> {
+  const body = await getJSON<DecisionsEnvelope>(`/decisions/${client_id}`);
+  // A body without an `entries` array is a broken response, not an empty store. Coercing it
+  // to [] would render "no decisions recorded" over a client whose decisions we simply failed
+  // to read — a false completeness claim, which is the one thing this list must never make.
+  // Throw instead: the caller surfaces it on the error channel.
+  if (!Array.isArray(body?.entries)) {
+    throw new Error(`GET /decisions/${client_id} returned no entries array.`);
+  }
+  return body.entries;
 }
 
 /*
