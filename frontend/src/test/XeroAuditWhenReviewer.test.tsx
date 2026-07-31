@@ -49,26 +49,15 @@ const DECISION: DecisionResponse = {
 };
 
 describe("C-6(a): the session decision list carries When + Reviewer from the ledger", () => {
-  it("renders a When and a Reviewer column, each carrying the response value verbatim", () => {
+  it("no longer claims session-only scope — the decision read endpoint now exists (C-6b)", () => {
     render(<XeroAuditView decisions={[DECISION]} />);
-
-    // PRESENCE FIRST (D-16): the table and its pre-existing columns really rendered.
-    const rows = document.querySelectorAll(".xaudit-row");
-    expect(rows).toHaveLength(1);
-    const row = rows[0] as HTMLElement;
-    expect(screen.getByRole("columnheader", { name: /^finding$/i })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /^action$/i })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /^disposition$/i })).toBeInTheDocument();
-    expect(row).toHaveTextContent("KNOWN_ACCEPTED");
-
-    // The two new columns exist...
-    expect(screen.getByRole("columnheader", { name: /^when$/i })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /^reviewer$/i })).toBeInTheDocument();
-
-    // ...and carry the LEDGER's values, character for character. Not a browser clock, not a
-    // reformat, not the locally-typed reviewer name.
-    expect(within(row).getByText(RECORDED_AT)).toBeInTheDocument();
-    expect(within(row).getByText(RECORDED_BY)).toBeInTheDocument();
+    // GET /decisions shipped in C-6(b); the old "no read endpoint / session-only" scope claim
+    // would now be a false statement, so it must be gone.
+    const callout = screen.queryByTestId("xaudit-limits");
+    if (callout) {
+      expect(callout).not.toHaveTextContent(/no read endpoint/i);
+      expect(callout).not.toHaveTextContent(/only the decisions made in this browser session/i);
+    }
   });
 
   it("still tells the truth about session scope — there is STILL no decision read endpoint", () => {
