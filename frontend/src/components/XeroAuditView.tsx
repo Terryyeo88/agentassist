@@ -1,40 +1,74 @@
-import type { DecisionResponse } from "../api";
+import type { DecisionEntry, DecisionResponse } from "../api";
 
 /**
- * XeroAuditView — the decisions recorded against this export, THIS SESSION.
+ * XeroAuditView — the decisions recorded against this export.
  *
- * SESSION-SCOPED BY NECESSITY, NOT BY CHOICE (D-17). There is no read endpoint for the
- * decision store: the API exposes GET /health, /working-paper, /document/{ref},
- * /review/{client}/{period}, /review-session[/{id}] and /audit — and nothing that returns
- * decision entries. `load_decision_entries` is called server-side only to fold decisions into
- * some other artefact. So the only decisions this view can name are the ones this browser made,
- * from the POST /decision responses it received.
+ * POPULATES ON LOAD (C-6b). This view was session-scoped BY NECESSITY (D-17): the API had no
+ * read endpoint for the decision store, so the only decisions it could name were the ones this
+ * browser had just made. `GET /decisions/{client_id}` closed that hole, and XeroUploadPanel now
+ * loads the store's own records as soon as an upload names a client. Rows therefore arrive down
+ * TWO paths — loaded prior decisions and in-session POST responses — and the panel unions them,
+ * deduped on `entry_id`, before they reach this (still purely presentational) component.
  *
- * EMPTY ON LOAD, ALWAYS. A seeded "prior" row would be an invented backend state — the exact
- * thing the no-fabricated-values rule forbids. The empty state is the honest state.
+ * A ROW IS ONE OF TWO SHAPES, and the difference is not cosmetic:
+ *   * `DecisionResponse` — a POST response from this session. Echoes what the caller supplied,
+ *     so it has `finding_id` and the `action` verb.
+ *   * `DecisionEntry` — a record read from the store. Carries what the LEDGER holds, which does
+ *     NOT include `finding_id` (the record is keyed on the deterministic fingerprint alone) and
+ *     does not include `action` as its own field.
  *
- * WHAT A ROW MAY CONTAIN. Measured from a real POST /decision response, whose TWELVE keys are:
- * client_id, finding_id, action, disposition, fingerprint, entry_id, entry_hash, reviewer,
- * timestamp, chain_length, validation_status, disclaimer.
+ * WHAT THAT MEANS FOR TWO CELLS (§8, no fabricated values):
+ *   * FINDING — a stored entry cannot name one, so it renders a visible "—". Not a blank cell,
+ *     which reads as a broken render; and NOT the fingerprint relocated into that column, which
+ *     would assert an identity the record does not carry.
+ *   * ACTION — read back from `reason`'s "[Mark known] …" prefix, which api/app.py writes
+ *     verbatim precisely so the two KNOWN_ACCEPTED-mapped verbs stay distinguishable. Never
+ *     re-derived from `disposition`: that mapping is many-to-one and the inverse is a guess.
  *
- * C-6(a) ADDED `reviewer` + `timestamp`, so the "When" and "Reviewer" columns are now honest and
- * are shown. They were previously absent for a reason worth keeping in mind: the response did not
- * carry them, and filling the cells from `new Date()` or from the locally-typed reviewer-of-record
- * would have been this page's GUESS at what happened rather than the ledger's record of it. Both
- * values now render VERBATIM from the response — the store's own ISO-8601 append-time stamp and
- * the reviewer it actually recorded, both hashed into the append-only chain. Do not reformat,
- * localise, or substitute either one: the point is that the cell IS the record.
+ * WHEN + REVIEWER (C-6a) render VERBATIM from the record — the store's own ISO-8601 append-time
+ * stamp and the reviewer it actually recorded, both hashed into the append-only chain. Do not
+ * reformat, localise, or substitute either one: the point is that the cell IS the record. A
+ * browser clock would be this page's guess at when the adjudication happened.
  *
  * `/audit` is deliberately not called: it returns the SAP agent's Tier-1/Tier-2 justification
  * ledger, and an uploaded export runs no agent, so there is no tool chain to show.
  */
-export function XeroAuditView({ decisions }: { decisions: DecisionResponse[] }) {
-  const chainLength = decisions.length ? decisions[decisions.length - 1].chain_length : null;
+
+export type DecisionRow = DecisionResponse | DecisionEntry;
+
+/** A session POST response — the only shape that echoes the caller's `action`/`finding_id`. */
+function isSessionDecision(d: DecisionRow): d is DecisionResponse {
+  return "action" in d;
+}
+
+const ACTION_IN_REASON = /^\s*\[([^\]]+)\]/;
+
+/** The reviewer's verb: echoed by a session response, else read back out of the stored reason. */
+function actionOf(d: DecisionRow): string {
+  if (isSessionDecision(d)) return d.action;
+  const match = d.reason ? ACTION_IN_REASON.exec(d.reason) : null;
+  return match ? match[1] : "—";
+}
+
+export function XeroAuditView({
+  decisions,
+  storedChainLength = null,
+}: {
+  decisions: DecisionRow[];
+  /**
+   * The store's own chain length for the loaded client, when one has been loaded. Used only
+   * when this session has recorded nothing — a session response's `chain_length` is the
+   * fresher fact (it is measured AFTER that append), so it wins when present.
+   */
+  storedChainLength?: number | null;
+}) {
+  const lastSession = [...decisions].reverse().find(isSessionDecision);
+  const chainLength = lastSession ? lastSession.chain_length : storedChainLength;
 
   return (
-    <section className="xaudit" aria-label="Decisions this session">
+    <section className="xaudit" aria-label="Decisions recorded against this export">
       <div className="xaudit-head">
-        <h3 className="serif">Decisions — this session</h3>
+        <h3 className="serif">Decisions</h3>
         {chainLength !== null && (
           <span className="xaudit-chain" data-testid="xaudit-chain-length">
             append-only chain length <strong>{chainLength}</strong>
@@ -43,9 +77,10 @@ export function XeroAuditView({ decisions }: { decisions: DecisionResponse[] }) 
       </div>
 
       <div className="callout warn xaudit-limits" data-testid="xaudit-limits">
-        <strong>This lists only the decisions made in this browser session.</strong> There is
-        no read endpoint for the decision store, so decisions recorded earlier — or by anyone
-        else — cannot be listed here, even though they were saved. They resurface as the
+        <strong>These are the decisions recorded against this export's client.</strong> They come
+        from AgentAssist's own append-only store, which is keyed by the client configuration this
+        upload ran under — not by a named client, so uploads sharing one demo configuration share
+        one store. A decision also re-applies to the finding itself: it resurfaces as the
         per-finding “previously adjudicated” annotation after you re-upload the same workbook.
         Separately: an uploaded export runs no agent tool chain, so there is no Tier-1/Tier-2
         justification ledger for this source — only your decisions.
@@ -54,7 +89,7 @@ export function XeroAuditView({ decisions }: { decisions: DecisionResponse[] }) 
       {decisions.length === 0 ? (
         <p className="xaudit-empty">No decision has been recorded against this export yet.</p>
       ) : (
-        <div className="xaudit-table" role="table" aria-label="Decisions recorded this session">
+        <div className="xaudit-table" role="table" aria-label="Decisions recorded">
           {/* The header is NOT a .xaudit-row — that class means "one recorded decision", so a
               count of it is a count of decisions. */}
           <div className="xaudit-header" role="row">
@@ -69,8 +104,11 @@ export function XeroAuditView({ decisions }: { decisions: DecisionResponse[] }) 
           {decisions.map((d, i) => (
             <div className="xaudit-row" role="row" key={d.entry_id}>
               <span className="mono xaudit-seq" role="cell">{i + 1}</span>
-              <span className="mono xaudit-finding" role="cell">{d.finding_id}</span>
-              <span className="xaudit-action" role="cell">{d.action}</span>
+              {/* A stored record has no finding_id — state the absence, never infer one. */}
+              <span className="mono xaudit-finding" role="cell">
+                {isSessionDecision(d) ? d.finding_id : <span className="xaudit-none">—</span>}
+              </span>
+              <span className="xaudit-action" role="cell">{actionOf(d)}</span>
               <span className="xaudit-disp" role="cell">{d.disposition}</span>
               {/* Verbatim, both of them — the ledger's own stamp and recorded reviewer. */}
               <span className="mono xaudit-when" role="cell">{d.timestamp}</span>
