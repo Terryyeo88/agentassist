@@ -92,6 +92,21 @@ const DECISION_RESPONSE = {
 function panelFetch(body: unknown) {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
+    // C-6b: GET /decisions/{client_id} populate-on-load fires on upload. Checked BEFORE
+    // /decision (substring collision) — returns the store envelope with no prior decisions.
+    if (url.includes("/decisions/"))
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            client_id: "xero_demo",
+            entries: [],
+            chain_length: 0,
+            validation_status: "unvalidated",
+            disclaimer: "AgentAssist flags -- you decide.",
+          }),
+          { status: 200 }
+        )
+      );
     // Order matters: /decision is checked before the generic /review/upload.
     if (url.includes("/decision"))
       return Promise.resolve(new Response(JSON.stringify(DECISION_RESPONSE), { status: 200 }));
@@ -142,11 +157,13 @@ describe("Xero upload panel adjudication (B3a-2)", () => {
     // A single decision POST fired with the mapped client_id, the row's fingerprint, the
     // action, the note, and the entered reviewer name.
     await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([u]) => String(u).includes("/decision"));
+      const call = fetchMock.mock.calls.find(
+        ([u]) => String(u).includes("/decision") && !String(u).includes("/decisions")
+      );
       expect(call).toBeTruthy();
     });
-    const decisionCall = fetchMock.mock.calls.find(([u]) =>
-      String(u).includes("/decision")
+    const decisionCall = fetchMock.mock.calls.find(
+      ([u]) => String(u).includes("/decision") && !String(u).includes("/decisions")
     )! as unknown as [string, RequestInit];
     const decisionBody = JSON.parse(decisionCall[1].body as string);
     expect(decisionBody.client_id).toBe("xero_demo");

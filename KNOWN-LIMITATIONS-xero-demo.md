@@ -484,24 +484,37 @@ data, NOT real-client-export-validated and NOT accuracy-validated.
 
 ## Audit view on the Xero upload surface (`D-2026-07-28-xero-views`)
 
-The Xero surface's **Audit** view is titled **"Decisions — this session"** and is **empty on
-load, always**. That is a limitation, not a design preference:
+> **RESOLVED 2026-07-31 (C-6a PR #174, C-6b PR #175 + the frontend slice).** Both backend fixes
+> filed below were built. The view is now titled **"Decisions"**, carries **When** and
+> **Reviewer**, and **populates prior decisions on load**. The original limitation is kept below
+> for the record, struck through, with the current state stated after it.
 
-- **No decision from a prior session can ever be listed.** There is no read endpoint for the
-  decision store. Decisions ARE saved (append-only, hash-chained) — they simply cannot be read
-  back. They resurface only as the per-finding "previously adjudicated" annotation after the same
-  workbook is re-uploaded.
-- **There is no "When" column and no "Reviewer" column.** `POST /decision` returns ten keys and
-  neither a timestamp nor a reviewer name. The store records both; the response does not return
-  them. A browser clock would be the page's guess at when something happened, not the ledger's
-  record of it.
-- **There is no agent justification ledger for an upload.** `GET /audit` returns the SAP agent's
-  Tier-1/Tier-2 tool chain; an uploaded export runs no agent, so there is nothing to hash-chain
-  but the reviewer's own decisions. The view says this in plain words rather than showing an
-  empty SAP table.
+~~The Xero surface's **Audit** view is titled "Decisions — this session" and is **empty on load,
+always**.~~ That was a limitation, not a design preference. Where each part now stands:
 
-Two backend fixes are filed against this: return `timestamp` + `reviewer` from `POST /decision`,
-and add `GET /decisions` (`backend-gaps.md` §B1).
+- ~~**No decision from a prior session can ever be listed.** There is no read endpoint for the
+  decision store.~~ **FIXED (C-6b).** `GET /decisions/{client_id}` returns the stored records, and
+  the view loads them as soon as an upload names a client. Decisions recorded earlier — or by
+  anyone else under the same client configuration — are now listed. They *also* still resurface as
+  the per-finding "previously adjudicated" annotation after the same workbook is re-uploaded; the
+  two surfaces are complementary, not alternatives.
+- ~~**There is no "When" column and no "Reviewer" column.**~~ **FIXED (C-6a).** `POST /decision`
+  now returns **twelve** keys including `timestamp` and `reviewer`, read straight off the appended
+  record, and stored entries carry both natively. Both render verbatim — never a browser clock,
+  never the locally-typed reviewer-of-record.
+- **There is no agent justification ledger for an upload.** *(Still true.)* `GET /audit` returns
+  the SAP agent's Tier-1/Tier-2 tool chain; an uploaded export runs no agent, so there is nothing
+  to hash-chain but the reviewer's own decisions. The view still says this in plain words rather
+  than showing an empty SAP table.
+
+**What is still honestly limited.** Two things, both surfaced in the view's own callout:
+
+- **The store is keyed by config `client_id`, not by a named client** (`agent/decision_store.py`
+  ruling M2). Every upload routed through one demo configuration shares one store — a known
+  multi-tenant gap, acceptable only while uploads carry no real client identity.
+- **A prior-decision row cannot name the finding.** A stored `AdjudicationEntry` has no
+  `finding_id`; the record is keyed on the deterministic fingerprint alone. Those rows render a
+  muted "—" in the Finding column — the absence stated, never an inferred label.
 
 ## Ledger-reconciliation rows are indistinguishable by their own fields
 

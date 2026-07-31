@@ -1586,6 +1586,17 @@ already stores; (2) `GET /decisions` (`backend-gaps.md` §B1) for decisions from
 `GET /audit` is deliberately not called — an upload runs no agent, so there is no Tier-1/Tier-2
 justification ledger for this source.
 
+> **SUPERSEDED 2026-07-31 — both filed fixes were built.** (1) shipped as **C-6(a)** (PR #174):
+> `POST /decision` returns **twelve** keys including `timestamp` + `reviewer`, read off the
+> appended record. (2) shipped as **C-6(b)**: `GET /decisions/{client_id}` (PR #175, merge
+> `c4a9ef7`) plus the frontend slice that loads prior decisions once an upload names a client.
+> The view is now titled **"Decisions"**, carries **When** and **Reviewer**, and **populates on
+> load**; the "no read endpoint" callout clause is gone because it is false, while the no-agent
+> clause above remains true and stays. A prior-decision row renders a muted **"—"** for the
+> finding — a stored `AdjudicationEntry` has no `finding_id`, being keyed on the fingerprint
+> alone. Still limited: the store is keyed by config `client_id`, not by a named client. See
+> `D-2026-07-31-c6b-decision-read` in `AGENTASSIST_TECHNICAL_STATE.md`.
+
 **D-18 — ledger-recon rows are indistinguishable by their own fields.** With the committed 820
 ledger attached, an F5 upload returns 5 rows, two of them `fingerprint: null`. **Of 24 fields
 exactly 3 differ** (`finding_id`, `description`, `recommendation`); **of the 6 fields the queue

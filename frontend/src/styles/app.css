@@ -691,6 +691,9 @@ button.link:hover { color: var(--ink); }
 .xaudit-row { border-bottom: 1px solid var(--line-faint); font-size: 13px; color: var(--ink-body); }
 .xaudit-seq, .xaudit-hash { color: var(--ink-faint); }
 .xaudit-finding { color: var(--ink); }
+/* C-6b: a stored record carries no finding_id. The dash is MUTED but visible — an absence
+   the reviewer can see, never a blank cell that reads as a failed render. */
+.xaudit-none { color: var(--ink-faint); }
 .xaudit-hash { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xaudit-disp { color: var(--warn); font-weight: 600; }
 /* C-6(a). `When` is the ledger's stamp — muted like the other machine values, and never
