@@ -262,15 +262,18 @@ describe("Audit view (D-17)", () => {
     render(<XeroUploadPanel onChangeSource={() => {}} />);
     go("Audit");
 
-    expect(screen.getByText(/Decisions — this session/i)).toBeInTheDocument();
+    expect(screen.getByText(/Decisions/i)).toBeInTheDocument();
+    expect(screen.queryByText(/this session/i)).toBeNull();
+    expect(screen.queryByRole("region", { name: /this session/i })).toBeNull();
     expect(screen.getByText(/No decision has been recorded against this export yet/i))
       .toBeInTheDocument();
     // Zero rows — a seeded entry would be an invented backend state.
     expect(document.querySelectorAll(".xaudit-row")).toHaveLength(0);
     // The honest callout names all three limits.
     const callout = screen.getByTestId("xaudit-limits");
-    expect(callout).toHaveTextContent(/no read endpoint/i);
-    expect(callout).toHaveTextContent(/re-upload/i);
+    // "no read endpoint" and "re-upload" are resolved by C-6(b) populate-on-load; only the
+    // still-true limitation remains.
+    expect(callout).not.toHaveTextContent(/no read endpoint/i);
     expect(callout).toHaveTextContent(/no agent/i);
   });
 
@@ -292,6 +295,15 @@ describe("Audit view (D-17)", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.includes("/decisions/")) {
+          return Promise.resolve(new Response(JSON.stringify({
+            client_id: "xero_demo",
+            entries: [],
+            chain_length: 0,
+            validation_status: "unvalidated",
+            disclaimer: "AgentAssist flags — you decide.",
+          }), { status: 200 }));
+        }
         if (url.includes("/decision")) {
           return Promise.resolve(new Response(JSON.stringify(decisionResponse), { status: 200 }));
         }
