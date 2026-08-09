@@ -1,262 +1,219 @@
-# AgentAssist — GST F5 Compliance Review for SAP B1
+# AgentAssist — Singapore GST Compliance Review
 
-AgentAssist performs line-level Singapore GST F5 compliance review for mid-market SAP
-Business One clients. It combines deterministic rule-checking (every transaction examined for
-E1/E2/E3/E4/NO_GST_REG errors) with a Claude reasoning layer for semantic edge cases, and
-produces a reviewer-signed PDF working paper structured around the IRAS ASK Guide. The output
-is not an IRAS submission — it is a pre-filing review document that a senior financial officer
-or accountant reviews, annotates, and signs before filing.
+AgentAssist performs line-level Singapore GST review over a client's accounting export and
+produces a **working paper that a named reviewer adjudicates and signs**. It examines every
+transaction in the period rather than a sample, computes the F5 boxes deterministically, and
+surfaces candidates for human judgment where the answer depends on facts the data does not
+contain.
+
+The output is **not** an IRAS submission. It is a pre-filing review document. A senior
+reviewer — in practice an accredited tax professional — decides on each finding and certifies
+the result under their own name.
+
+The system is built around one constraint: **it surfaces, it never asserts.** No finding is a
+verdict. No arithmetic passes through a language model.
+
+---
+
+## Honest status
+
+Every claim below sits somewhere on this ladder, and the rungs are not interchangeable:
+
+> **built ≠ hermetic ≠ offline-replay-validated ≠ real-client-export-validated ≠ accuracy-validated**
+
+Where things actually stand:
+
+| Layer | Status |
+|---|---|
+| Deterministic chain (F5 computation, mechanical checks, five gates) | **offline-replay-validated** — re-derives byte-identically from frozen fixtures |
+| Export adapters (SAP B1 extract, Xero export) | **built, synthetic-format-validated** — no real client export has been read |
+| Reasoning layer (candidate surfacing) | **built, unvalidated** — output suppressed by default |
+| Accuracy against IRAS ground truth | **not established** |
+
+`validation_status` is hard-coded to `"unvalidated"` and `show_ai_candidates` defaults to
+`False`. Both stay that way until an independent SCTP-accredited GST specialist reconciles the
+system's findings against their own review. That gate is unmet. **Nothing here is fit to be
+relied on for a filing decision.**
 
 ---
 
 ## Architecture
 
-**Layer 1 — Deterministic tools** (`mcp-servers/custom/sap_b1_server.py`): all arithmetic,
-data fetching, and rule-based classification. Three custom GST tools (`calculate_f5_return`,
-`validate_invoice_tax_codes`, `detect_gst_errors`) compute F5 boxes, classify every invoice
-line against 18 VatGroup codes, and detect E1–E4, NO_GST_REG, and COMPLETENESS findings.
-Claude is explicitly removed from the arithmetic path.
+Three layers, with a hard boundary between them.
 
-**Layer 2 — Reasoning + knowledge base** (`knowledge-base/sg-tax-code-mappings.md`,
-`system-prompts/base.md`): Claude interprets tool output, applies judgment on edge cases
-(semantic VatGroup appropriateness, E1 candidate validation, cross-finding correlation), and
-follows the procedural constraints in the system prompt. The system never asserts a compliance
-position without tool-confirmed evidence.
+**Layer 1 — Deterministic chain** (`orchestrator/`). A fixed six-step sequence with five
+reconciliation gates:
 
-**Layer 3 — Orchestration chain** (`orchestrator/`): a deterministic six-step chain
-(`fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect → gate_4 → compile →
-gate_5`) replaces Claude's conversational tool selection. Each gate is pure arithmetic or
-set-membership with no LLM call; a failing gate halts the chain before any downstream step
-runs. Returns `(CompileOutput, gate_results)`.
+```
+fetch → gate_1 → calculate → gate_2 → classify → gate_3 → detect → gate_4 → compile → gate_5
+```
 
-**Audit bundle** (`audit_bundle/`): every successful run is sealed into a tamper-evident
-bundle under `audit/<client_id>/`. SHA-256 per artefact + root hash over canonical JSON of
-the manifest. `python -m audit_bundle.verify <bundle-dir>` re-hashes everything and confirms
-nothing changed after sealing.
+Every gate is pure arithmetic or set membership. No model call. A failing gate **halts the
+chain** — the run produces nothing rather than producing something confidently wrong. This
+package contains no `anthropic` import, and CI enforces that by AST scan rather than by
+convention.
 
-**Report package** (`report/`): consumes the `CompileOutput` JSON and renders a signed PDF.
-The three-source join (classify amounts + detect severity + manifest backfill) is keyed by
-`(doc_num, error_code)`; E2 findings are routed to the correct IRAS Document-2 amendment
-template by VatGroup. No filing directives are generated — the reviewer signs and certifies.
+Mechanical checks: tax-code errors E1–E4, unregistered-supplier input tax (`NO_GST_REG`),
+period completeness, invoice sequence gaps, duplicate claims, same-day and windowed duplicate
+candidates, and declared-vs-computed F5 divergence when a filed return is supplied.
+
+**Layer 2 — Guardrailed reasoning** (`reasoning/`, `knowledge-base/slices/`). Claude reads
+narrow, hand-authored slices of IRAS guidance and surfaces candidates in the form *"consider
+reviewing whether…"*. It never returns a verdict, never touches an F5 box, and never enters a
+gate. Every knowledge-base slice is written from named IRAS sources — no tax semantics are
+derived from model output or from practitioner recollection.
+
+**Layer 3 — Review surface** (`api/`, `frontend/`, `report/`). A FastAPI backend and React
+front end present the findings as a queue. The reviewer works each item — vendor, what was
+found, why it matters, the rule, the suggested action — decides, and signs. Signing renders a
+PDF working paper carrying the reviewer's name. Findings lead with the IRAS ASK Appendix 1
+category wording so a tax-literate reader recognises the classification immediately.
+
+**Audit bundle** (`audit_bundle/`). Each sealed run is tamper-evident: SHA-256 per artefact
+plus a root hash over canonical JSON of the manifest. `python -m audit_bundle.verify <dir>`
+re-hashes everything and reports PASS or the specific mismatches.
+
+### Ingestion
+
+The primary path is a **period export file** from the client's accounting system — currently
+SAP B1 extracts and Xero exports — normalised at the feeder and handed to an unchanged
+checking core. One machine, two feeders.
+
+A live SAP B1 Service Layer connector also exists and was the original path. It is retained,
+but export-first is the direction: it requires no ERP credentials, no network access to a
+production system, and no client IT involvement.
+
+An offline-replay harness re-derives the entire deterministic chain from frozen fixtures with
+no ERP reachable, byte-identical to a captured oracle. That harness is the acceptance
+mechanism for every change to the deterministic path.
 
 ---
 
-## Status
+## Limitations and known gaps
 
-All implementation milestones complete. Validated on SBODEMOSG (SAP B1 FP2502, Singapore
-localisation) Q3 2024.
+Read this section before anything else. It is not exhaustive; the full register lives in
+`AGENTASSIST_TECHNICAL_STATE.md`.
 
-| Milestone | Description | Status |
-|-----------|-------------|--------|
-| T1.1 | Credit notes (`CreditNotes`, `PurchaseCreditNotes`) in all three tools | COMPLETE 2026-05-28 |
-| T1.2 | NR VatGroup excluded from Box 5 per IRAS para 5.11(o); NR E2 detection | COMPLETE 2026-05-27 |
-| T1.3 | Per-client YAML config (`config/clients/<id>.yaml`), 8-step validation pipeline | COMPLETE 2026-05-31 |
-| T1.6 | Deterministic six-step chain with five gates; `run_agent.py` CLI | COMPLETE 2026-06-01 |
-| T1.4 | Signed PDF report generator (`report/` package) | COMPLETE 2026-06-01 |
-| T1.5 | Sealed audit bundle (`audit_bundle/`); SHA-256 tamper-evident; verify CLI | COMPLETE 2026-06-02 |
-| T2.7 | Reg 26/27 reasoning pass (`reasoning/`); `show_ai_candidates` flag | DONE — on master; UNVALIDATED pending T2.11 |
-| T2.8 | Source-document cross-reference pass (`documents/`); `UnifiedCandidatesSection` | DONE — on master; UNVALIDATED; B1 byte-download UNVERIFIED |
-| T2.9 | Declared-vs-computed F5 checks (`check_declared_f5.py`); `--declared-f5` flag | DONE — on master; UNVALIDATED; tolerance floor, not confirmed IRAS convention |
-| T2.13 | Reg 26/27 validation dataset built + blank-labelled; specialist labels pending | DONE — on master; dataset BLANK-LABELLED; T2.11 is binding constraint |
+- **No real client export has ever been read.** Both adapters are validated against
+  *synthetic* exports built to the format we believe clients produce. The format assumption
+  closes only when a real export arrives.
+- **The extract path currently understates F5 boxes** (open item #49). Sales `SO` and purchase
+  `SI` lines fall into the anomalies bucket as unmapped tax codes for non-SAP-sourced configs,
+  so Box 1 and Box 5 render materially low against the replay oracle on the same data. Filed,
+  unfixed. **The extract branch must not be demonstrated until this is resolved.**
+- **Accuracy is unvalidated.** No independent specialist has reconciled the findings. There is
+  no measured recall, no measured false-positive rate, no per-category basket.
+- **Custom tax codes are silently excluded.** Transactions on non-standard codes fall into
+  `anomalies` and leave the F5 computation entirely. A client with material custom-code volume
+  receives an undercount.
+- **Header-level tax breaks it.** The tools read tax at line level. Configurations storing tax
+  at header level, or in `VatSum`, produce incorrect results.
+- **Unregistered-supplier false positives.** The check reads the supplier's registration
+  number from the standard field. Clients storing it in a user-defined field will see a false
+  positive on every purchase invoice carrying input tax.
+- **Manual journals are invisible.** Journal entries are not fetched. GST-relevant manual
+  journals are not examined.
+- **Document reading raises recall, not authority.** A finding derived from reading a PDF is
+  capped as judgment-assisted. Extracted values never enter the F5 boxes or the gates.
+- **Untested regimes.** Partial exemption, reverse charge, rate-transition periods, and
+  multi-company configurations have not been exercised against real data.
 
-**Live validation figures (SBODEMOSG Q3 2024):**
-```
-Items examined : purchase_credit_note=1, purchase_invoice=21, sales_credit_note=1, sales_invoice=50
-box_8 (net GST): 17,045.87
-Issues (detect): 21
-```
-
-**Test suite: 1026 tests passing** (1 skipped: read-only advisory, Windows; no live SAP required).
-
-```
-tests/test_gates.py                   30 unit tests — all five gates
-tests/test_chain.py                   11 acceptance tests — chain + gate-failure paths
-tests/test_routing.py                 T1.4 — Document-2 template routing, E2-by-VatGroup
-tests/test_enrich.py                  T1.4 — three-source join, (doc_num, error_code) aggregation
-tests/test_sections.py                T1.4 — eight sections, HitL language invariants
-tests/test_report_e2e.py              T1.4 — full e2e from CompileOutput fixture to PDF
-tests/test_audit_canonical.py         T1.5 — canonical_json, sha256_bytes/file
-tests/test_audit_redaction.py         T1.5 — allow-list credential exclusion
-tests/test_audit_seal_verify.py       T1.5 — seal/verify round-trip, tamper detection
-tests/test_gate_record.py             T1.5 — gate_results shaping; GateFailure.checked
-tests/test_run_agent_e2e.py           T1.5 — e2e seal from fixture; T7 determinism
-(7 T2.7 test files)                   T2.7 — reg2627 reasoning pass, measurement harness, specialist queue
-(4 T2.8 test files)                   T2.8 — document ingest, reconcile, unified report section
-tests/test_check_declared_f5.py       T2.9 — declared-vs-computed Check A/B, tolerance, isolation
-tests/test_t2_13_fixture_schema.py    T2.13 — fixture schema invariants, specialist-export strip guard
-```
-
-**Validated on demo data only.** All results are against SBODEMOSG, an SAP-maintained demo
-database. This is not a production validation.
+Whatever a given run did not examine is listed explicitly in the working paper's *Items Not
+Examined* section, so the coverage boundary is visible to whoever signs.
 
 ---
 
-## How to Run
+## Design commitments
 
-### 1. Configure a client
+These are enforced, not aspirational. Each has a test that fails if it is violated.
 
-Copy `config/clients/example.yaml` to `config/clients/<client_id>.yaml` and fill in
-`service_layer_url`, `company_db`, `applicable_gst_rate`, and the env-var names for
-credentials. The SBODEMOSG client is already at `config/clients/sbodemosg.yaml`.
+- **Surfaces, never asserts.** The system flags candidates; a named human adjudicates.
+- **No model on the arithmetic path.** `orchestrator/` is pure Python; the absence of an
+  `anthropic` import is checked by AST scan in CI.
+- **Box isolation.** F5 box values and gate results are byte-identical with and without any
+  findings stream, reasoning pass, or document adapter attached. Asserted at runtime via
+  canonical JSON, not merely tested.
+- **Halt over guess.** A reconciliation failure stops the run. No bundle is sealed, no report
+  is rendered.
+- **Tax semantics from named sources only.** Knowledge-base slices cite IRAS e-Tax Guides
+  directly. Practitioner observations are recorded *verify-before-encode* and are not treated
+  as tax fact until checked against the guidance.
+- **Labelled data is for evaluation, never training.** Claude is used through the API; no
+  weights are ever updated.
 
-Copy `config/env.example` to `.env` at repo root and set `SAP_USERNAME` and `SAP_PASSWORD`.
+---
+
+## Running it
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate     macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+
+# regenerate gitignored document fixtures (deterministic; safe to re-run)
+python tests/fixtures/documents/generate_invoices.py
+
+python -m pytest
+```
+
+The suite is hermetic — no live ERP, no API tokens, no network.
+
+**Review surface:**
+
+```bash
+uvicorn api.app:app --reload          # backend on :8000
+cd frontend && npm install && npm run dev   # front end on :5173
+```
+
+**Chain over a live SAP B1 connection** (optional; requires credentials):
 
 ```bash
 cp config/env.example .env
-# edit .env: SAP_USERNAME=manager  SAP_PASSWORD=manager
+# set SAP_USERNAME=<your-username> and SAP_PASSWORD=<your-password>
+python run_agent.py --client <client_id> --period 2024-07-01 2024-09-30
 ```
 
-### 2. Run the chain and seal a bundle
+A successful run renders the PDF and seals an audit bundle. On a gate failure it halts with a
+message and writes nothing. Verify a sealed bundle at any later point:
 
 ```bash
-python run_agent.py --client sbodemosg --period 2024-07-01 2024-09-30
+python -m audit_bundle.verify audit/<client_id>/<period>/<run-ts>/
 ```
 
-Every successful run renders the PDF and writes a sealed audit bundle:
-
-```
-=== CHAIN COMPLETE ===
-  Items examined : {...}
-  box_8 (net GST): 17,045.87
-  Issues (detect): 21
-  Report PDF     : exploration-notes/t1.4-reports/sbodemosg-2024-07-01-2024-09-30-<ts>.pdf
-
-=== BUNDLE SEALED ===
-  Bundle         : audit/sbodemosg/2024-07-01_2024-09-30/<run-ts>/
-  Verify         : python -m audit_bundle.verify audit/sbodemosg/2024-07-01_2024-09-30/<run-ts>/
-```
-
-On `GateFailure` (arithmetic reconciliation failure), the chain halts with a message and no
-bundle is written. The report requires `config/clients/<id>.yaml` to have `report.reviewer_name`
-and `report.firm_name` set.
-
-### 3. Audit bundles
-
-Each bundle under `audit/<client_id>/<period>/<run-ts>/` contains eight artefacts covered by
-`manifest.json` (per-artefact SHA-256 + root hash). To verify integrity after the fact:
-
-```bash
-python -m audit_bundle.verify audit/sbodemosg/2024-07-01_2024-09-30/<run-ts>/
-# PASS  (or FAIL with a list of mismatched artefacts / root_hash mismatch)
-```
-
-The `audit/` directory is gitignored. Bundles contain no SAP credentials.
+The `audit/` directory is gitignored and bundles carry no credentials.
 
 ---
 
-## Fresh worktree or clone setup
-
-After `git clone` or `git worktree add`, the following steps are required before
-running tests. Do **not** copy files from a sibling worktree — regenerate them
-from source.
-
-```bash
-# 1. Create and activate a virtual environment
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Regenerate gitignored document fixtures (*.pdf files)
-python tests/fixtures/documents/generate_invoices.py
-# writes INV-3001.pdf … INV-3008.pdf + fixtures_manifest.json under tests/fixtures/documents/
-```
-
-After these three steps, `python -m pytest` should pass with no failures.
-
-**Why step 3 is needed:** `*.pdf` is gitignored (no binaries in the repo).
-`generate_invoices.py` is tracked and deterministic — it always produces the same
-8 synthetic invoices from the fixture data. Re-running it is safe at any time.
-
----
-
-## Repository Layout
+## Repository layout
 
 ```
-sap-b1-ai-agent/
-├── config/
-│   ├── clients/
-│   │   ├── example.yaml          ← Schema template
-│   │   └── sbodemosg.yaml        ← SBODEMOSG client (credentials via env vars)
-│   ├── loader.py                 ← load_client_config() — 8-step validation
-│   └── env.example               ← Env-var template
-├── orchestrator/
-│   ├── chain.py                  ← run_chain() — six steps + five gates
-│   ├── check_declared_f5.py      ← T2.9: declared-vs-computed Check A/B; $1 tolerance floor; findings not gates
-│   ├── gates.py                  ← gate_1 … gate_5 — pure arithmetic, no LLM
-│   ├── steps.py                  ← fetch / calculate / classify / detect / compile
-│   └── schemas.py                ← TypedDicts for all inter-step shapes
-├── report/
-│   ├── contract.py               ← CompileOutput input contract
-│   ├── enrich.py                 ← Three-source join keyed by (doc_num, error_code)
-│   ├── routing.py                ← Document-2 IRAS template routing
-│   ├── sections.py               ← Eight report sections
-│   └── render.py                 ← Section dicts → PDF
-├── mcp-servers/custom/
-│   └── sap_b1_server.py          ← 14 MCP tools; custom GST tools 12–14
-├── knowledge-base/
-│   └── sg-tax-code-mappings.md   ← VatGroup → F5 box routing; IRAS e-Tax Guide citations
-├── system-prompts/
-│   └── base.md                   ← Orchestration rules; compliance assertion constraints
-├── scripts/
-│   ├── run_baseline_tests.py     ← Reference implementation; auto-generates Test 3 reference
-│   └── seed_test_data.py         ← Inserts SBODEMOSG test invoices + credit notes
-├── audit/                        ← sealed audit bundles (generated; gitignored)
-├── audit_bundle/                 ← T1.5: seal / verify / gate-record package
-│   ├── canonical.py              ← canonical_json, sha256_bytes/file
-│   ├── config_redaction.py       ← redact_config; allow-list; _DENY_ALWAYS
-│   ├── gate_record.py            ← build_gate_results; gates.json schema
-│   ├── manifest.py               ← build_manifest; root-hash construction
-│   ├── provenance.py             ← gather_provenance; git SHA; file hashes
-│   ├── seal.py                   ← seal_bundle; _AUDIT_ROOT; mark_readonly
-│   └── verify.py                 ← verify_bundle; python -m audit_bundle.verify CLI
-├── tests/
-│   ├── fixtures/
-│   │   ├── chain-run-sample.json          ← Static CompileOutput for e2e tests
-│   │   ├── reg2627-representative-v1.json ← T2.13: representative Reg 26/27 validation fixture (blank-labelled)
-│   │   ├── reg2627-adversarial-v1.json    ← T2.13: adversarial validation fixture (blank-labelled)
-│   │   ├── SCHEMA-reg2627-v1.md           ← T2.13: fixture schema documentation
-│   │   └── export_specialist_copy.py      ← T2.13: specialist-export script; strips resolution_hint
-│   ├── test_check_declared_f5.py          ← T2.9: 18 tests — Check A/B, tolerance, isolation
-│   ├── test_t2_13_fixture_schema.py       ← T2.13: 92 tests — schema invariants, strip guard
-│   └── test_*.py                          ← 1026 tests total; no live SAP required
-└── exploration-notes/
-    ├── baseline-test-results.md  ← V0→V3 experimental log; all three tests
-    └── t1.4-reports/             ← PDF reports (generated; gitignored)
+orchestrator/     Deterministic chain, five gates, mechanical checks — pure Python, no model
+feeders/          Export adapters (SAP B1 extract, Xero) — pure stdlib leaf
+reasoning/        Guardrailed candidate surfacing — the only package importing anthropic
+knowledge-base/   VatGroup → F5 box routing; hand-authored IRAS guidance slices
+agent/            Agentic shell: check registry, hash-chained decision ledger, eval harness
+engine/           Stable review() seam over the chain
+api/              FastAPI review + sign + audit endpoints
+frontend/         React review surface (queue, finding detail, sign, audit trail)
+report/           CompileOutput → signed PDF working paper
+audit_bundle/     Canonical JSON, SHA-256 manifest, seal + verify
+tests/            Hermetic suite incl. offline-replay harness and frozen fixtures
+docs/             Merge gates, import boundaries, architectural invariants
 ```
 
 ---
 
-## Limitations and Known Gaps
+## Tests
 
-- **Custom VatGroup codes**: transactions coded to non-standard VatGroups fall into `anomalies`
-  and are silently excluded from all F5 calculations. A client with material custom-VatGroup
-  volume will receive an undercount.
-- **Header-level TaxTotal**: the tools use `TaxTotal` at `DocumentLines` level. SAP B1
-  configurations that store tax at header level or in `VatSum` will produce incorrect results.
-- **NO_GST_REG false positives**: the check uses `FederalTaxID` on `BusinessPartners`. Clients
-  whose SAP B1 stores GST registration numbers in a UDF will see false positives on every
-  purchase invoice with input tax.
-- **Re-derivability boundary**: the sealed bundle records what the chain saw, not a frozen
-  SAP snapshot. Full offline replay from frozen line bytes is deferred to the Tier-2 source
-  adapter (`rederivation_grade: "same-SAP-state"`).
-- **Live SAP B1 only**: there is no CSV/extract source adapter. The chain requires a live SAP
-  B1 Service Layer connection. Substituting an alternative source requires changes to step
-  function signatures.
-- **Manual journals not examined**: `JournalEntries` are not fetched. GST-relevant manual
-  journals are invisible to the system.
-- **Demo data only**: all validation is against SBODEMOSG Q3 2024. Behavior on production data
-  (partial exemption, reverse charge, rate-transition periods, multi-company configurations)
-  has not been tested.
+The suite runs without a live ERP, without API tokens, and without network access. It includes
+the offline-replay harness, box-isolation runtime assertions, import-boundary AST scans, and
+frozen-fixture regression against a captured oracle.
 
-Items not examined in any given run are listed explicitly in the report's "Items Not Examined"
-section. For the full gap register see `AGENTASSIST_TECHNICAL_STATE.md`.
+Run `python -m pytest` for the current count. CI is pytest-gated; the front-end `vitest` suite
+runs separately and is not the merge gate.
 
 ---
 
-*Not legal or tax advice. Not reviewed or approved by IRAS. The generated PDF is a working
-paper; the reviewer of record certifies its contents before any filing or submission.*
+*Not legal or tax advice. Not reviewed or approved by IRAS. The generated document is a
+working paper; the reviewer of record certifies its contents before any filing or submission.
+Accuracy is unvalidated — see Honest status above.*
