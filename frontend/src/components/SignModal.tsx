@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { postSign, type SignResponse } from "../api";
+import { type SignResponse } from "../api";
 
 // The subset of the sign response the modal renders — satisfied structurally by BOTH
 // SignResponse (POST /sign, frozen SAP review) and SignUploadResponse (POST /sign/upload).
@@ -11,10 +11,14 @@ interface Props {
   // t-xero-signoff (M3): pre-fill from the up-front reviewer-of-record capture so the
   // signature and the persisted decisions share ONE identity. Still editable here.
   initialReviewer?: string;
-  // B3a-2: pluggable sign transport. Default = postSign (the frozen SAP review); the
-  // upload panel injects a postSignUpload closure over its RETAINED workbook. Same modal,
-  // same identity semantics — only the wire call differs.
-  sign?: (reviewer: string, firm: string) => Promise<SignResult>;
+  // B3a-2: pluggable sign transport — REQUIRED (G-6). It used to be optional, defaulting to
+  // the FROZEN SBODEMOSG sign call: a mount that forgot the prop would sign another company's
+  // artifacts, with no adjudication section, behind a convincing "Signed by …" success state.
+  // Nothing reached that at eba8aeb, but only by convention. Making the prop required moves
+  // the guarantee from convention into the type system — every caller now names its own wire
+  // call, and omitting it fails the build instead of silently picking the wrong one.
+  // This module deliberately references NO concrete transport (A5-T1 greps for that).
+  sign: (reviewer: string, firm: string) => Promise<SignResult>;
 }
 
 /**
@@ -54,7 +58,7 @@ export function SignModal({ onClose, onSigned, initialReviewer, sign: signTransp
     setErr("");
     setBusy(true);
     try {
-      const res = await (signTransport ?? postSign)(reviewer.trim(), firm.trim());
+      const res = await signTransport(reviewer.trim(), firm.trim());
       setResult(res);
       onSigned(res.reviewer_name);
     } catch (e) {

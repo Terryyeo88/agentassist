@@ -93,6 +93,8 @@ async function upload() {
   });
   Object.defineProperty(input as HTMLInputElement, "files", { value: [file] });
   fireEvent.change(input as HTMLInputElement);
+  // AMENDED (Slice A, staged upload): staging no longer runs; the run is an explicit press.
+  fireEvent.click(screen.getByRole("button", { name: /run review/i }));
 }
 
 describe("Xero sales out-of-scope note (bucket B)", () => {

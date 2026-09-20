@@ -3,6 +3,7 @@ import type { Group, QueueItem } from "../api";
 import { Queue, type FacetProps } from "./Queue";
 import { FindingDetail } from "./FindingDetail";
 import { DocumentViewer } from "./DocumentViewer";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { type ExpectedSource, isSourceMismatch, SourceMismatch } from "../lib/sourceGuard";
 
 /**
@@ -96,20 +97,27 @@ export function ReviewScreen({
       />
       <div className="detail-col">
         {selected ? (
-          <FindingDetail
-            item={selected}
-            decision={adjudication?.decided[selected.finding_id]}
-            onRecord={
-              adjudication
-                ? (action, note) => adjudication.onRecord(selected.finding_id, action, note)
-                : undefined
-            }
-            onOpenSign={adjudication?.onOpenSign}
-            reviewOnlyNote={reviewOnlyNote}
-            onViewDocument={setOpenDoc}
-            expectedSource={expectedSource}
-            sourceKind={sourceKind}
-          />
+          // G-2: the finding-detail pane gets its OWN boundary, keyed on the selected row.
+          // D-47 was one malformed finding white-screening the app; scoped here, a bad row
+          // costs you that row's card while the queue beside it stays usable. The key resets
+          // the boundary when the reviewer selects a different finding, so one bad row does
+          // not leave the pane stuck in its failed state.
+          <ErrorBoundary key={selected.finding_id} label="This finding">
+            <FindingDetail
+              item={selected}
+              decision={adjudication?.decided[selected.finding_id]}
+              onRecord={
+                adjudication
+                  ? (action, note) => adjudication.onRecord(selected.finding_id, action, note)
+                  : undefined
+              }
+              onOpenSign={adjudication?.onOpenSign}
+              reviewOnlyNote={reviewOnlyNote}
+              onViewDocument={setOpenDoc}
+              expectedSource={expectedSource}
+              sourceKind={sourceKind}
+            />
+          </ErrorBoundary>
         ) : (
           <div className="panel detail">Select a finding from the queue.</div>
         )}

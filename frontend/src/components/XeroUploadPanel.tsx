@@ -17,6 +17,16 @@ import { XeroAuditView } from "./XeroAuditView";
 import { Sidebar } from "./Sidebar";
 import { XeroF5Strip } from "./XeroF5Strip";
 import { XeroCoveragePanel } from "./XeroCoveragePanel";
+import { coverageLabel } from "../lib/coverageLabels";
+
+// G-3: the four document-pre-pass checks, mirroring feeders/coverage_status.py:93-98. A fixed
+// id set, so membership never depends on reading the coverage prose (D-40).
+const DOCUMENT_PREPASS_CHECKS = [
+  "gst_amount_mismatch",
+  "correct_period",
+  "total_inconsistency",
+  "reg11_supplier_gst_absent",
+];
 
 // B3a-2: decisions persist via POST /decision keyed on the backend config's client_id for
 // each engine branch (mirrors api/app.py's load_decision_entries call sites — app.py runs
@@ -84,9 +94,26 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // upload flow. Threaded to ReviewScreen -> DocumentViewer, which SELECTS the
   // review-scoped document route when present (surface selection, not fallback).
   const [reviewId, setReviewId] = useState<string | null>(null);
+  // Slice A (A1): STAGED, not yet run. Selecting a file only stages it; nothing reaches the
+  // network until "Run review" is pressed. Kept apart from the RAN-WITH set below so that
+  // re-staging after a run cannot retroactively change what the last run is said to have sent.
+  const [primaryFile, setPrimaryFile] = useState<File | null>(null);
+  // True when the staging has moved on from the result currently on screen. Purely a
+  // statement about freshness — it never triggers a run on its own (A1-T7).
+  const [stagedDirty, setStagedDirty] = useState(false);
   // B3a-2: the primary workbook is RETAINED so a decision can re-apply (re-upload the same
   // file) and sign-off can re-POST it to /sign/upload — the server is stateless per upload.
+  // Slice A: this is now the RAN-WITH primary, captured at run time.
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  // Slice A (G-1): the ledger and documents AS RUN. The re-apply and the sign must re-submit
+  // what the RUN submitted, not whatever happens to be staged now — otherwise recording a
+  // decision silently re-runs against a different input set. Before this, the re-apply passed
+  // neither review_id nor documents, so the backend (which resolves attached documents from
+  // the session) returned a queue with every document-derived finding missing and four
+  // coverage rows regressed to `unavailable`: one adjudication deleted four findings from
+  // the screen while the signed paper still contained them.
+  const [ranLedger, setRanLedger] = useState<File | null>(null);
+  const [ranDocuments, setRanDocuments] = useState<File[]>([]);
   // B3a-2 adjudication state — mirrors App's: the local map drives immediate button state;
   // persistence is the POST + re-upload round trip.
   const [decided, setDecided] = useState<Record<string, { action: string; note: string }>>({});
@@ -116,17 +143,52 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
     setView("findings");
   }
 
+  // Slice A (A1): the three inputs STAGE and nothing else. `markStaged` records that the
+  // staging has moved past whatever result is on screen — only once a run has produced one,
+  // so the pre-run state never shows a "not been run yet" notice about nothing.
+  function markStaged() {
+    if (coverage) setStagedDirty(true);
+  }
+
   function onLedger(event: ChangeEvent<HTMLInputElement>) {
     setLedgerFile(event.target.files?.[0] ?? null);
+    markStaged();
   }
 
   function onDocuments(event: ChangeEvent<HTMLInputElement>) {
     setDocumentFiles(Array.from(event.target.files ?? []));
+    markStaged();
   }
 
-  async function onFile(event: ChangeEvent<HTMLInputElement>) {
+  function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    setPrimaryFile(file);
+    markStaged();
+  }
+
+  function clearLedger() {
+    setLedgerFile(null);
+    markStaged();
+  }
+
+  function clearDocuments() {
+    setDocumentFiles([]);
+    markStaged();
+  }
+
+  /**
+   * Slice A (A1): the ONE place an upload starts. Everything the run needs is already
+   * staged, so the request carries the primary, the ledger and every document TOGETHER —
+   * the previous flow uploaded from the primary input's onChange, which meant anything
+   * attached afterwards was simply left out of the request.
+   *
+   * Each press creates a NEW session (PROPOSED — Terry ratifies): accumulating successive
+   * runs into one session is the accumulated-sign work (G-8) and is out of this slice.
+   */
+  async function runReview() {
+    const file = primaryFile;
+    if (!file || busy) return;
     setBusy(true);
     setErr("");
     setNotice("");
@@ -156,6 +218,12 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
         documentFiles.length > 0 ? documentFiles : undefined,
       );
       setCoverage(resp);
+      // G-1: capture what this run actually sent. The re-apply and the sign re-submit THESE,
+      // never the live staging, so a later re-stage cannot change the inputs behind a
+      // decision that was recorded against this result.
+      setRanLedger(ledgerFile);
+      setRanDocuments(documentFiles);
+      setStagedDirty(false);
       // Default the selection to the first finding so its case-file card renders.
       setSelectedId(resp.queue && resp.queue.length ? resp.queue[0].finding_id : null);
     } catch (e) {
@@ -168,6 +236,13 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // The coverage-degrade ASK (Decision 4, B1): a companion (supplier-master) sheet is needed
   // to enable the checks a Xero export cannot run. Coverage FACT only — no IRAS rationale.
   const degraded = (coverage?.coverage_status ?? []).filter((r) => r.level !== "full");
+  // G-3: the four document-pre-pass checks, in the backend's own order. Membership is by
+  // check id (a fixed, code-level set — feeders/coverage_status.py:93-98), never by reading
+  // the prose. Empty until a run has produced coverage, which is what keeps the replacement
+  // tile silent rather than speculative before the first run.
+  const documentCoverage = (coverage?.coverage_status ?? []).filter((r) =>
+    DOCUMENT_PREPASS_CHECKS.includes(r.check)
+  );
   const findings = coverage?.queue ?? [];
   // BUILD 3: the general-extract engine path ran under a DEFAULT DEMO config, not the uploader's.
   // The LOUD three-clause caveat below is MANDATORY on this path (the honesty line) and is SCOPED
@@ -250,9 +325,31 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
                 // D-17: keep the server's own response — entry_id / entry_hash / chain_length /
                 // disposition are the Audit view's only honest material.
                 setSessionDecisions((ds) => [...ds, recorded]);
-                // Re-apply: re-submit the retained workbook so the persisted demotion /
-                // annotation re-renders from the server (decisions survive refresh).
-                return uploadedFile ? uploadExtract(uploadedFile, ledgerFile) : null;
+                // Re-apply: re-submit EXACTLY what the run submitted, so the persisted
+                // demotion / annotation re-renders from the server (decisions survive
+                // refresh) WITHOUT changing the input set underneath the reviewer.
+                //
+                // G-1: this previously passed only (uploadedFile, ledgerFile) — no
+                // review_id, no documents. The backend resolves attached documents from the
+                // session, so the re-applied response came back missing every
+                // document-derived finding and with four coverage rows regressed to
+                // `unavailable`. Recording one decision silently deleted four other findings
+                // from the screen, while the signed paper — which did thread review_id —
+                // still contained them.
+                //
+                // Re-sending the documents is not strictly required (the backend reads them
+                // from reviews/<rid>/documents/ once review_id is present), but re-submitting
+                // the run's own set keeps re-apply a faithful repeat of the run rather than a
+                // subtly different request. The server de-duplicates by content hash, and the
+                // session slice is an idempotent no-op on identical primary bytes.
+                return uploadedFile
+                  ? uploadExtract(
+                      uploadedFile,
+                      ranLedger,
+                      reviewId ?? undefined,
+                      ranDocuments.length > 0 ? ranDocuments : undefined,
+                    )
+                  : null;
               })
               .then((resp) => {
                 if (resp) setCoverage(resp);
@@ -423,6 +520,75 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
             <input className="xero-file-input" type="file" accept=".xlsx" onChange={onFile} />
           </label>
 
+          {/* Slice A (A1): everything staged, named, before anything is sent. The previous
+              flow ran the moment the primary input changed, which made the ledger and the
+              documents order-dependent — attach them after the export and they were simply
+              absent from the request, with nothing on screen to say so. */}
+          <section className="staged-manifest" aria-label="Staged for this run">
+            <h3>Staged for this run</h3>
+            <ul>
+              <li>
+                <span className="staged-label">GST export</span>{" "}
+                {primaryFile ? (
+                  <span className="mono">{primaryFile.name}</span>
+                ) : (
+                  <span className="staged-none">none — required</span>
+                )}
+              </li>
+              <li>
+                <span className="staged-label">Ledger</span>{" "}
+                {ledgerFile ? (
+                  <>
+                    <span className="mono">{ledgerFile.name}</span>{" "}
+                    <button type="button" onClick={clearLedger} aria-label="Remove the staged ledger">
+                      Remove
+                    </button>
+                  </>
+                ) : (
+                  <span className="staged-none">none</span>
+                )}
+              </li>
+              <li>
+                <span className="staged-label">Source documents</span>{" "}
+                {documentFiles.length > 0 ? (
+                  <>
+                    {documentFiles.length} source document{documentFiles.length === 1 ? "" : "s"}{" "}
+                    <button
+                      type="button"
+                      onClick={clearDocuments}
+                      aria-label="Remove the staged source documents"
+                    >
+                      Remove
+                    </button>
+                    <ul className="staged-documents">
+                      {documentFiles.map((d) => (
+                        <li key={d.name} className="mono">
+                          {d.name}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <span className="staged-none">none</span>
+                )}
+              </li>
+            </ul>
+            <button
+              type="button"
+              className="run-review"
+              onClick={runReview}
+              disabled={!primaryFile || busy}
+            >
+              Run review
+            </button>
+            {stagedDirty && (
+              <p className="staged-dirty" role="status">
+                The staging above has changed and has <strong>not been run yet</strong>. What is
+                shown below is the previous run. Press Run review to run the current staging.
+              </p>
+            )}
+          </section>
+
           {busy && <div className="loading">Reading export…</div>}
           {/* C-2: house style, borrowed from App.tsx's error branch — a plain-words lead
               sentence, then the SERVER'S OWN message verbatim in a <small>. The lead says only
@@ -555,14 +721,35 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
                   The facet menu comes from a SAP review run; an upload returns no facet menu.
                 </span>
               </div>
-              <div className="disabled-surface">
-                <button type="button" disabled>Source documents</button>
-                <span className="disabled-reason">
-                  A Xero export carries no source-document PDFs, which is also why four coverage
-                  checks could not run.
-                </span>
-              </div>
             </section>
+
+            {/* G-3: a disabled "Source documents" tile used to sit here, asserting that a
+                Xero export cannot carry source-document PDFs at all and blaming that for the
+                four document checks not running. Both clauses have been false since
+                C-8 / T-E(1)/(2): this very panel ships a documents input, and with documents
+                attached the four checks DO run (measured 2026-09-20 — 4/4 baits fired,
+                coverage `degraded`). No test pinned that sentence, which is how it outlived
+                the features that falsified it; DocumentTileCopy.test.tsx now pins its absence.
+
+                What replaces it asserts nothing of its own: it quotes the backend's per-check
+                coverage `reason` VERBATIM. Per D-40 that prose is prose, not a contract — it
+                is never parsed for counts here, and the count beside the heading is derived
+                from the ROW ARRAY, never from the text. With no coverage yet there is nothing
+                honest to say, so nothing renders. */}
+            {documentCoverage.length > 0 && (
+              <section className="doc-coverage" aria-label="Source-document coverage">
+                <h3>Source-document checks</h3>
+                <ul>
+                  {documentCoverage.map((row) => (
+                    <li key={row.check}>
+                      <span className="doc-coverage-check">{coverageLabel(row.check)}</span>{" "}
+                      <span className={`doc-coverage-level level-${row.level}`}>{row.level}</span>
+                      <span className="doc-coverage-reason">{row.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </main>
         )}
       </div>
@@ -572,7 +759,11 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           onClose={() => setSignOpen(false)}
           onSigned={(name) => setReviewerName(name)}
           initialReviewer={reviewerName}
-          sign={(reviewer, firm) => postSignUpload(uploadedFile, ledgerFile, reviewer, firm, reviewId ?? undefined)}
+          // G-1 (same class): the sign re-runs review() server-side, so it must re-submit the
+          // RUN's ledger, not whatever is staged now. reviewId was already threaded here
+          // (D-45) — that is precisely why the signed paper kept the document findings the
+          // re-apply had dropped from the screen.
+          sign={(reviewer, firm) => postSignUpload(uploadedFile, ranLedger, reviewer, firm, reviewId ?? undefined)}
         />
       )}
     </div>

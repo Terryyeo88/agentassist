@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchReview, postCommand, postDecision, type CommandResponse, type Group, type ReviewPayload } from "./api";
+import { fetchReview, postCommand, postDecision, postSign, type CommandResponse, type Group, type ReviewPayload } from "./api";
 import { TopBar, type View } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
@@ -307,6 +307,11 @@ export function App({ onChangeSource }: Props) {
           onClose={() => setSignOpen(false)}
           onSigned={(name) => setReviewerName(name)}
           initialReviewer={reviewerName}
+          // G-6: this surface's transport is now NAMED rather than inherited from a default.
+          // This IS the SAP/frozen surface, so postSign (POST /sign over the frozen SBODEMOSG
+          // artifacts) is the right call here — stating it puts that on record instead of
+          // leaving it to whatever the modal happened to fall back to.
+          sign={postSign}
         />
       )}
     </div>

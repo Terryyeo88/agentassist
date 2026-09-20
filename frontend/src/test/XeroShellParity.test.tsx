@@ -121,6 +121,8 @@ async function uploadA() {
   });
   Object.defineProperty(input as HTMLInputElement, "files", { value: [file] });
   fireEvent.change(input as HTMLInputElement);
+  // AMENDED (Slice A, staged upload): staging no longer runs; the run is an explicit press.
+  fireEvent.click(screen.getByRole("button", { name: /run review/i }));
 }
 
 // App empty-state guard (test 7): the RUN_REVIEW command response + mock pattern from

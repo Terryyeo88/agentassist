@@ -54,6 +54,10 @@ async function uploadPrimary() {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   fireEvent.change(input, { target: { files: [file] } });
+  // AMENDED (Slice A, staged upload): selecting a file now only STAGES it — the run is an
+  // explicit button press, so the primary, the ledger and the documents go in ONE request.
+  // Mechanical step only; every assertion in this file keeps its original meaning.
+  fireEvent.click(screen.getByRole("button", { name: /run review/i }));
   await waitFor(() => expect(screen.queryByText(/Reading export/i)).not.toBeInTheDocument());
 }
 

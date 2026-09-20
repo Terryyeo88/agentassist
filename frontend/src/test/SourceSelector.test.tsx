@@ -137,6 +137,8 @@ describe("source selector + empty state (tsource-selector)", () => {
     // jsdom: set .files via defineProperty, then fire the change (no user-event installed).
     Object.defineProperty(input as HTMLInputElement, "files", { value: [file] });
     fireEvent.change(input as HTMLInputElement);
+    // AMENDED (Slice A, staged upload): staging no longer runs; the run is an explicit press.
+    fireEvent.click(screen.getByRole("button", { name: /run review/i }));
 
     // The coverage rows render — the unavailable NO_GST_REG row + its reason + the caveat.
     // (findAllByText: "NO_GST_REG" can appear both as the check cell and inside a reason.)
