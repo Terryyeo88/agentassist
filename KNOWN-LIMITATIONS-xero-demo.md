@@ -381,6 +381,21 @@ not a missed finding.
 The honest degrade is implemented; the check remains unavailable — this debt is NOT closed.
 *PR-B update (still OPEN):* on the engine-wired upload path NO_GST_REG stays **DARK** —
 surfaced as **unavailable** in the response `coverage_status`, never a silent miss. NOT closed.
+*Slice C update (`D-2026-09-20-slice-c-contacts-no-gst-reg`, branch
+`t-slice-c-contacts-no-gst-reg`, UNMERGED — CONDITIONALLY CLOSED):* the supplier master a
+Xero client actually has is the **Contacts export**, whose `TaxNumber` column is the GST
+registration number. An OPTIONAL `contacts` part on `POST /review/upload` and
+`POST /sign/upload` (retained per session for the accumulated sign) makes the check RUN: on
+the committed demo pairing it flags **BILL-3003 / NoReg Trading** and nothing else, with
+coverage **degraded** naming 19 of 20 input-tax purchase lines examined and 1 line carrying
+no supplier at all. The debt is closed ONLY when the reviewer supplies that export — with no
+Contacts file the behaviour above is unchanged and byte-identical, which is why this entry
+stays. Scope of the check: **PRESENCE ONLY** — a non-blank TaxNumber is never validated,
+never looked up against IRAS and never compared between contacts, so a shared registration
+number (Acme and GoodVendor both carry `200611111A` in the fixture) is deliberately silent.
+A supplier missing from the Contacts export, an ambiguous name and a nameless transaction
+are NOT findings — they are counted and reported as the coverage degrade. Real Xero FORMAT
+over SYNTHETIC content; **not accuracy-validated, not real-client-validated (DEBT-3)**.
 
 ### DEBT-8 — SEQ_GAP out of scope on the Xero path
 No `Series`, `Cancelled`, or company-wide listing in the export → SEQ_GAP is out of

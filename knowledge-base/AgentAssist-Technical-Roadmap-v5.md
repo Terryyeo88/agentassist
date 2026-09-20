@@ -2022,3 +2022,64 @@ Backend-only: `frontend/` untouched; `orchestrator/`, `feeders/`, `engine/`, `re
   real-format data. NOT browser-verified pending manual acceptance; NOT real-client-validated.
   Moves NO validation rung; `validation_status` unvalidated; `show_ai_candidates` False;
   T2.11 unmoved. G-5 (#49), G-7, G-8 and the frozen-path null family remain open.
+
+### `D-2026-09-20-slice-c-contacts-no-gst-reg` — Slice C: the Contacts export makes NO_GST_REG runnable *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+Branch `t-slice-c-contacts-no-gst-reg`, base `065bd00`, PR pending. Backend + a fourth
+staged frontend input. `orchestrator/`, `engine/`, `reasoning/` and `mcp-servers/` untouched:
+`detect_gst_errors` is NOT edited and the `ChainReader` Protocol is NOT widened.
+
+- **The gap (DEBT-7).** A Xero F5 export carries no supplier master, so the
+  supplier-registration check (`NO_GST_REG`) has always reported `unavailable`. In Xero the
+  master is the **Contacts export**; the registration number is its `TaxNumber` column.
+  Conditionally closed: supplied, the check runs; omitted, the honest degrade is byte-identical.
+- **The join (D1).** New pure-stdlib `feeders/xero_contacts.py` indexes contacts by name;
+  `XeroF5ChainReader(source, contacts=...)` joins each PURCHASE document's contact name with
+  the E-check counterparty normaliser (whitespace collapse + casefold). UNIQUE -> `CardCode`
+  = the contact's own spelling (so two spellings dedupe to ONE finding) and the BP surface
+  answers its `TaxNumber`. MISSING / AMBIGUOUS / NAMELESS -> `CardCode` stays `""`, which is
+  how the existing check SKIPS a document. None of those three is ever a finding (R2).
+- **Presence only (R1).** A non-blank TaxNumber means "registered on record" and nothing
+  more — no format validation, no UEN inference, no IRAS lookup, no cross-contact comparison.
+  Acme and GoodVendor share `200611111A` in the fixture and neither is flagged; that is
+  deliberate bait for a future shared-registration check, not a defect.
+- **The coverage gate, per instance (ruling 3).** `detect_gst_errors` gates the whole loop on
+  `_reader_field_covered(reader, "business_partners", "FederalTaxID")`, so the join alone
+  would have fired nothing. The reader declares that pair covered PER INSTANCE and only with
+  a Contacts export; the module-level `_COVERED_FIELDS` frozenset is NOT widened. The
+  observed-population doctrine still applies — a 0%-populated TaxNumber column reads
+  `unavailable`, never "flag everyone".
+- **Counts, derived (R3 / the D-40 precedent).** `ContactsJoin(examined, missing, ambiguous,
+  nameless)` over the input-tax purchase lines travels as DATA into
+  `derive_coverage_statuses(contacts_join=...)`: absent -> today exactly; complete -> `full`;
+  otherwise -> `degraded` naming the three counts SEPARATELY. A nameless line is counted in
+  the denominator, never excluded. Nothing parses counts out of prose.
+- **Measured:** demo F5 x demo Contacts 19/20 examined, `NO_GST_REG` on BILL-3003 alone,
+  degraded by 1 nameless line (`#13`, 2026-05-29, GST 6.30 — the real-format F5 carries the
+  same row); real-format x real-format 7/8, BILL-3003 alone; demo F5 x real-format Contacts
+  7/20, BILL-3003 alone, 12 missing.
+- **Four reader sites (ruling 4).** Optional `contacts` part on `POST /review/upload` and
+  `POST /sign/upload` (`.csv`-gated like the ledger, F5 path only, ignored elsewhere), plus a
+  retained `.contacts.csv` keyed by the primary's sha and read back by
+  `POST /review-session/{id}/sign`. The screen and every paper agree.
+- **#44 retired for Xero (R8).** The supplier-registration judgment question is source-aware:
+  the SAP branch byte-identical, the Xero branch naming the Contacts export's `TaxNumber` and
+  stating that the check tests presence only. Terry's hand-amendment `ef5d0b8` landed red and
+  is green. The DETECT string's SAP vocabulary is ACCEPTED for this slice (R7) and filed.
+- **Section 6 (C10).** `SUPPLIER_REG_UNAVAILABLE_ITEM` is APPENDED when the run's own
+  `check_coverage` says the check was unavailable — not a member of `NOT_EXAMINED_ITEMS`, so
+  the locked Section 6 count pins hold. Readers with no coverage seam (live SAP, frozen
+  replay) add nothing: the offline-replay oracle needs NO re-freeze.
+- **Byte-identity.** No contacts -> the demo-F5 upload response matches the pre-build
+  canonical-JSON sha256 `3ae353f1…7104`, pinned as a test tripwire; oracle byte-identical;
+  finding shape and fingerprint unchanged (R4), so no migration and no orphaned decisions.
+- **Fixtures (R6, docs only).** Demo Contacts.csv is canonical (18 contacts; one real
+  person's details removed in PR #179, still in git history — open item). GoodVendor keeps
+  Acme's number deliberately. `200644444H` in `Contacts_POPULATED` is SUPERSEDED — an org
+  rebuild must use `200611111A` (noted, not edited). **Correction:** neither fixture carries a
+  UTF-8 BOM; `utf-8-sig` tolerates either and a test pins both parses identical.
+- **Open item #45 restated — UNCHANGED.** No tenant component in the fingerprint.
+- **Honest status:** built + hermetically tested + API-verified over HTTP on synthetic
+  real-format data. NOT browser-verified pending manual acceptance; NOT real-client-validated
+  (DEBT-3); NOT accuracy-validated — the slice makes a check RUNNABLE, not correct.
+  `validation_status` unvalidated; `show_ai_candidates` False; T2.11 unmoved.
