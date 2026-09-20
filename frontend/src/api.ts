@@ -268,10 +268,15 @@ export async function postSignUpload(
   reviewer_name: string,
   firm_name: string,
   reviewId?: string,
+  contacts?: File | null,
 ): Promise<SignUploadResponse> {
   const form = new FormData();
   form.append("file", file);
   if (ledger) form.append("ledger", ledger);
+  // Slice C: the supplier master the review ran with. Without it the sign re-runs
+  // review() WITHOUT the Contacts export and the signed paper silently drops every
+  // supplier-registration finding the reviewer just adjudicated on screen.
+  if (contacts) form.append("contacts", contacts);
   form.append("reviewer_name", reviewer_name);
   form.append("firm_name", firm_name);
   // D-45: the sign path re-runs review() over the re-posted workbook. Without the
@@ -455,6 +460,7 @@ export async function uploadExtract(
   ledger?: File | null,
   reviewId?: string,
   documents?: File[],
+  contacts?: File | null,
 ): Promise<UploadCoverageResponse> {
   // Multipart: the required primary `file` + an OPTIONAL `ledger` (the Xero 820
   // account-transactions export). The server runs the ledger↔declared-return
@@ -470,6 +476,10 @@ export async function uploadExtract(
   // `documents: Optional[List[UploadFile]]`, one append per file, never a zip. Caps are
   // the server's (D-39): 10 MiB per file, 50 MiB per upload, 50 files, each an honest 413.
   for (const d of documents ?? []) form.append("documents", d);
+  // Slice C: the OPTIONAL Xero Contacts export (the supplier master). Omitted entirely
+  // when none is staged — the backend's no-contacts path is byte-identical to before, and
+  // it is only reachable if this field is genuinely absent from the request.
+  if (contacts) form.append("contacts", contacts);
   const resp = await fetch(`${BASE}/review/upload`, {
     method: "POST",
     body: form,

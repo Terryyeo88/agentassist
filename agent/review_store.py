@@ -117,15 +117,19 @@ def load_review(review_id: str) -> dict:
 def upload_bytes_path(review_id: str, sha256: str, suffix: str = ".xlsx") -> Path:
     """Path of a slice's RETAINED upload bytes (t-accumulated-sign, Terry R1).
 
-    reviews/<review_id>/uploads/<sha256><suffix>. Retention is what lets an accumulated
-    sign re-run review() over the PRIMARY slice's exact bytes — the bounding invariant
+    reviews/<review_id>/uploads/<sha256><suffix> — the primary workbook, its optional 820
+    ledger, and (Slice C) its optional Xero Contacts export, all keyed by the PRIMARY's
+    sha. Retention is what lets an accumulated sign re-run review() over the PRIMARY
+    slice's exact bytes — the bounding invariant
     (boxes byte-identical, never merged) true BY CONSTRUCTION. Forward-only: sessions
     accumulated before retention landed have no bytes file, and the sign path refuses
     LOUDLY rather than producing a partial paper.
     """
     if not re.fullmatch(r"[0-9a-f]{64}", sha256 or ""):
         raise ReviewStoreError(f"sha256 must be 64 lowercase hex chars; got {sha256!r}")
-    if suffix not in (".xlsx", ".ledger.xlsx"):
+    # Slice C (D4): ".contacts.csv" joins the whitelist so the supplier master is retained
+    # against the PRIMARY's sha and the accumulated sign can re-run with the same inputs.
+    if suffix not in (".xlsx", ".ledger.xlsx", ".contacts.csv"):
         raise ReviewStoreError(f"unsupported retained-bytes suffix {suffix!r}")
     return _REVIEWS_ROOT / _validated_review_id(review_id) / "uploads" / f"{sha256}{suffix}"
 

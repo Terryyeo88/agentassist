@@ -36,9 +36,56 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from config.source_labels import source_display_name
-from report.constants import NOT_EXAMINED_ITEMS, disclaimer_text_for
+from report.constants import (
+    NOT_EXAMINED_ITEMS,
+    SUPPLIER_REG_UNAVAILABLE_ITEM,
+    disclaimer_text_for,
+)
 from report.enrich import EnrichedFinding
 from report.routing import TemplateRef
+
+
+#: The coverage level that ADDS the supplier-registration line to Section 6 (Slice C).
+UNAVAILABLE_LEVEL = "unavailable"
+
+
+#: Source systems whose supplier master is the Xero CONTACTS export (ruling R8). The F5
+#: and sales readers both render the client-facing "Xero" label (M2), and both take their
+#: supplier registration numbers from the same Contacts file.
+_XERO_SOURCE_SYSTEMS = frozenset({"xero", "xero_sales"})
+
+
+def _supplier_registration_question(client_config: Any, source_label: str) -> str:
+    """The Supplier Registration judgment question, worded for the SOURCE.
+
+    R8 (D-2026-09-20-slice-c-contacts-no-gst-reg) RETIRES the #44 residue for Xero. The
+    SAP branch is BYTE-IDENTICAL — on SAP B1 the mechanism nouns are simply the truth: the
+    registration number lives in FederalTaxID, and a client who keeps it in a User Defined
+    Field really does get false positives. Neither noun exists in Xero, where the number is
+    the TaxNumber field of the Contacts export, so naming them there told the reviewer to
+    go looking for a field their system does not have.
+
+    Both branches stay a QUESTION for the reviewer, never a verdict: the check tests
+    PRESENCE only (R1) and says so.
+    """
+    if getattr(client_config, "source_system", None) in _XERO_SOURCE_SYSTEMS:
+        return (
+            "For each supplier flagged here, input tax was claimed on its purchases but "
+            "the supplied Contacts export has no TaxNumber recorded for it in your "
+            f"{source_label} instance. Consider verifying the supplier's GST "
+            "registration, for example against its tax invoice, before relying on the "
+            "claim. This check tests only whether a TaxNumber is present in the Contacts "
+            "export; it does not validate the number. If your organisation records GST "
+            "registration numbers outside the TaxNumber field, these candidates may be "
+            "false positives."
+        )
+    return (
+        "For each supplier with input tax claims but no GST registration number "
+        "on record: verify the supplier's current GST registration status with IRAS. "
+        f"Note: if your {source_label} instance stores GST registration numbers in a "
+        "User Defined Field (UDF) rather than the standard FederalTaxID field, "
+        "these findings may be false positives requiring UDF-to-FederalTaxID mapping."
+    )
 
 
 def _source_label(client_config: Any, long: bool = False) -> str:
@@ -907,7 +954,8 @@ def build_judgment_section(
             doc_nums=bl_docs,
         ))
 
-    # 4. Supplier registration — NO_GST_REG.
+    # 4. Supplier registration — NO_GST_REG. The mechanism nouns are SOURCE-AWARE
+    # (D-2026-09-20-slice-c-contacts-no-gst-reg, ruling R8): see the helper below.
     ngr_docs = sorted({
         f.doc_num for f in findings
         if f.error_code == "NO_GST_REG" and f.doc_num is not None
@@ -916,14 +964,8 @@ def build_judgment_section(
         groups.append(JudgmentGroup(
             group_id="supplier-registration",
             display_title="Supplier Registration",
-            judgment_question=(
-                "For each supplier with input tax claims but no GST registration number "
-                "on record: verify the supplier's current GST registration status with IRAS. "
-                # The SAP-mechanism nouns (UDF / FederalTaxID) deliberately stay
-                # unchanged on ALL sources — open item #44, rule-author ruling M3.
-                f"Note: if your {source_label} instance stores GST registration numbers in a "
-                "User Defined Field (UDF) rather than the standard FederalTaxID field, "
-                "these findings may be false positives requiring UDF-to-FederalTaxID mapping."
+            judgment_question=_supplier_registration_question(
+                client_config, source_label
             ),
             doc_nums=ngr_docs,
         ))
@@ -1350,6 +1392,17 @@ def build_not_examined_section(
     # (.replace, not .format — brace-safe against literal parens/braces in items).
     source_label = _source_label(client_config)
 
+    # Slice C (C10): the supplier-registration line is driven by the run's OWN coverage,
+    # never by a flag, and it is APPENDED rather than filtered out of the static list —
+    # so NOT_EXAMINED_ITEMS keeps its membership and every paper that does not report the
+    # check unavailable is byte-identical. ABSENT check_coverage means a reader with no
+    # coverage seam (live SAP, frozen replay): there the check RAN, nothing is added, and
+    # the offline-replay oracle needs no re-freeze.
+    supplier_reg_unavailable: bool = any(
+        row.get("check") == "NO_GST_REG" and row.get("level") == UNAVAILABLE_LEVEL
+        for row in (compile_output or {}).get("check_coverage", [])
+    )
+
     items: list[str] = []
     for item in NOT_EXAMINED_ITEMS:
         if suppress_decl_f5 and item.startswith(_DECL_F5_NOT_EXAMINED_PREFIX):
@@ -1395,6 +1448,9 @@ def build_not_examined_section(
         "examined", "unavailable"
     ):
         items = [i for i in items if not i.startswith(_LEDGER_RECON_NE_PREFIX)]
+
+    if supplier_reg_unavailable:
+        items.append(SUPPLIER_REG_UNAVAILABLE_ITEM)
 
     # Surface any deduplicated anomalies (unknown VatGroups).
     # .get() with default guards against older chain runs that lack this key.
