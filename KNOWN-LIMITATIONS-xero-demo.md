@@ -389,8 +389,11 @@ registration number. An OPTIONAL `contacts` part on `POST /review/upload` and
 the committed demo pairing it flags **BILL-3003 / NoReg Trading** and nothing else, with
 coverage **degraded** naming 19 of 20 input-tax purchase lines examined and 1 line carrying
 no supplier at all. The debt is closed ONLY when the reviewer supplies that export — with no
-Contacts file the behaviour above is unchanged and byte-identical, which is why this entry
-stays. Scope of the check: **PRESENCE ONLY** — a non-blank TaxNumber is never validated,
+Contacts file the API response and the F5 boxes are byte-identical to before (pinned by a
+recorded canonical-JSON digest), which is why this entry stays. One deliberate exception,
+stated rather than glossed: the signed PAPER is NOT byte-identical in that case — Section 6
+now carries a supplier-registration "not examined" line, so a reviewer signing without a
+Contacts export is told the check did not run instead of reading silence. Scope of the check: **PRESENCE ONLY** — a non-blank TaxNumber is never validated,
 never looked up against IRAS and never compared between contacts, so a shared registration
 number (Acme and GoodVendor both carry `200611111A` in the fixture) is deliberately silent.
 A supplier missing from the Contacts export, an ambiguous name and a nameless transaction
