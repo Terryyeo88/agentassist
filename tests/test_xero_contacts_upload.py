@@ -218,6 +218,38 @@ class TestContactsPart:
             assert [r for r in body["queue"] if r["error_code"] == "NO_GST_REG"] == []
 
 
+# ══ Box-isolation — the join adds a FINDING and moves nothing else ══════════════════
+
+
+class TestBoxIsolation:
+
+    def test_boxes_are_byte_identical_with_and_without_contacts(self, client, hermetic):
+        """Invariant 3, pinned rather than reviewed. The contacts join sets CardCode on
+        purchase documents; CardCode feeds the NO_GST_REG loop and nothing else on this
+        reader (its listing surface is empty). The F5 boxes are therefore untouched — and
+        this asserts it on the wire instead of trusting that reading.
+
+        The queue must differ by EXACTLY one added row, the NO_GST_REG finding: no other
+        finding may appear, move or vanish because a supplier master was supplied.
+        """
+        without = _upload(client).json()
+        with_contacts = _upload(client, contacts=_DEMO_CONTACTS.read_bytes()).json()
+
+        assert json.dumps(
+            with_contacts["recomputed_client_coded_f5_boxes"], sort_keys=True
+        ) == json.dumps(without["recomputed_client_coded_f5_boxes"], sort_keys=True)
+        assert with_contacts["validation_status"] == without["validation_status"]
+
+        def _ids(body: dict) -> list:
+            return sorted(r["finding_id"] for r in body["queue"])
+
+        added = set(_ids(with_contacts)) - set(_ids(without))
+        assert set(_ids(without)) - set(_ids(with_contacts)) == set()
+        assert len(added) == 1
+        new_row = next(r for r in with_contacts["queue"] if r["finding_id"] in added)
+        assert (new_row["error_code"], new_row["doc_num"]) == ("NO_GST_REG", "BILL-3003")
+
+
 # ══ C6 — a contacts part on a non-F5 path is IGNORED ═════════════════════════════════
 
 
@@ -349,8 +381,11 @@ class TestSapPathUntouched:
         findings = [
             SimpleNamespace(error_code="NO_GST_REG", doc_num="BILL-3003", vat_group="NR")
         ]
+        # `source_system` is the attribute `_source_label` / the R8 branch actually read;
+        # a SimpleNamespace carrying `source` instead would silently exercise the
+        # missing-attribute DEFAULT and prove nothing about a SAP-configured run.
         section = build_judgment_section(
-            {}, findings, client_config=SimpleNamespace(source="sap_b1")
+            {}, findings, client_config=SimpleNamespace(source_system="sap_b1")
         )
         group = next(g for g in section.groups if g.group_id == "supplier-registration")
         assert "FederalTaxID" in group.judgment_question

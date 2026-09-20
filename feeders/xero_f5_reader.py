@@ -67,7 +67,14 @@ from typing import Optional
 from feeders import extract_schema as schema
 from feeders.coverage_status import derive_coverage_statuses
 from feeders.extract_reader import ExtractCoverage
-from feeders.xero_contacts import UNIQUE, ContactsJoin, load_contacts
+from feeders.xero_contacts import (
+    AMBIGUOUS,
+    MISSING,
+    NAMELESS,
+    UNIQUE,
+    ContactsJoin,
+    load_contacts,
+)
 
 # The sheet the real Xero IRAS-F5 export carries the period transactions on.
 TRANSACTIONS_SHEET = "Transactions by box number"
@@ -294,11 +301,14 @@ class XeroF5ChainReader:
         """
         if self._contacts is None:
             return None
+        # Keyed by the IMPORTED constants, never by bare literals: the counts are what
+        # the coverage degrade reports, so a rename in xero_contacts.py must break loudly
+        # here rather than silently zero them and report a full examination.
         return ContactsJoin(
             examined=self._join_counts.get(UNIQUE, 0),
-            missing=self._join_counts.get("missing", 0),
-            ambiguous=self._join_counts.get("ambiguous", 0),
-            nameless=self._join_counts.get("nameless", 0),
+            missing=self._join_counts.get(MISSING, 0),
+            ambiguous=self._join_counts.get(AMBIGUOUS, 0),
+            nameless=self._join_counts.get(NAMELESS, 0),
         )
 
     # -- ChainReader surfaces (structural) -----------------------------------
@@ -393,8 +403,17 @@ class XeroF5ChainReader:
         now OBSERVED from the loaded documents (previously ``dict(fields)`` — asserted
         by fiat), so a present-but-all-empty column reads NOT populated and
         ``is_covered`` degrades honestly, exactly as the extract reader has always
-        behaved. FederalTaxID stays outside the covered set: NO_GST_REG remains
-        unavailable on this reader and this change makes nothing newly runnable.
+        behaved.
+
+        D-2026-09-20-slice-c-contacts-no-gst-reg SUPERSEDES the sentence that stood here
+        ("FederalTaxID stays outside the covered set: NO_GST_REG remains unavailable on
+        this reader and this change makes nothing newly runnable"). That was true while
+        this reader had no supplier-master surface at all. It now has one WHEN AND ONLY
+        WHEN a Contacts export was supplied: ``_covered_field_keys()`` adds
+        (business_partners, FederalTaxID) for THIS INSTANCE, and the population predicate
+        above still governs — a 0%-populated TaxNumber column is not covered. With no
+        Contacts export the covered set is the module constant, unchanged, and NO_GST_REG
+        is still unavailable on this reader.
         """
         fields = {key: (key in self._covered_field_keys()) for key in schema.COVERAGE_FIELDS}
         observed = self._observed_populated_keys()
