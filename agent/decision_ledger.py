@@ -197,6 +197,100 @@ def compute_finding_fingerprint(finding: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Slice B — the FAMILY -> identity-key map (PROPOSED D-2026-09-20-slice-b-adjudicable-rows)
+# ---------------------------------------------------------------------------
+#
+# Before Slice B, three row families reached the reviewer with ``fingerprint: None`` and so
+# could not be accepted, declined or marked at all — 7 of the 16 rows on the demo corpus. The
+# stated reason (#46) was "these rows carry no counterparty". That premise assumed every
+# fingerprint must key on a counterparty; retiring it is what makes those rows adjudicable.
+#
+# The dispatch below gives each family its OWN key set. Because the hash is taken over a
+# canonical-JSON dict of exactly the keys a family declares, a family with a different key set
+# produces a different dict and therefore a different hash — and, decisively, the E-check
+# family's dict is UNTOUCHED, so every existing fingerprint stays byte-identical.
+# ``FINGERPRINT_KEYS`` is NOT widened and ``FINGERPRINT_VERSION`` is NOT bumped: the new
+# families never had fingerprints, so there is nothing to migrate and no stored decision is
+# orphaned.
+#
+# Returning None is a first-class outcome, not a failure: a row whose family cannot form its
+# key stays visibly non-adjudicable rather than collapsing onto a shared key that one
+# adjudication could sweep.
+
+#: Signal A (GST_LEDGER_RECON) keys on the PERIOD as well as the side. A per-side divergence is
+#: an AGGREGATE over a whole control account, not a document — a new fact every quarter. Keyed
+#: without the period, a Q2 "known accepted" would silently demote Q3's different divergence.
+LEDGER_RECON_FINGERPRINT_KEYS = ("error_code", "side", "period_start", "period_end")
+
+_LEDGER_RECON_DIVERGENCE = "ledger_recon_divergence"
+_NOT_INCLUDED_DROP = "not_included_gst_drop"
+
+
+def _period_bounds(period: Any) -> tuple[str, str]:
+    """Return (start, end) from a run period dict; ("", "") when unusable.
+
+    The period is the AUTHORITATIVE run period (``compile_output["period"]``), never parsed
+    out of a description string — prose is not a contract.
+    """
+    if not isinstance(period, dict):
+        return "", ""
+    return str(period.get("start") or "").strip(), str(period.get("end") or "").strip()
+
+
+def compute_family_fingerprint(finding: Any, period: Any = None) -> str | None:
+    """Return the family-keyed "sha256:..." fingerprint for *finding*, or None.
+
+    ONE function for BOTH the write path (serialization) and the re-apply path
+    (``annotate_and_demote``): a decision can only re-apply if the fingerprint recomputed at
+    read time equals the one recorded at write time, so the two must never diverge.
+
+    Dispatch:
+      * Signal A (``finding_type == "ledger_recon_divergence"``) ->
+        (error_code, side, period_start, period_end). None without a side or a period.
+      * Signal B (``finding_type == "not_included_gst_drop"``) -> the v1 triple with the
+        journal reference in the doc_num slot and the named-empty counterparty. None when the
+        reference is blank (Terry, ruling 3) — a blank Xero Reference is real data, and one
+        shared key across every such row is exactly the sweep defect.
+      * Everything else (E-checks AND the four document checks) -> the UNCHANGED v1 triple via
+        ``compute_finding_fingerprint``. Document checks keep the counterparty (Terry, ruling
+        1): Xero bill numbers can collide across suppliers, so dropping it risks one decision
+        sweeping two suppliers' bills. A join miss normalises to the named empty form, which
+        fails to re-apply (honest) rather than re-applying wrongly (the defect).
+
+    ``period`` is accepted for every family but consumed ONLY by Signal A, so passing it is
+    always safe and never leaks into a family that does not key on it.
+    """
+    ftype = finding.get("finding_type") if isinstance(finding, dict) else getattr(
+        finding, "finding_type", None
+    )
+
+    if ftype == _LEDGER_RECON_DIVERGENCE:
+        side = str(finding.get("side") or "").strip()
+        start, end = _period_bounds(period)
+        if not side or not start or not end:
+            return None
+        code = str(finding.get("error_code") or "LEDGER_RECON").strip()
+        keyed = dict(zip(
+            LEDGER_RECON_FINGERPRINT_KEYS, (code, side, start, end)
+        ))
+        return compute_inputs_hash(keyed)
+
+    if ftype == _NOT_INCLUDED_DROP:
+        reference = str(finding.get("reference") or "").strip()
+        if not reference:
+            return None
+        code = str(finding.get("error_code") or "NOT_INCLUDED").strip()
+        # Routed through the SAME triple builder so the canonicalisation rules (str().strip()
+        # on the identifier, never int(); the named empty counterparty) are shared, not
+        # re-implemented.
+        return compute_finding_fingerprint(
+            {"error_code": code, "card_name": None, "doc_num": reference}
+        )
+
+    return compute_finding_fingerprint(finding)
+
+
+# ---------------------------------------------------------------------------
 # Append-only hash-chained ledger — mirrors agent/ledger.py; no edit/delete API
 # ---------------------------------------------------------------------------
 
@@ -417,13 +511,16 @@ class AnnotatedFinding:
 
     Attributes:
         finding:            The original finding object, byte-unchanged.
-        fingerprint:        The finding's deterministic fingerprint.
+        fingerprint:        The finding's deterministic fingerprint, or None when its family
+                            cannot form a key (Slice B: a blank Signal B journal reference, or
+                            Signal A without a run period). None means "not adjudicable",
+                            never "collapse onto a shared key".
         demoted:            True iff a prior KNOWN_ACCEPTED adjudication exists.
         annotation:         Reviewer-context text, or None if no prior adjudication.
         prior_dispositions: Tuple of prior dispositions (oldest first), () if none.
     """
     finding: Any
-    fingerprint: str
+    fingerprint: Optional[str]
     demoted: bool
     annotation: Optional[str]
     prior_dispositions: tuple
@@ -440,7 +537,7 @@ def _build_annotation(priors: list[AdjudicationEntry]) -> str:
 
 
 def annotate_and_demote(
-    findings: list, ledger: DecisionLedger
+    findings: list, ledger: DecisionLedger, period: Any = None
 ) -> list[AnnotatedFinding]:
     """Decorate each finding with decision-ledger context — a PURE READ.
 
@@ -454,7 +551,23 @@ def annotate_and_demote(
     """
     out: list[AnnotatedFinding] = []
     for finding in findings:
-        fp = compute_finding_fingerprint(finding)
+        # Slice B: family dispatch. For an E-check or document finding this IS
+        # compute_finding_fingerprint(finding) — byte-identical to before — so every existing
+        # caller is unaffected by the widening. `period` is consumed only by Signal A.
+        fp = compute_family_fingerprint(finding, period=period)
+        if fp is None:
+            # A family that cannot form its key (a blank Signal B reference; Signal A without
+            # a run period) stays UN-adjudicable rather than collapsing onto a shared key that
+            # one decision could sweep. Cardinality is still preserved: the row is annotated
+            # with nothing, never dropped.
+            out.append(AnnotatedFinding(
+                finding=finding,
+                fingerprint=None,
+                demoted=False,
+                annotation=None,
+                prior_dispositions=(),
+            ))
+            continue
         # THE INERT RULE (Terry R1, explicit — never an implicit fallthrough): the
         # lookup joins the CURRENT-version recomputed key against stored keys. A v0
         # entry's stored key was computed under the superseded 2-field composition,

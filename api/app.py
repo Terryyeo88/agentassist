@@ -1074,8 +1074,20 @@ def post_review_session_sign(review_id: str, req: ReviewSessionSignRequest) -> d
             # extract extract_demo/ — the #45 caveat (no client component in the
             # fingerprint) is unchanged and now user-facing on this paper.
             stored_rows_by_client: dict[str, list] = {}
+            # Slice B: the PRIMARY F5 slice is still not taken wholesale — its detect rows are
+            # RECOMPUTED below from result.compile_output, which stays authoritative. But its
+            # ledger-recon and document rows are recomputed nowhere, so before Slice B a
+            # decision on one of them was invisible on the accumulated paper exactly as it was
+            # on the per-upload one. They now carry fingerprints, so they go down the SAME
+            # stored_rows path as every non-primary slice. No double-count: detect rows come
+            # from `issues`, these come from stored_rows, and the two sets are disjoint.
+            primary_extra: list = []
             for s in active:
                 if s.get("source_kind") == "xero_f5_upload":
+                    primary_extra.extend([
+                        r for r in (s.get("queue") or [])
+                        if not str(r.get("finding_id", "")).startswith("detect:")
+                    ])
                     continue
                 cid = _SLICE_CLIENT_IDS.get(s.get("source_kind") or "")
                 if cid:
@@ -1084,6 +1096,7 @@ def post_review_session_sign(review_id: str, req: ReviewSessionSignRequest) -> d
                 {
                     "client_id": cfg.client_id,
                     "issues": result.compile_output["detect"]["issues"],
+                    "stored_rows": primary_extra,
                     "entries": load_decision_entries(cfg.client_id),
                 },
                 *[
@@ -1269,7 +1282,11 @@ def _xero_document_context(reader, period: dict, rid: Optional[str]):
     return (lambda: items), provider, (matched, len(items))
 
 
-def _serialize_document_candidates(cands, line_items_by_ref: "Optional[dict]" = None) -> list:
+def _serialize_document_candidates(
+    cands,
+    line_items_by_ref: "Optional[dict]" = None,
+    decision_entries: "Optional[list]" = None,
+) -> list:
     """DocumentCandidate -> QueueItem rows via the SAME resolution the viewmodel uses.
 
     D-47: this function previously re-implemented an existing projection and violated
@@ -1287,14 +1304,41 @@ def _serialize_document_candidates(cands, line_items_by_ref: "Optional[dict]" = 
     finding_type derives from extraction_source (D-47): born-digital extraction is
     deterministic end to end; a model-assisted (scanned) extraction is probabilistic.
     D-46's ungated paper rendering rests on exactly this distinction.
-    fingerprint None -> decision controls render DISABLED with an honest reason.
+
+    Slice B (G-4): the row now carries a fingerprint keyed on
+    (check_id, counterparty, doc_num) — the SAME v1 triple the E-check family uses, so the
+    canonicalisation rules are shared rather than re-implemented. The counterparty is KEPT
+    (Terry ruling 1): Xero bill numbers can collide across suppliers, so keying on the
+    document alone would let one adjudication sweep two suppliers' bills. A join MISS
+    normalises to the named empty counterparty, which fails to re-apply — the honest failure —
+    rather than re-applying to the wrong document.
     """
-    from agent.registry import CHECK_REGISTRY  # noqa: PLC0415 — keep module import graph flat
+    from agent.decision_ledger import (  # noqa: PLC0415 — keep module import graph flat
+        DecisionLedger, annotate_and_demote, compute_family_fingerprint,
+    )
+    from agent.registry import CHECK_REGISTRY  # noqa: PLC0415
     from api.viewmodel import _IRAS_CAVEAT  # noqa: PLC0415
 
     joined = line_items_by_ref or {}
+    # The fingerprint payloads, in row order — the shape the fingerprint layer reads.
+    fp_findings = [
+        {
+            "error_code": getattr(c, "check_id", None),
+            "card_name": (joined.get(str(getattr(c, "doc_num", ""))) or {}).get("card_name"),
+            "doc_num": getattr(c, "doc_num", None),
+        }
+        for c in (cands or [])
+    ]
+    annotated = None
+    if decision_entries:
+        # The SAME re-apply join as every other family, so a decision on a document row
+        # comes back demoted/annotated instead of persisting invisibly.
+        annotated = annotate_and_demote(
+            fp_findings, DecisionLedger.from_entries(list(decision_entries))
+        )
+
     rows = []
-    for c in (cands or []):
+    for pos, c in enumerate(cands or []):
         born = getattr(c, "extraction_source", "") == "born_digital"
         prov = (
             "born-digital (deterministic extraction)" if born
@@ -1323,10 +1367,18 @@ def _serialize_document_candidates(cands, line_items_by_ref: "Optional[dict]" = 
             "display_name": (spec.display_name if spec else str(c.check_id).replace("_", " ")),
             "iras_basis": (spec.iras_basis if spec else None),
             "iras_basis_caveat": _IRAS_CAVEAT,
-            "demoted": False,
-            "annotation": None,
-            "prior_dispositions": [],
-            "fingerprint": None,
+            # Slice B: adjudicable. The fingerprint is unconditional and store-independent
+            # (the fingerprint-always property); the re-apply join below overwrites with the
+            # identical value plus this row's decision history.
+            "demoted": False if annotated is None else annotated[pos].demoted,
+            "annotation": None if annotated is None else annotated[pos].annotation,
+            "prior_dispositions": (
+                [] if annotated is None else list(annotated[pos].prior_dispositions)
+            ),
+            "fingerprint": (
+                compute_family_fingerprint(fp_findings[pos]) if annotated is None
+                else annotated[pos].fingerprint
+            ),
             "candidate_framing_text": (
                 f"Invoice cross-reference candidate ({prov}) — a reviewer adjudicates "
                 "against the source document; this is a candidate, not a verdict."
@@ -1420,16 +1472,20 @@ def _xero_f5_review_response(
     # and the staging store is discarded with the request). Cap fired → no dossiers, an
     # honest degraded coverage row below, queue fields stay at their defaults.
     upload_dossiers = generate_upload_dossiers(result)
+    # Loaded ONCE and shared by all three families, so every row on this queue re-applies
+    # against the same store read (Slice B).
+    decision_entries = load_decision_entries(cfg.client_id)
     queue = serialize_xero_queue(
         result.compile_output["detect"]["issues"],
-        decision_entries=load_decision_entries(cfg.client_id),
+        decision_entries=decision_entries,
         dossiers=upload_dossiers.dossiers,
-    ) + serialize_ledger_recon_queue(result.compile_output)
-    # T-E(2): document cross-reference candidates join the queue (fingerprint None ->
-    # honest disabled decision controls, the ledger-recon precedent).
+    ) + serialize_ledger_recon_queue(result.compile_output, decision_entries=decision_entries)
+    # T-E(2): document cross-reference candidates join the queue. Slice B: they now carry a
+    # fingerprint and re-apply like every other family.
     queue = queue + _serialize_document_candidates(
         result.document_candidates,
         {str(it["doc_num"]): it for it in (doc_line_source() if doc_line_source else [])},
+        decision_entries=decision_entries,
     )
     coverage_status = [status.as_dict() for status in reader.coverage_status()]
     if upload_dossiers.capped:
@@ -1814,9 +1870,32 @@ async def post_sign_upload(
             if decision_entries:
                 pre = review(cfg, xero_period, _mk_inputs(), persist_artifacts=False)
                 if pre.status == "completed" and pre.compile_output is not None:
+                    # Slice B: the paper must show a decision on ANY family, not just the
+                    # detect rows. The ledger-recon and document rows now carry fingerprints,
+                    # so they go down build_adjudication_view's EXISTING stored_rows path —
+                    # which uses a row's fingerprint as-is and skips un-fingerprinted rows.
+                    # Without this a reviewer could adjudicate a document finding, see it
+                    # demoted on screen, and find no trace of it on the signed paper.
+                    # The document rows' fingerprints key on the BOOKS counterparty, so the
+                    # join here must be the same one the review used — otherwise the sign
+                    # would recompute a different key and silently show no history.
+                    doc_join_items: list = []
+                    if source_kind == "xero_f5_signed":
+                        _ls, _prov, _join = _xero_document_context(
+                            XeroF5ChainReader(dest), xero_period, rid
+                        )
+                        doc_join_items = list(_ls() if _ls else [])
+                    stored_rows = serialize_ledger_recon_queue(
+                        pre.compile_output, decision_entries=decision_entries
+                    ) + _serialize_document_candidates(
+                        pre.document_candidates,
+                        {str(it["doc_num"]): it for it in doc_join_items},
+                        decision_entries=decision_entries,
+                    )
                     adjudication_view = build_adjudication_view([{
                         "client_id": cfg.client_id,
                         "issues": pre.compile_output["detect"]["issues"],
+                        "stored_rows": stored_rows,
                         "entries": decision_entries,
                     }])
 

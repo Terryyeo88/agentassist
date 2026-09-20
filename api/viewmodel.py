@@ -24,6 +24,7 @@ from agent.decision_ledger import (
     AdjudicationEntry,
     DecisionLedger,
     annotate_and_demote,
+    compute_family_fingerprint,
     compute_finding_fingerprint,
     count_superseded_entries,
 )
@@ -454,8 +455,24 @@ def _ledger_recon_prose(finding: dict) -> tuple[str, str]:
     return description, (base_reco + detail).strip()
 
 
-def _serialize_one_ledger_finding(finding: dict) -> dict[str, Any]:
-    """One T2.24 ledger-recon finding → a QueueItem row (exactly QUEUE_ITEM_KEYS)."""
+def _serialize_one_ledger_finding(
+    finding: dict,
+    period: Any = None,
+    annotated: Any = None,
+) -> dict[str, Any]:
+    """One T2.24 ledger-recon finding → a QueueItem row (exactly QUEUE_ITEM_KEYS).
+
+    Slice B: the row now carries a FAMILY-KEYED fingerprint, so a reviewer can adjudicate it.
+    Signal A keys on (error_code, side, period_start, period_end) — the side and the
+    AUTHORITATIVE run period, never anything parsed out of the description prose. Signal B
+    keys on its journal reference; a BLANK reference keeps fingerprint None, which leaves the
+    row visibly non-adjudicable rather than collapsing every blank-reference posting onto one
+    shared key.
+
+    ``annotated`` is this finding's AnnotatedFinding from the re-apply join, when a decision
+    store exists — the same object the detect path uses, so a decision recorded here comes
+    back demoted/annotated on the next read.
+    """
     ftype = finding.get("finding_type", "")
     code = _LEDGER_RECON_CODE.get(ftype, "LEDGER_RECON")
     description, recommendation = _ledger_recon_prose(finding)
@@ -479,6 +496,16 @@ def _serialize_one_ledger_finding(finding: dict) -> dict[str, Any]:
             "severity": finding.get("severity"),  # ledger-recon carries none → None (lean B)
         }},
     }
+    # Slice B: the family-keyed fingerprint. Computed from the PRODUCER dict (side /
+    # reference), never from finding_id or prose. None stays None — an un-keyable row is
+    # honestly non-adjudicable.
+    item["fingerprint"] = compute_family_fingerprint(finding, period=period)
+    if annotated is not None:
+        item["fingerprint"] = annotated.fingerprint
+        item["demoted"] = annotated.demoted
+        item["annotation"] = annotated.annotation
+        item["prior_dispositions"] = list(annotated.prior_dispositions)
+
     row = serialize_queue_item(item)
     # serialize_queue_item resolves display_name/iras_basis from CHECK_REGISTRY, which has
     # NO GST_LEDGER_RECON entry (→ id/"—"). Override with the HONEST internal-consistency
@@ -490,7 +517,9 @@ def _serialize_one_ledger_finding(finding: dict) -> dict[str, Any]:
     }
 
 
-def serialize_ledger_recon_queue(compile_output: dict) -> list[dict[str, Any]]:
+def serialize_ledger_recon_queue(
+    compile_output: dict, decision_entries: Any = None
+) -> list[dict[str, Any]]:
     """Project the T2.24 ledger-recon findings into SHARED QueueItem rows (PR-2, hop 1).
 
     Reads ``compile_output["ledger_recon_findings"]`` (Signal A: side + divergence) and
@@ -500,11 +529,24 @@ def serialize_ledger_recon_queue(compile_output: dict) -> list[dict[str, Any]]:
     DETERMINISTIC and UNGATED (never behind show_ai_candidates). Read-only over
     compile_output: the F5 boxes and the offline-replay oracle are untouched.
     """
+    # Slice B: the run period keys Signal A, and it comes from compile_output — the
+    # authoritative period the chain actually ran, not a string scraped from prose.
+    period = compile_output.get("period")
+    findings = list(compile_output.get("ledger_recon_findings") or []) + list(
+        compile_output.get("not_included_findings") or []
+    )
+    annotated = None
+    if decision_entries:
+        ledger = DecisionLedger.from_entries(list(decision_entries))
+        # The SAME join the detect path uses, so a decision recorded against one of these
+        # rows re-applies on the next read instead of persisting invisibly.
+        annotated = annotate_and_demote(findings, ledger, period=period)
+
     rows: list[dict[str, Any]] = []
-    for finding in (compile_output.get("ledger_recon_findings") or []):
-        rows.append(_serialize_one_ledger_finding(finding))
-    for finding in (compile_output.get("not_included_findings") or []):
-        rows.append(_serialize_one_ledger_finding(finding))
+    for pos, finding in enumerate(findings):
+        rows.append(_serialize_one_ledger_finding(
+            finding, period=period, annotated=None if annotated is None else annotated[pos]
+        ))
     return rows
 
 

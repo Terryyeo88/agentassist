@@ -1979,3 +1979,46 @@ zero `.py` touched; `frontend/src/api.ts` untouched (no existing export changed 
 - **Honest status:** built + vitest-verified, **NOT browser-verified** pending Terry's manual
   acceptance. Moves NO validation rung; `validation_status` unvalidated; `show_ai_candidates` False;
   T2.11 unmoved. G-4, G-5 (#49), G-7 and G-8 remain open and untouched.
+
+### `D-2026-09-20-slice-b-adjudicable-rows` — Slice B: every Xero demo row is adjudicable (G-4) *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+Branch `t-slice-b-adjudicable-rows`, cut from a freshly fetched `origin/master` (`9d7ed1d`).
+Backend-only: `frontend/` untouched; `orchestrator/`, `feeders/`, `engine/`, `reasoning/`,
+`report/` untouched.
+
+- **The defect.** 7 of 16 demo rows carried `fingerprint: null` (4 document checks + 3
+  ledger-recon), so their decision controls rendered disabled. #46's premise — "no
+  counterparty, therefore no fingerprint" — assumed every key must carry a counterparty.
+- **The ruling: a FAMILY → identity-key map.** E-checks `(error_code, counterparty, doc_num)`
+  UNCHANGED; document checks the same triple with `check_id` in the code slot; Signal B
+  `(error_code, named-empty counterparty, journal reference)`; Signal A
+  `(error_code, side, period_start, period_end)`.
+- **No version bump, no orphaned decisions.** The hash is canonical JSON over exactly the keys
+  a family declares, so a new family's dict differs while the E-check dict is byte-identical.
+  `FINGERPRINT_KEYS` unwidened, `FINGERPRINT_VERSION` still v1, Terry's golden unmoved.
+- **Signal A takes the PERIOD** (`compile_output["period"]`, never prose) so a per-side
+  aggregate never carries forward to another quarter's different divergence.
+- **Signal B with a BLANK reference keeps `None`** and stays non-adjudicable — never a
+  collapsed shared key (a blank Xero Reference is real data).
+- **Document checks KEEP the counterparty** — Xero bill numbers collide across suppliers; a
+  join miss fails to re-apply (honest) rather than sweeping two suppliers' bills (the defect).
+- **One function, both paths.** `annotate_and_demote` dispatches through the same function, so
+  a decision on any family re-applies. Cardinality preserved: un-keyable rows are annotated
+  with nothing, never dropped.
+- **The paper (scope growth accepted, `api/` only).** Both sign paths now pass the new
+  families down `build_adjudication_view`'s existing `stored_rows` route; the accumulated
+  path's primary slice contributes its non-detect rows only (no double-count). The frozen
+  `POST /sign` stays silent.
+- **Terry's hand-amendment `e96efba`** retired the `#46` tripwire and landed RED
+  (2980 passed / 1 failed); this build turns it green.
+- +43 tests in two NEW files, failing-first → **pytest 2981 → 3024 passed, 0 failed**,
+  1 skipped, 4 xfailed, 4 xpassed (unchanged). vitest 174 green; build clean; import scan
+  clean; boxes/gates/coverage byte-identical; oracle byte-identical, NO re-freeze.
+- **Fingerprint values printed for Terry's hand-pins** (see the STATE entry table); no golden
+  literal is agent-authored.
+- **Open item #45 restated, UNCHANGED:** no tenant component in the fingerprint; the store is
+  keyed by config `client_id`, not by a named client. Still a multi-tenant ship-blocker.
+- **Honest status:** built + hermetically tested + API-verified over HTTP on synthetic
+  real-format data. NOT browser-verified pending manual acceptance; NOT real-client-validated.
+  Moves NO validation rung; `validation_status` unvalidated; `show_ai_candidates` False;
+  T2.11 unmoved. G-5 (#49), G-7, G-8 and the frozen-path null family remain open.
