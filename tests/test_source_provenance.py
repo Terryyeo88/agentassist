@@ -30,9 +30,12 @@ APPEND-ONLY BOUNDARY: this is a NEW test file. No existing test file is modified
 INSIDE the test bodies so a missing module raises ImportError as a genuine FAILURE — it is
 deliberately NOT skipped.
 
-DELIBERATE #44 RESIDUE: the supplier-registration mechanism nouns "FederalTaxID" and
-"User Defined Field" stay SAP-worded on ALL sources this build (open item #44). The tests
-LOCK that they are NOT relabelled even on the Xero path.
+#44 RESIDUE — RETIRED FOR XERO (Slice C, hand-amended by Terry 2026-09-20). This build
+originally locked the supplier-registration mechanism nouns "FederalTaxID" and "User Defined
+Field" as SAP-worded on ALL sources (open item #44). That lock is superseded: the wording is
+now source-aware. SAP keeps both nouns byte-identical; Xero refers to the TaxNumber field in
+the supplied Contacts export and must not mention SAP-only concepts that do not exist in Xero.
+Recorded here rather than deleted, so the superseded ruling cannot be silently re-litigated.
 
 Hermetic: no network, no anthropic import, no live SAP/Xero. SAP off, dummy creds only.
 """
@@ -337,7 +340,7 @@ class TestNotExamined:
         )
 
 
-# ══ TestJudgment — optional client_config kwarg + both directions + #44 residue ═══════
+# ══ TestJudgment — optional client_config kwarg + both directions + #44 source-aware ══
 
 class TestJudgment:
 
@@ -373,7 +376,7 @@ class TestJudgment:
         bp = _group(sec, "business-purpose-reg26-27")
         assert bp.judgment_question.endswith("claimed against it in Xero.")
 
-    def test_supplier_registration_both_directions_keep_mechanism_nouns(self, compile_output):
+    def test_supplier_registration_mechanism_nouns_are_source_aware(self, compile_output):
         sap = _group(
             build_judgment_section(
                 compile_output, self._findings(), client_config=_ns_cfg("sap_b1")
@@ -389,10 +392,16 @@ class TestJudgment:
         assert "your SAP B1 instance" in sap.judgment_question
         assert "your Xero instance" in xero.judgment_question
         assert "your SAP B1 instance" not in xero.judgment_question
-        # #44 residue: the mechanism nouns stay SAP-worded on BOTH sources this build.
-        for q in (sap.judgment_question, xero.judgment_question):
-            assert "FederalTaxID" in q
-            assert "User Defined Field" in q
+        # AMENDED by Terry 2026-09-20 (Slice C; #44 retired for Xero). Was: a loop asserting
+        # "FederalTaxID" and "User Defined Field" appear in BOTH questions (the #44 residue).
+        # SAP keeps its mechanism nouns; the Xero wording names the TaxNumber field in the
+        # supplied Contacts export and must not mention SAP-only concepts.
+        assert "FederalTaxID" in sap.judgment_question
+        assert "User Defined Field" in sap.judgment_question
+        assert "FederalTaxID" not in xero.judgment_question
+        assert "User Defined Field" not in xero.judgment_question
+        assert "TaxNumber" in xero.judgment_question
+        assert "Contacts" in xero.judgment_question
 
 
 # ══ TestRenderedCaption — PDF F5 caption both directions (2 renders max) ═══════════════
