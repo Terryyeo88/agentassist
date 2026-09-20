@@ -74,6 +74,8 @@ describe("Xero upload — optional ledger (PR-3)", () => {
     const primaryInput = screen.getByLabelText(/upload .* export/i) as HTMLInputElement;
     Object.defineProperty(primaryInput, "files", { value: [xlsx("F5.xlsx")] });
     fireEvent.change(primaryInput);
+    // AMENDED (Slice A, staged upload): staging no longer runs; the run is an explicit press.
+    fireEvent.click(screen.getByRole("button", { name: /run review/i }));
 
     // C-8 (D-43): the upload flow now makes TWO requests — POST /review-session then
     // POST /review/upload. Select the upload call by URL rather than by position: this
@@ -97,6 +99,8 @@ describe("Xero upload — optional ledger (PR-3)", () => {
     const primaryInput = screen.getByLabelText(/upload .* export/i) as HTMLInputElement;
     Object.defineProperty(primaryInput, "files", { value: [xlsx("F5.xlsx")] });
     fireEvent.change(primaryInput);
+    // AMENDED (Slice A, staged upload): staging no longer runs; the run is an explicit press.
+    fireEvent.click(screen.getByRole("button", { name: /run review/i }));
 
     // Same URL selection as above, same reason.
     await waitFor(() =>
