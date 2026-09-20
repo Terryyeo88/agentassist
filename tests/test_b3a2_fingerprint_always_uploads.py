@@ -8,8 +8,8 @@ decision keyed on the row's own fingerprint. B3a-2's "fingerprint-always" enable
 ``serialize_xero_queue`` compute + emit ``compute_finding_fingerprint(issue)`` on EVERY detect
 row unconditionally (store-independent), across all three upload ``source_kind``s
 (xero_f5_upload / extract_review / xero_sales_upload). Ledger-recon rows
-(``serialize_ledger_recon_queue``, finding_id ``ledger_recon:*``) DELIBERATELY keep
-fingerprint None -- no counterparty; #46 territory.
+(``serialize_ledger_recon_queue``, finding_id ``ledger_recon:*``) originally kept fingerprint
+None (no counterparty; #46 territory) -- SUPERSEDED by the Slice B amendment below.
 
 RULE-AUTHOR AMENDMENT (t-fingerprint-v1, hand-authored -- separation of duties).
 The fingerprint key WIDENED from (error_code, counterparty) to
@@ -17,15 +17,30 @@ The fingerprint key WIDENED from (error_code, counterparty) to
 DEGENERATE: two documents from one supplier carrying the same error hashed identically, so one
 adjudication swept both. ``_assert_fingerprint_always`` -- the single recompute site in this
 file, which every test below routes through -- now carries ``doc_num``. Nothing else in this
-file changes: the enabler property (fingerprint-always, store-independent) is orthogonal to the
-key's composition, and the ledger-recon-rows-stay-None assertion is unaffected (those rows have
-no counterparty and are still deliberately un-fingerprinted).
+file changed at that time: the enabler property (fingerprint-always, store-independent) is
+orthogonal to the key's composition.
+
+RULE-AUTHOR AMENDMENT (Slice B, t-slice-b-adjudicable-rows, hand-authored by Terry
+2026-09-20 -- separation of duties; PROPOSED D-id, Terry ratifies).
+#46's premise -- "ledger-recon rows carry no counterparty, therefore cannot be fingerprinted"
+-- is RETIRED. It assumed every fingerprint must key on a counterparty. Slice B introduces a
+FAMILY -> identity-key map inside the one fingerprint function: the E-check family keeps
+(error_code, counterparty, doc_num) byte-identical (no version bump, no stored decision
+orphaned); ledger-recon Signal A keys on (error_code, side, period_start, period_end) so a
+per-side divergence NEVER carries forward to another quarter's different divergence; Signal B
+(NOT_INCLUDED) keys on (error_code, named-empty counterparty, journal reference). A Signal B
+row with a BLANK reference must still carry None -- never a collapsed shared key -- and that
+case is pinned in Slice B's own new test file, not here (this fixture's #14 carries a
+reference). The A2 ledger loop below is INVERTED accordingly and strengthened with three
+STRUCTURAL properties (non-null sha256; pairwise distinct among ledger rows; disjoint from
+detect-row fingerprints). No golden literal is authored here -- values are hand-pinned later.
 
 THREE-TIMES RULE (prompt + code + THIS test): the "every detect row carries its deterministic
 fingerprint regardless of store contents" invariant is pinned in the panel prompt/spec, will be
-enforced in ``serialize_xero_queue`` code, and is asserted here. Ledger-recon rows staying
-un-fingerprinted is the backend half of the "no-silent-dead-buttons" rule (the FE half lives in
-frontend/src/test/NonAdjudicableRow.test.tsx).
+enforced in ``serialize_xero_queue`` code, and is asserted here. The "no-silent-dead-buttons"
+rule still holds in its general form -- a row is either adjudicable (non-null fingerprint) or
+visibly non-adjudicable with a stated reason (FE half: frontend/src/test/NonAdjudicableRow.test.tsx).
+After Slice B, ledger-recon rows on this fixture fall on the adjudicable side.
 
 WHAT FAILS TODAY AND WHY (do NOT weaken any existing pin -- Terry's
 tests/test_decision_reapply_upload.py stays the F5 red test; this file never duplicates its
@@ -34,8 +49,8 @@ exact assertions):
     ``== compute_finding_fingerprint(...)`` assertion fails.
   * A1 serialize (all source_kinds, incl. the SALES-branch function) -- with empty
     ``decision_entries`` the row carries fingerprint None today.
-  * A2 mixed F5+ledger -- detect rows fingerprint None today (ledger rows None both today and
-    after; asserted for the backend no-dead-button half).
+  * A2 mixed F5+ledger -- (historical, B3a-2) detect rows fingerprint None. (Slice B) the
+    ledger-recon loop FAILS until family fingerprints land: ledger rows are None at 9d7ed1d.
   * A3 extract persist+reapply -- the row's fingerprint is None today, so POST /decision 422s on
     the ``sha256:`` prefix guard (api/app.py) and the re-apply never runs.
 
@@ -221,9 +236,12 @@ def test_a1_serialize_xero_queue_fingerprints_on_empty_store(label, issue):
     _assert_fingerprint_always(row)
 
 
-# -- A2 (endpoint) -- mixed queue: detect rows fingerprinted, ledger-recon rows None ---------
+# -- A2 (endpoint) -- mixed queue: detect rows AND ledger-recon rows fingerprinted -----------
+# AMENDED by Terry 2026-09-20 (Slice B): renamed from
+# test_a2_mixed_f5_plus_ledger_detect_fingerprinted_ledger_none -- the old name would now
+# describe the opposite of what is asserted.
 
-def test_a2_mixed_f5_plus_ledger_detect_fingerprinted_ledger_none(client, hermetic):
+def test_a2_mixed_f5_plus_ledger_detect_and_ledger_family_fingerprinted(client, hermetic):
     assert _RF_F5.is_file() and _RF_LEDGER.is_file(), "committed xero-real-format fixtures missing"
     body = _post_upload(
         client,
@@ -241,17 +259,30 @@ def test_a2_mixed_f5_plus_ledger_detect_fingerprinted_ledger_none(client, hermet
     assert detect, "expected detect rows in the mixed queue"
     assert ledger, "expected ledger-recon rows in the mixed queue"
 
-    # FAILS TODAY on the detect loop (fingerprint None).
     for row in detect:
         _assert_fingerprint_always(row)
 
-    # Backend half of no-silent-dead-buttons: ledger-recon rows are NOT persistable -> None.
-    # (True both today and after B3a-2; asserted so a future widening cannot pass silently.
-    # t-fingerprint-v1 did NOT change this: recon rows still have no counterparty.)
+    # AMENDED by Terry 2026-09-20 (Slice B; retires #46's premise -- see module docstring).
+    # Ledger-recon rows are now fingerprinted by FAMILY keys (Signal A: side + period;
+    # Signal B: journal reference), not by counterparty. On this fixture every ledger row has
+    # the fields its family needs (#14 carries a reference), so every row must be adjudicable.
+    # STRUCTURAL pins only -- no golden literal (values are hand-pinned separately):
+    #   (1) each ledger row carries a sha256 fingerprint;
+    #   (2) no two ledger rows share one (output / input / #14 never collapse together);
+    #   (3) no ledger fingerprint equals any detect fingerprint (no cross-family collision).
+    # FAILS at 9d7ed1d: ledger rows carry None until Slice B lands.
     for row in ledger:
-        assert row["fingerprint"] is None, (
-            "ledger-recon rows carry no counterparty -> deliberately un-fingerprinted (#46)"
+        assert isinstance(row["fingerprint"], str) and row["fingerprint"].startswith("sha256:"), (
+            "ledger-recon rows must carry a family-keyed fingerprint (Slice B)"
         )
+    ledger_fps = [row["fingerprint"] for row in ledger]
+    assert len(set(ledger_fps)) == len(ledger_fps), (
+        "ledger-recon fingerprints must be pairwise distinct (no side/reference collapse)"
+    )
+    detect_fps = {row["fingerprint"] for row in detect}
+    assert detect_fps.isdisjoint(ledger_fps), (
+        "ledger-recon fingerprints must never collide with detect-row fingerprints"
+    )
 
 
 # -- A3 (endpoint) -- extract: a persisted Mark known re-applies on re-upload ----------------
