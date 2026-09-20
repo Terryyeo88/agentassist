@@ -1942,3 +1942,40 @@ what the software **knows**; no validation rung moves; `validation_status` unval
 - FILED: face-vs-books supplier (ASK B1, unbuilt); suspected_category enum lacks
   Category 3 (insurance) — Terry authors; Category 3 unmeasurable, medical_expenses
   contaminated. +8 → 2965 pass; browser-verified all four clicks.
+
+### `D-2026-09-20-slice-a-staged-upload` — Slice A: staged upload + Run review; G-1/G-2/G-3/G-6 closed *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+Branch `t-slice-a-staged-upload`, cut from a freshly fetched `origin/master` (`eba8aeb`). Frontend-only:
+zero `.py` touched; `frontend/src/api.ts` untouched (no existing export changed — D-44 respected).
+
+- **A1 staged upload.** The primary file input no longer uploads from its own `onChange`. All three
+  inputs stage; a "Staged for this run" manifest names the primary, the ledger (or "none") and every
+  document; items are removable/replaceable. "Run review" is disabled until a primary is staged and
+  while a run is in flight. One press = exactly one `POST /review-session` + exactly one
+  `POST /review/upload` carrying the primary, the ledger and all documents TOGETHER. Re-staging after
+  a run does not auto-run and says so.
+- **PROPOSED (Terry ratifies): a new Run review press creates a NEW session.** Accumulation into one
+  session is G-8 (accumulated sign) and is out of scope; recorded so the choice is explicit.
+- **G-1.** The post-decision re-apply passed neither `review_id` nor `documents`, so the re-applied
+  queue lost every document-derived finding and four coverage rows regressed to `unavailable`
+  (measured: 16 to 12 rows on the FIRST adjudication) while the signed paper still contained them.
+  Re-apply now re-submits what the RUN submitted, captured at run time.
+- **R3 (STOP-gate cleared).** Re-upload with the same `review_id` + same primary bytes is an
+  idempotent NO-OP, not an append (`_attach_review_slice` returns early on `sha_already_attached`;
+  identity = `(source_kind, sha256-of-primary)`). Verified by reading the branch AND empirically
+  (3 uploads: `slices=1, superseded=0, queue=16` each time).
+- **G-2.** No React error boundary existed anywhere, so D-47's white screen was a class, not an
+  instance. New `ErrorBoundary` wraps the app root and, separately, the finding-detail pane. The
+  fallback claims nothing about data or filing state — pinned by test.
+- **G-3.** A disabled tile denied that a Xero export can carry source-document PDFs and blamed that
+  for four checks not running; both clauses false since C-8/T-E(1)/(2). Replaced by the backend's own
+  coverage `reason`, VERBATIM (D-40 — never parsed for counts). Nothing renders before a run.
+- **G-6.** `SignModal.sign` was optional and defaulted to the frozen SBODEMOSG call. Now REQUIRED;
+  every caller names its transport; omission fails the build.
+- **Hand-amendment manifest: 13 existing upload-driving vitest files** took the mechanical
+  "click Run review" step. No assertion changed meaning; none weakened or deleted.
+- +26 tests (5 new files, all failing-first) → **vitest 148 to 174**, all green; tsc/build clean;
+  **pytest UNCHANGED 2981 passed / 1 skipped / 4 xfailed / 4 xpassed**.
+- **Honest status:** built + vitest-verified, **NOT browser-verified** pending Terry's manual
+  acceptance. Moves NO validation rung; `validation_status` unvalidated; `show_ai_candidates` False;
+  T2.11 unmoved. G-4, G-5 (#49), G-7 and G-8 remain open and untouched.
