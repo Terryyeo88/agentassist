@@ -865,6 +865,22 @@ async def post_review_upload(
                         f"{primary_name!r} is neither."
                     ),
                 )
+            if _chosen in ("xero_f5", "xero_sales") and _detected != _chosen:
+                # The SAME class of defect as G-5, found by pinning it: before this, a
+                # caller could state xero_f5, upload a sales export, and be handed a sales
+                # review with a 200 and no notice — the stated source silently overridden
+                # by detection. The two surfaces are not interchangeable: the F5 path
+                # carries the recomputed boxes and a sign route, the sales path carries
+                # neither. The umbrella word "xero" stays permissive across both kinds
+                # because the UI genuinely cannot tell them apart before the server parses
+                # the file; only a caller that names a PRECISE kind is held to it.
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Expected a {_chosen} export; the uploaded file "
+                        f"{primary_name!r} is a {_detected} export."
+                    ),
+                )
             if _chosen == "extract" and _detected is not None:
                 raise HTTPException(
                     status_code=422,

@@ -130,10 +130,13 @@ def _bump_audit() -> None:
     _seal._AUDIT_ROOT = _seal._AUDIT_ROOT.parent / f"audit-{next(_UPLOAD_SEQ)}"
 
 
-def _upload(client: TestClient, path: Path, name: str | None = None) -> dict:
+def _upload(client: TestClient, path: Path, name: str | None = None,
+            source: str | None = None) -> dict:
+    # AMENDED (Slice D): optional source; only the extract caller states it.
     _bump_audit()
     resp = client.post(
-        "/review/upload", files={"file": (name or path.name, path.read_bytes())}
+        "/review/upload", files={"file": (name or path.name, path.read_bytes())},
+        data={"source": source} if source else None,
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -266,7 +269,7 @@ def test_t4_sales_response_carries_no_boxes(client, hermetic):
 def test_t4b_extract_response_carries_no_boxes(client, hermetic, tmp_path):
     """The extract branch response has no NEW_KEY, no 'f5_summary', no top-level 'boxes'."""
     synth_path = _synth.export_xlsx(_FROZEN_EXTRACT_DIR, tmp_path / "extract.xlsx")
-    body = _upload(client, Path(synth_path), "extract.xlsx")
+    body = _upload(client, Path(synth_path), "extract.xlsx", source="extract")
     assert body["source_kind"] in ("extract_review", "extract_upload"), body["source_kind"]
     for banned in (NEW_KEY, "f5_summary", "boxes"):
         assert banned not in body, f"extract response must not carry {banned!r}"

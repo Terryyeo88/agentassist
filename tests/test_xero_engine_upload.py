@@ -218,7 +218,11 @@ def test_synthetic_upload_stays_coverage_only_when_engine_disabled(
     out = tmp_path / "synthetic_export.xlsx"
     _synth.export_xlsx(_FROZEN_EXTRACT_DIR, out)
 
-    resp = client.post("/review/upload", files={"file": ("synthetic_export.xlsx", out.read_bytes())})
+    resp = client.post(
+        "/review/upload",
+        files={"file": ("synthetic_export.xlsx", out.read_bytes())},
+        data={"source": "extract"},   # AMENDED (Slice D): extract must be stated
+    )
     assert resp.status_code == 200, resp.text
     body = resp.json()
 

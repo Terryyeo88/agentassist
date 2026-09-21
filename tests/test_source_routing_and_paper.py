@@ -45,6 +45,11 @@ _XERO_DIR = _REPO_ROOT / "tests" / "fixtures" / "xero-demo-2026Q2"
 _XERO_F5 = _XERO_DIR / "AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx"
 _XERO_NAME = "AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx"
 _FROZEN = _REPO_ROOT / "tests" / "fixtures" / "sbodemosg-extract"
+_SALES_F5 = (
+    _REPO_ROOT / "tests" / "fixtures" / "xero-sales-export"
+    / "AgentAssist_Xero_SalesInvoices_2026-04-01_to_2026-06-30.xlsx"
+)
+_SALES_NAME = "AgentAssist_Xero_SalesInvoices_2026-04-01_to_2026-06-30.xlsx"
 
 _SEQ = itertools.count()
 
@@ -182,6 +187,44 @@ class TestD6Routing:
         )
         assert r.status_code == 422
         assert "Unknown source" in r.json()["detail"]
+
+    def test_a_stated_xero_kind_must_match_the_uploaded_xero_kind(self, client, hermetic):
+        """Terry's item 2, and it is the SAME CLASS as G-5. Before this, stating xero_f5
+        and uploading a sales export returned 200 and reviewed it as xero_sales — the
+        stated source was ignored and detection silently overrode it. The two surfaces are
+        not interchangeable: the F5 path carries the recomputed boxes and a sign route,
+        the sales path is one-sided and carries neither. A reviewer who said "this is my
+        F5" and was shown a sales review would have no way to know."""
+        _bump()
+        r = client.post(
+            "/review/upload",
+            files={"file": (_SALES_NAME, _SALES_F5.read_bytes())},
+            data={"source": "xero_f5"},
+        )
+        assert r.status_code == 422, r.text
+        detail = r.json()["detail"]
+        assert "xero_f5" in detail and "xero_sales" in detail
+
+        _bump()
+        r2 = client.post(
+            "/review/upload",
+            files={"file": (_XERO_NAME, _XERO_F5.read_bytes())},
+            data={"source": "xero_sales"},
+        )
+        assert r2.status_code == 422, r2.text
+        assert "xero_sales" in r2.json()["detail"] and "xero_f5" in r2.json()["detail"]
+
+    def test_the_umbrella_xero_word_still_accepts_either_kind(self, client, hermetic):
+        """The UI's own vocabulary is one word for its upload surface — it cannot tell an
+        F5 workbook from a sales export before the server parses it, and must not be made
+        to guess. "xero" therefore stays permissive across both kinds; only a caller that
+        names a PRECISE kind is held to it."""
+        for name, path in ((_XERO_NAME, _XERO_F5), (_SALES_NAME, _SALES_F5)):
+            _bump()
+            r = client.post(
+                "/review/upload", files={"file": (name, path.read_bytes())}, data={"source": "xero"}
+            )
+            assert r.status_code == 200, r.text
 
     def test_a_xero_upload_is_unchanged_with_and_without_the_source_field(self, client, hermetic):
         """The Xero path routes itself by POSITIVE detection, as before: stating the source

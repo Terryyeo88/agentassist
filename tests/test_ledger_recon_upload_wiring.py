@@ -132,6 +132,7 @@ class TestNonF5IgnoresLedger:
                 "file": ("export.xlsx", _synth_extract_xlsx(tmp_path)),
                 "ledger": ("ledger.xlsx", b"garbage-would-422-if-parsed"),
             },
+            data={"source": "extract"},   # AMENDED (Slice D): extract must be stated
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
