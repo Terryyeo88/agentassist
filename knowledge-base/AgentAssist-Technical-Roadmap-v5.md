@@ -2023,7 +2023,7 @@ Backend-only: `frontend/` untouched; `orchestrator/`, `feeders/`, `engine/`, `re
   Moves NO validation rung; `validation_status` unvalidated; `show_ai_candidates` False;
   T2.11 unmoved. G-5 (#49), G-7, G-8 and the frozen-path null family remain open.
 
-### `D-2026-09-20-slice-c-contacts-no-gst-reg` — Slice C: the Contacts export makes NO_GST_REG runnable *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+### `D-2026-09-20-slice-c-contacts-no-gst-reg` — Slice C: the Contacts export makes NO_GST_REG runnable *(id RATIFIED by Terry 2026-09-21 under the two-writers protocol)*
 
 Branch `t-slice-c-contacts-no-gst-reg`, base `065bd00`, PR pending. Backend + a fourth
 staged frontend input. `orchestrator/`, `engine/`, `reasoning/` and `mcp-servers/` untouched:
@@ -2078,6 +2078,12 @@ staged frontend input. `orchestrator/`, `engine/`, `reasoning/` and `mcp-servers
   Acme's number deliberately. `200644444H` in `Contacts_POPULATED` is SUPERSEDED — an org
   rebuild must use `200611111A` (noted, not edited). **Correction:** neither fixture carries a
   UTF-8 BOM; `utf-8-sig` tolerates either and a test pins both parses identical.
+- **Two consequences raised at PR time and RULED by Terry, 2026-09-21 — both CORRECT, both
+  kept:** (a) with NO Contacts export the signed paper gains the Section 6
+  supplier-registration "not examined" line, so the PDF is NOT byte-identical in that case
+  (the API response and the F5 boxes are); (b) a Contacts export whose TaxNumber column is
+  present but 0%-populated reads `unavailable`, not `degraded` — `is_covered` gates before
+  the join counts are consulted, so the observed-population doctrine outranks the join.
 - **Open item #45 restated — UNCHANGED.** No tenant component in the fingerprint.
 - **Honest status:** built + hermetically tested + API-verified over HTTP on synthetic
   real-format data. NOT browser-verified pending manual acceptance; NOT real-client-validated
