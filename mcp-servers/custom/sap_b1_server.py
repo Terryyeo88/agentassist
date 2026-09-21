@@ -305,6 +305,32 @@ def _safe_float(val) -> float:
         return 0.0
 
 
+def _record_unmapped(totals: dict, vat_group: str, line: dict, sign: int = 1) -> None:
+    """Accumulate the LINE COUNT and VALUE excluded under one unrecognised tax code.
+
+    D-2026-09-21-unmapped-codes (R-2). Credit notes carry ``sign=-1`` so the recorded value
+    nets exactly the way the box arithmetic would have, had the code been recognised — the
+    figure answers "how much did this exclusion move the return by", not "how much paper
+    was there". Counting is per LINE; ``line_count`` is therefore comparable with the
+    denominators the coverage surfaces already use.
+
+    KEYED BY THE RAW CODE AS IT APPEARS IN THE CLIENT'S FILE, not by the normalised target.
+    The two differ only when a config MIS-DECLARES a mapping (code -> a target no box
+    knows); in that case the reviewer is holding a file containing the raw code, and naming
+    the config's target instead would tell them nothing they can act on. When they differ,
+    both are reported: the raw code, and what the configuration turned it into.
+    """
+    raw = (line.get("VatGroup") or "").strip() or vat_group
+    entry = totals.setdefault(
+        raw, {"code": raw, "line_count": 0, "net_total": 0.0, "tax_total": 0.0}
+    )
+    if vat_group and vat_group != raw:
+        entry["declared_as"] = vat_group
+    entry["line_count"] += 1
+    entry["net_total"] = round(entry["net_total"] + sign * _safe_float(line.get("LineTotal")), 2)
+    entry["tax_total"] = round(entry["tax_total"] + sign * _safe_float(line.get("TaxTotal")), 2)
+
+
 def normalize_vat_group(raw_code: str, mappings: dict[str, str]) -> str:
     """Translate a source-system tax code to its canonical AgentAssist VatGroup.
 
@@ -1001,6 +1027,12 @@ def calculate_f5_return(period_start: str, period_end: str, reader=None) -> str:
         "box_8_net_gst": 0.0,
     }
     anomalies = []
+    # D-2026-09-21-unmapped-codes (R-2): the anomaly record carries {doc_num, issue} only,
+    # which cannot answer "how much did we drop?". Accumulate per-code LINE COUNT and
+    # VALUE here, where the line is in hand, so the guard downstream can state the scale of
+    # an exclusion instead of merely noting that one happened. Emitted only when non-empty
+    # (a clean run must not gain a key — the offline-replay oracle is byte-compared).
+    unmapped_totals: dict = {}
     # Tracks (DocNum, VatGroup) pairs to emit one anomaly per code per document
     seen_unknown: set = set()
     credit_notes_applied = []
@@ -1018,6 +1050,7 @@ def calculate_f5_return(period_start: str, period_end: str, reader=None) -> str:
                         seen_unknown.add(key)
                         anomalies.append({"doc_num": doc.get("DocNum"),
                             "issue": f"unknown VatGroup '{vg}' — not in mapping"})
+                    _record_unmapped(unmapped_totals, vg, line, sign=1)
                 continue
             if mapping["side"] != "sales":
                 continue
@@ -1041,6 +1074,7 @@ def calculate_f5_return(period_start: str, period_end: str, reader=None) -> str:
                         seen_unknown.add(key)
                         anomalies.append({"doc_num": doc.get("DocNum"),
                             "issue": f"unknown VatGroup '{vg}' — not in mapping"})
+                    _record_unmapped(unmapped_totals, vg, line, sign=1)
                 continue
             if mapping["side"] != "purchase":
                 continue
@@ -1066,6 +1100,7 @@ def calculate_f5_return(period_start: str, period_end: str, reader=None) -> str:
                         seen_unknown.add(key)
                         anomalies.append({"doc_num": doc.get("DocNum"),
                             "issue": f"unknown VatGroup '{vg}' — not in mapping (credit note)"})
+                    _record_unmapped(unmapped_totals, vg, line, sign=-1)
                 continue
             if mapping["side"] != "sales":
                 continue
@@ -1098,6 +1133,7 @@ def calculate_f5_return(period_start: str, period_end: str, reader=None) -> str:
                         seen_unknown.add(key)
                         anomalies.append({"doc_num": doc.get("DocNum"),
                             "issue": f"unknown VatGroup '{vg}' — not in mapping (credit note)"})
+                    _record_unmapped(unmapped_totals, vg, line, sign=-1)
                 continue
             if mapping["side"] != "purchase":
                 continue
@@ -1200,6 +1236,13 @@ def calculate_f5_return(period_start: str, period_end: str, reader=None) -> str:
         },
         "credit_notes_applied": credit_notes_applied,
         "anomalies": anomalies,
+        # R-2: present ONLY when something was excluded. A clean run must gain no key —
+        # the offline-replay oracle byte-compares the whole compile output, and an
+        # unconditional key would force a re-freeze (Invariant 4).
+        **(
+            {"unmapped_code_totals": [unmapped_totals[k] for k in sorted(unmapped_totals)]}
+            if unmapped_totals else {}
+        ),
     })
 
 

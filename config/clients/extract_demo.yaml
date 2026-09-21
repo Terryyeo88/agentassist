@@ -9,16 +9,36 @@
 # format, computed under this default config — rate/mapping-dependent findings should not be
 # relied on until a real client config is wired in.
 #
-# REUSE, NO NEW TAX RULE: every tax value below is COPIED VERBATIM from xero_demo.yaml
-# (applicable_gst_rate, tax_code_mappings). This build asserts NO new tax semantics; the
-# citation deferrals (DEBT-1) carry over unchanged. Only the identity (client_id/name) and
-# the source_system label differ. MUST NOT be treated as gate-clean / authored.
+# WHAT THE TAX VALUES BELOW ARE (corrected 2026-09-21, D-2026-09-21-unmapped-codes).
+# They were previously COPIED VERBATIM from xero_demo.yaml and described as asserting "NO new
+# tax semantics". That description is now false and has been replaced, because the copy was
+# itself the defect (open item #49): the cloned rows declared XERO LABEL strings while this
+# client's own file carries RAW SAP CODES, so 133 of 146 lines were excluded from the box
+# totals and Box 8 INVERTED — a payable reported as a refund.
+#
+# What this config declares is the VOCABULARY AND RATE OF THE FILE THIS CLIENT SUPPLIES —
+# nothing more. It is a statement about one client's data, not a tax rule, and it introduces
+# no new tax meaning: SO->SR and SI->TX are the SAME mapping the sap_b1 default has always
+# applied (config/loader.py), applied HERE because source_system != "sap_b1" deliberately
+# withholds that default. The citation deferrals (DEBT-1) carry over unchanged. This file
+# MUST NOT be treated as gate-clean / authored.
+#
+# STANDING RULE FOR ANY NEW EXTRACT CLIENT: declare the vocabulary YOUR file uses. The
+# extract reader is a general Excel/CSV reader — it cannot know whether a column holds SAP
+# codes, Xero labels, or something else, and it must never guess.
 # =============================================================================
 
 client_id: extract_demo                    # Must match the filename stem exactly.
 client_name: "Default demo configuration (not the uploader's)"
 gst_registration_number: ""                # Synthetic demo — no real GST reg number.
-applicable_gst_rate: 0.09                  # Copied from xero_demo (9% demo posture).
+applicable_gst_rate: 0.07                  # The rate of THIS client's data for THIS period:
+                                           # the frozen 2024 SBODEMOSG extract this demo
+                                           # client supplies is 7%-era, and sbodemosg.yaml
+                                           # declares 0.07 for the same data. Was 0.09,
+                                           # cloned from xero_demo along with the mappings
+                                           # below; against 7% data that manufactured a
+                                           # rate-deviation finding on ~135 mapped lines.
+                                           # A real 2026 client would declare 0.09.
 
 source_system: extract                     # != "sap_b1" -> file-import client. Suppresses the
                                            # SAP-default tax-code remap AND makes the sap_b1
@@ -33,9 +53,16 @@ period_defaults:
 
 custom_vat_groups: {}
 
-# Copied VERBATIM from xero_demo.yaml — same five demo categories, same canonical VatGroup
-# targets, same DEBT-1 citation deferral. No new mapping is introduced by this build.
+# The vocabulary of the file THIS client supplies. The first two rows are the raw SAP codes
+# the extract fixture actually contains; the five label rows below them came from the
+# xero_demo clone and are retained because a client MAY export descriptive labels instead.
+# Hard-coding SAP-shaped codes in a format-agnostic extract config is a deliberate, narrow
+# choice: it describes this client's file, and any new extract client must declare its own.
 tax_code_mappings:
+  "SO": SR                                 # raw SAP sales code — the SAME target the sap_b1
+                                           # default applies (config/loader.py); declared here
+                                           # because source_system "extract" withholds it.
+  "SI": TX                                 # raw SAP purchase code — as above.
   "STANDARD-RATED SUPPLIES": SR            # cite DEFERRED — Annex E SR row unconfirmed, see DEBT-1
   "STANDARD-RATED PURCHASES": TX           # cite DEFERRED — Annex E TX row unconfirmed, see DEBT-1
   "SR-NOGST (0%) [TEST]": SR               # cite DEFERRED — Annex E SR row unconfirmed, see DEBT-1

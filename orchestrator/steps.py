@@ -427,6 +427,57 @@ def compile(  # noqa: A001 — shadows builtin; intentional, chain.py does not u
         if not entry["known_to_mapping"]:
             warnings.append(f"Gate 3: VatGroup '{vg}' not in mapping.")
 
+    # --- R-2: unmapped codes must never SILENTLY reduce a box -------------------
+    # D-2026-09-21-unmapped-codes. calculate excluded these lines from the box totals
+    # (the `continue` in each accumulator). Record WHICH boxes can no longer be vouched
+    # for, and surface a finding carrying the scale of the exclusion. Ruling Q3 option (a):
+    # an unmapped code has NO F5_BOX_MAPPING entry, so its SIDE is genuinely unknowable —
+    # inferring one from doc_type would be tax semantics by inference. Every value box is
+    # therefore blanked, and the derived boxes follow their inputs. NO THRESHOLD: one
+    # excluded line is enough. Emitted only when something was actually excluded, so a
+    # clean run stays byte-identical and the replay oracle needs no re-freeze.
+    box_completeness = None
+    excluded = calc.get("unmapped_code_totals") or []
+    if excluded:
+        codes = ", ".join(f"'{e['code']}'" for e in excluded)
+        lines = sum(e["line_count"] for e in excluded)
+        box_completeness = {
+            "status": "incomplete",
+            "excluded_codes": excluded,
+            "blanked_boxes": list(calc["boxes"]),
+            "excluded_line_count": lines,
+            "reason": (
+                f"{lines} line(s) carrying unrecognised tax code(s) {codes} were excluded "
+                "from the box totals, so no figure on this return can be vouched for."
+            ),
+        }
+        det["issues"].append({
+            "severity": "HIGH",
+            "error_code": "UNMAPPED_TAX_CODE",
+            # Not tied to one document: the exclusion is a property of the code across the
+            # period. Gate 4 tolerates a None doc_num explicitly (no dangling reference).
+            "doc_num": None,
+            "doc_date": "",
+            "card_name": "",
+            "description": (
+                f"Tax code(s) {codes} were not recognised, so {lines} line(s) were left out "
+                "of every F5 box total. The affected figures are not shown: a partial box "
+                "can be acted on, and would be more dangerous than a blank one. "
+                + "; ".join(
+                    f"{e['code']}: {e['line_count']} line(s), net {e['net_total']:,.2f}, "
+                    f"GST {e['tax_total']:,.2f}"
+                    for e in excluded
+                )
+                + "."
+            ),
+            "recommendation": (
+                "A code listed here may be perfectly legitimate and simply undeclared — "
+                "this is a candidate for review, not a verdict. Map each code to its "
+                "canonical VatGroup in the client configuration, then re-run."
+            ),
+        })
+        det["severity_counts"]["HIGH"] = det["severity_counts"].get("HIGH", 0) + 1
+
     return {
         "period": manifest["period"],
         "fetch_manifest": manifest,
@@ -434,6 +485,7 @@ def compile(  # noqa: A001 — shadows builtin; intentional, chain.py does not u
         "classify": cls,
         "detect": det,
         "deduplicated_anomalies": deduped,
+        **({"box_completeness": box_completeness} if box_completeness else {}),
         "e1_reconciliation": e1_recon,
         "surfaced_warnings": warnings,
         # T2.9: populated by run_chain() when declared_f5 is supplied;

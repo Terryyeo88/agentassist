@@ -461,6 +461,7 @@ export async function uploadExtract(
   reviewId?: string,
   documents?: File[],
   contacts?: File | null,
+  source?: string,
 ): Promise<UploadCoverageResponse> {
   // Multipart: the required primary `file` + an OPTIONAL `ledger` (the Xero 820
   // account-transactions export). The server runs the ledger↔declared-return
@@ -480,6 +481,12 @@ export async function uploadExtract(
   // when none is staged — the backend's no-contacts path is byte-identical to before, and
   // it is only reachable if this field is genuinely absent from the request.
   if (contacts) form.append("contacts", contacts);
+  // R-3 / G-5 (D-2026-09-21-unmapped-codes): the source the REVIEWER chose, stated. The
+  // server used to route on file shape alone, so a file matching neither Xero detector
+  // fell through to the general-extract branch and was reviewed under a demo config that
+  // was not the uploader's — silently. Stating the source turns that into a refusal that
+  // names what was expected and what arrived.
+  if (source) form.append("source", source);
   const resp = await fetch(`${BASE}/review/upload`, {
     method: "POST",
     body: form,

@@ -681,6 +681,11 @@ def _validated_upload_review_id(review_id: Optional[str]) -> Optional[str]:
 # T-E(1) source-document caps (D-39). Hard limits with an honest 413 — an unbounded
 # read times N multipart files is a denial of service shipped by accident. Module-level
 # so tests can shrink them without amending anything.
+#: R-3 (G-5): the source vocabulary the upload endpoint accepts. "xero" is the UI's own
+#: word for its upload surface and covers both Xero readers; the two precise spellings are
+#: accepted so a caller that knows which Xero export it holds can say so.
+_UPLOAD_SOURCES = frozenset({"xero", "xero_f5", "xero_sales", "extract"})
+
 _DOC_MAX_FILE_BYTES = 10 * 1024 * 1024   # 10 MiB per document
 _DOC_MAX_TOTAL_BYTES = 50 * 1024 * 1024  # 50 MiB per upload
 _DOC_MAX_COUNT = 50                      # documents per upload
@@ -692,6 +697,7 @@ async def post_review_upload(
     ledger: Optional[UploadFile] = File(None),
     documents: Optional[List[UploadFile]] = File(None),
     contacts: Optional[UploadFile] = File(None),
+    source: Optional[str] = Form(None),
     review_id: Optional[str] = Form(None),
 ) -> dict:
     """View over an UPLOADED client GST export (source-selector Xero branch).
@@ -830,6 +836,53 @@ async def post_review_upload(
             # three-sheet extract shape, so without this branch it would hit ExtractChainReader
             # and hard-fail on the missing documents/business_partners/listing sheets.
             is_xero_sales = (not is_xero) and is_xero_sales_invoice_workbook(dest)
+            # --- R-3 (G-5): the CHOSEN source governs; never a silent fallback --------
+            # D-2026-09-21-unmapped-codes. The extract branch used to be reached purely by
+            # ELIMINATION: a file that matched neither Xero detector was reviewed under
+            # extract_demo — a config that is not the uploader's, with a rate and a tax-code
+            # vocabulary that are not theirs — and nothing on screen said so. That is how a
+            # mis-detected file could be silently reviewed against the wrong tax settings.
+            # Now: a positively-detected Xero export still routes itself (byte-identical to
+            # before), but the extract branch requires the caller to SAY SO. A stated source
+            # that disagrees with the file is refused, naming both sides mechanically — no
+            # advice, no tax claim.
+            _detected = "xero_f5" if is_xero else ("xero_sales" if is_xero_sales else None)
+            _chosen = (source or "").strip().lower() or None
+            if _chosen is not None and _chosen not in _UPLOAD_SOURCES:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Unknown source {_chosen!r}. Expected one of: "
+                        f"{', '.join(sorted(_UPLOAD_SOURCES))}."
+                    ),
+                )
+            if _chosen in ("xero", "xero_f5", "xero_sales") and _detected is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Expected a Xero export (the 'Transactions by box number' F5 "
+                        "workbook or a Xero sales-invoice export); the uploaded file "
+                        f"{primary_name!r} is neither."
+                    ),
+                )
+            if _chosen == "extract" and _detected is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Expected a general extract workbook; the uploaded file "
+                        f"{primary_name!r} is a Xero export ({_detected})."
+                    ),
+                )
+            if _chosen is None and _detected is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Could not identify {primary_name!r} as a Xero export, and no "
+                        "source was stated. State the source explicitly to review it as a "
+                        "general extract."
+                    ),
+                )
+
             if is_xero:
                 # Slice C: a supplied Contacts export makes NO_GST_REG runnable on this
                 # path for the first time. Absent it, this constructor call is byte-

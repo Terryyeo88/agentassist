@@ -244,6 +244,37 @@ class CreditNoteApplied(TypedDict):
     tax_total_applied: float      # negative
 
 
+class UnmappedCodeTotal(TypedDict):
+    """How much one unrecognised tax code removed from the box totals (R-2).
+
+    The ``Anomaly`` record below carries {doc_num, issue} only, which can say THAT a line
+    was dropped but never HOW MUCH — and scale is exactly what a reviewer needs to judge an
+    exclusion. Keyed by the RAW code as it appears in the client's file; ``declared_as`` is
+    present only when a configuration mapped that code to a target no box recognises, in
+    which case both are reported.
+    """
+    code: str
+    line_count: int
+    net_total: float
+    tax_total: float
+    declared_as: NotRequired[str]
+
+
+class BoxCompleteness(TypedDict):
+    """Which F5 boxes cannot be vouched for, and why (R-2).
+
+    Ruling Q3 option (a): an unmapped code has no ``F5_BOX_MAPPING`` entry, so its SIDE is
+    genuinely unknowable — inferring one would be tax semantics by inference. Every value
+    box is therefore blanked and the derived boxes follow. NO THRESHOLD: one excluded line
+    is enough, because a partial box is more dangerous than a blank one.
+    """
+    status: str                       # "incomplete"
+    excluded_codes: list[UnmappedCodeTotal]
+    blanked_boxes: list[str]
+    excluded_line_count: int
+    reason: str
+
+
 class Anomaly(TypedDict):
     """A minimal document-level anomaly record shared by calculate and compile.
 
@@ -392,6 +423,13 @@ class CompileOutput(TypedDict):
     classify: ClassifyOutput
     detect: DetectOutput
     deduplicated_anomalies: list[Anomaly]  # union of calc anomalies + classify unknowns
+    # D-2026-09-21-unmapped-codes (R-2). PRESENT ONLY when at least one line was excluded
+    # from the box totals because its tax code was unrecognised; a clean run carries NO
+    # such key, which is what keeps the offline-replay oracle byte-identical (Invariant 4).
+    # It records WHICH boxes can no longer be vouched for, and the per-code line count and
+    # value that say how much was dropped. Emission only — the raw figures in
+    # ``calculate.boxes`` are untouched; the paper GLOSSES the seal, never contradicts it.
+    box_completeness: NotRequired["BoxCompleteness"]
     e1_reconciliation: E1Reconciliation
     surfaced_warnings: list[str]           # Gate-level warnings preserved for report
     declared_f5_findings: list[dict]       # T2.9: declared-vs-computed findings ([] if none)
