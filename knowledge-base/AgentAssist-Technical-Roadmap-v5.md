@@ -2089,3 +2089,47 @@ staged frontend input. `orchestrator/`, `engine/`, `reasoning/` and `mcp-servers
   real-format data. NOT browser-verified pending manual acceptance; NOT real-client-validated
   (DEBT-3); NOT accuracy-validated — the slice makes a check RUNNABLE, not correct.
   `validation_status` unvalidated; `show_ai_candidates` False; T2.11 unmoved.
+
+### `D-2026-09-21-unmapped-codes` — Slice D: unmapped tax codes never silently reduce a box; #49 and G-5 closed *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+Branch `t-slice-d-unmapped-codes`, base `82a7bf9`, PR pending. **Full record in
+`AGENTASSIST_TECHNICAL_STATE.md` §Slice D** — the measured before/after box table, the four
+rulings, the third box state and the contracts it widens.
+
+- **The defect (#49), measured.** `extract_demo.yaml` was cloned from `xero_demo.yaml`, so
+  it declared Xero LABEL strings while its own fixture carries raw SAP codes, and
+  `source_system: extract` withholds the sap_b1 SO/SI default. 133 of 146 lines (91.1%) were
+  dropped. Box 1 read 0.00 against a true 369,589.97; **Box 8 INVERTED** — −630.00 refund
+  against a true 12,663.87 payable. After the fix the extract path matches the frozen SAP
+  oracle exactly: all eight boxes AND the findings (23 = 23).
+- **R-1.** The vocabulary is a property of the FILE, not the connection type, so the CLIENT
+  CONFIG declares it (`SO→SR`, `SI→TX`). The sap_b1 default stays gated; the reader declares
+  nothing; no new tax semantics — only WHERE the same mapping is applied. The expected rate
+  came from the same clone and is corrected with it (0.09 → 0.07): against 7%-era data, 0.09
+  manufactured ~135 false rate-deviation findings. **Standing rule recorded in the config:**
+  any new extract client must declare its own file's vocabulary.
+- **R-2.** Any line excluded as unrecognised blanks EVERY value box with a stated reason, the
+  derived boxes follow, no partial figure is ever shown, and NO THRESHOLD applies. A
+  finding names each code, its line count and its value, in candidate framing. The seal keeps
+  the raw figures; the paper glosses, never contradicts.
+- **Q3 option (a), deliberately blunt.** An unmapped code has no `F5_BOX_MAPPING` entry, so
+  its SIDE is unknowable; inferring one would be tax semantics by inference. If the system
+  cannot tell what a code means, it cannot vouch for any box.
+- **Third state = sibling seam.** `box_capability` is capability-not-content and is absent on
+  live SAP, so widening it could never be source-agnostic. A new `box_completeness` key is
+  computed from `calculate.anomalies`, which every reader produces. Emitted ONLY when
+  something was excluded — the offline-replay oracle is byte-identical, **no re-freeze**.
+- **R-3 / G-5.** The extract branch was reachable purely by elimination. The UI now states
+  its source and the server honours it; a mismatch is refused naming what was expected and
+  what arrived. Xero self-routing is byte-identical (digest-pinned). Narrower reading stated
+  on record: the extract branch is unreachable without an explicit source, rather than
+  `source` becoming strictly required on every upload.
+- **#49 is now LATENT, not merely fixed:** after G-5 the extract path is unreachable from the
+  UI, so the guard and the routing are the live safety.
+- **Open item FILED (not built):** a mass of E4 findings signals that a config's declared
+  rate disagrees with its data — a candidate "declared-rate vs observed-rate" surfacer.
+- **15 existing tests await Terry's hand-amendment**, all one cause: they upload an extract
+  with no source stated and assert the REMOVED silent fallback. Not edited by this build.
+- **Honest status:** correctness fix, hermetic + API-verified on synthetic data. NOT
+  browser-verified; NOT real-client-validated (DEBT-3); NOT accuracy-validated — agreement
+  with the frozen oracle is a consistency fact, not an IRAS one. T2.11 unmoved.

@@ -6358,3 +6358,72 @@ The nameless line is the demo F5's reference `#13` (2026-05-29, GST 6.30). The *
 **MANUAL ACCEPTANCE (pairing 1) — not yet performed.** With the app running: stage `tests/fixtures/xero-demo-2026Q2/AgentAssist_IRAS_F5_2026-04-01_to_2026-06-30.xlsx` as the GST export and `tests/fixtures/xero-demo-2026Q2/Contacts.csv` on the new "Contacts export (supplier master)" input, press **Run review**, and expect: (1) exactly one `NO_GST_REG` row, **BILL-3003 / NoReg Trading**, with its adjudication controls LIVE; (2) the NO_GST_REG coverage row reading **degraded**, naming 19 of 20 lines examined and **1 with no supplier on the transaction** (0 missing, 0 ambiguous); (3) sign the paper and confirm it carries the BILL-3003 finding and the Xero wording ("TaxNumber", "Contacts export" — never "FederalTaxID" or "User Defined Field"), and that Section 6 carries NO supplier-registration line. Re-run with the Contacts input empty and confirm the coverage row returns to **unavailable**, no NO_GST_REG row appears, and Section 6 DOES carry that line.
 
 **Honest status.** Built + hermetically tested + **API-verified over HTTP on synthetic real-format data** (`:8010`, all three pairings and the 422 suffix gate). **NOT browser-verified** until Terry completes the manual acceptance above. **NOT real-client-validated** — no real Xero export has ever been read (DEBT-3). **NOT accuracy-validated**: this slice makes a check RUNNABLE; whether its findings are correct is T2.11's question and **T2.11 is unmoved**. A finding here is a CANDIDATE for a reviewer, never a verdict, and the check tests only whether a TaxNumber is PRESENT. `validation_status` unvalidated; `show_ai_candidates` False. Still open and untouched: **G-5** (#49), **G-7**, **G-8**.
+
+---
+
+## Slice D — unmapped tax codes must never silently reduce a box (`D-2026-09-21-unmapped-codes`)
+
+Updated 2026-09-21 (branch `t-slice-d-unmapped-codes`, base `82a7bf9`, PR pending, id **PROPOSED** — Terry ratifies under the two-writers protocol). **Open item #49 CLOSED. G-5 CLOSED.** Two defects, one root cause.
+
+### The defect, measured
+
+`config/clients/extract_demo.yaml` was cloned from `xero_demo.yaml`, so it declared Xero **label** strings ("STANDARD-RATED SUPPLIES") while its own fixture carries **raw SAP codes** (`SO`/`SI`) — and `source_system: extract` deliberately withholds the `sap_b1` SO/SI default (`config/loader.py:216-217`). Not one declared key matched anything in the data. Measured over the committed synthetic extract, against the frozen SAP replay oracle over the SAME underlying data:
+
+| box | SAP oracle | extract BEFORE | extract AFTER |
+| --- | ---: | ---: | ---: |
+| 1 standard-rated sales | 369,589.97 | **0.00** | 369,589.97 |
+| 2 zero-rated sales | 10,000.00 | 10,000.00 | 10,000.00 |
+| 3 exempt sales | 6,000.00 | 6,000.00 | 6,000.00 |
+| 4 total sales | 385,589.97 | **16,000.00** | 385,589.97 |
+| 5 taxable purchases | 191,077.76 | **11,400.00** | 191,077.76 |
+| 6 output tax | 25,871.32 | **0.00** | 25,871.32 |
+| 7 input tax | 13,207.45 | **630.00** | 13,207.45 |
+| 8 net GST | **12,663.87 payable** | **−630.00 refund** | 12,663.87 |
+
+**133 of 146 lines (91.1%) were dropped** — net 643,656.34 and GST 45,055.99 never reached a box (`SO`: 73 lines / 44 docs; `SI`: 60 lines / 27 docs). Box 8 did not merely understate: it **changed sign**, reporting a refund where the data says payable. After the fix the extract path matches the oracle exactly — all eight boxes, **and the findings too** (23 = 23: E1×11, NO_GST_REG×7, E2×5).
+
+### R-1 — the mapping lives in the client config
+
+The vocabulary is a property of the FILE, not of the connection type. The extract reader is a general Excel/CSV reader; a Xero-derived extract must not be silently read as SAP codes. So `extract_demo.yaml` declares `SO→SR` and `SI→TX` itself. The `sap_b1` default stays gated exactly as before, and the reader declares no vocabulary. **No new tax semantics:** these are the SAME targets the sap_b1 default has always applied — only WHERE they are applied changed.
+
+**The rate came from the same clone and is corrected with it: `0.09 → 0.07`.** The expected rate is a statement about THIS client's data for THIS period (7%-era SBODEMOSG, exactly what `sbodemosg.yaml` declares), not about Singapore's current rate. Left at 0.09 it manufactured a rate-deviation finding on ~135 mapped lines — 158 findings instead of 23, burying the real ones. A real 2026 client would declare 0.09.
+
+**STANDING RULE, now stated in the config:** any new extract client must declare the vocabulary ITS file uses. The reader cannot know whether a column holds SAP codes, Xero labels or something else, and it must never guess.
+
+### R-2 — the class behind it
+
+Fixing one config does not stop the next one silently losing a box. When ANY line is excluded because its tax code is unrecognised:
+
+- **every value box is rendered with NO FIGURE** and a stated reason naming the code(s) and the count of excluded lines; the derived boxes (4, 8) follow their inputs;
+- **a partial figure is never shown.** A partial Box 5 is more dangerous than a blank one, because a reviewer can act on a number;
+- **NO THRESHOLD.** One excluded line is enough — no materiality percentage was invented;
+- **a finding is surfaced** (`UNMAPPED_TAX_CODE`) naming each code, its line count and its total value, in candidate framing: the code may be perfectly legitimate and simply undeclared;
+- **the sealed bundle keeps the raw computed figures.** The paper GLOSSES the seal, never contradicts it — the established precedent.
+
+**Ruling Q3, option (a), and why it is deliberately blunt:** an unmapped code has no `F5_BOX_MAPPING` entry, so its SIDE is genuinely unknowable. Inferring one from `doc_type` would be tax semantics by inference, which the architecture forbids. If the system cannot tell what a code means, it cannot vouch for ANY box.
+
+### The third box state, and where it lives
+
+`box_capability` is **capability, not content** — stated three times in-repo and pinned by `tests/test_box_capability.py:382-441`. It is emitted only when a reader declares `populatable_sides`, and the live SAP reader deliberately has none, so widening it could never satisfy R-2's source-agnostic requirement without giving `SapChainReader` a seam that ruling F3 forbids. The guard is therefore a **sibling seam** (`Option B`): a new `box_completeness` key computed in compile from `calculate.anomalies`, which **every** reader produces. `F5BoxAttribution` gains an independent `exclusion_reason` field and a new `"incomplete"` status, and `_box_value_flowables` gains a branch that is checked FIRST — an exclusion outranks a capability marker, including on a box the source is perfectly capable of populating.
+
+**Contracts widened** (all approved): `CompileOutput` (+ new `BoxCompleteness` / `UnmappedCodeTotal` TypedDicts), `compile_review_output`'s return, the sealed `compile-output.json`, `F5BoxAttribution`, `build_f5_box_section`, `_box_value_flowables`. **NOT widened:** `EXTRACT_REVIEW_KEYS` and the TS `UploadCoverageResponse` — Q2 option (ii) was declined, so `#48` is not reversed.
+
+**Byte-identity by conditional emission.** Every new key appears ONLY when something was actually excluded. A clean run carries no new key, so the offline-replay oracle is unchanged and **no re-freeze was needed** (Invariant 4).
+
+### R-3 / G-5 — no silent fallback
+
+The extract branch was reached purely by ELIMINATION (`api/app.py:851`): a file matching neither Xero detector was reviewed under `extract_demo` — a config whose rate and tax-code vocabulary are not the uploader's — and nothing on screen said so. That is how a mis-detected file could be reviewed against the wrong tax settings in silence.
+
+The chosen source is now **sent by the UI** (`source=xero` from the upload panel, on the run and on the re-apply alike) and **honoured by the server**. A stated source that disagrees with the file is refused, naming what was expected and what arrived — mechanically, with no advice and no tax claim. A positively-detected Xero export still self-routes and is byte-identical with and without the field (digest-pinned).
+
+**One interpretation, stated plainly:** making `source` strictly required would 422 every existing upload test in the repo. The narrower reading implemented here is that **the extract branch is unreachable without an explicit source**, so nothing is ever reached by elimination, while positive Xero detection keeps working. That satisfies "no silent fallback to the extract branch, ever".
+
+### Honest status
+
+A correctness fix, **hermetically tested plus API-verified on synthetic data** (`:8010`: the Xero F5 upload unchanged, the corrected extract yielding 23 findings, a mismatched file and an unstated source both refused). **NOT browser-verified** until Terry's manual run. **NOT real-client-validated** — no real Xero or client extract has ever been read (DEBT-3). **NOT accuracy-validated**: the corrected figures agree with the frozen oracle, which is a consistency fact, not an IRAS one. `validation_status` unvalidated; `show_ai_candidates` False; **T2.11 unmoved**.
+
+**#49 becomes LATENT rather than merely fixed.** After G-5 the extract path is not reachable from the UI at all (there is no "general extract" affordance in the source selector), so the guard and the routing — not the config correction — are the live safety.
+
+**Open item FILED, not built:** a mass of `E4` findings is itself a signal that a config's declared rate disagrees with its data. A "declared-rate vs observed-rate" surfacer is a candidate check; this build deliberately does not write it.
+
+**Tests.** +32 pytest across two NEW files (`test_unmapped_code_guard.py`, `test_source_routing_and_paper.py`) and +3 vitest (`SourceRoutingMismatch.test.tsx`). D1/D2/D3 were written first and shown failing (13 red). D4/D6/D8 were written after their implementation and were green on arrival — regression guards, disclosed as such rather than counted as failing-first evidence. **15 existing tests fail with one shared cause** — they upload an extract with no source stated and receive the new 422, i.e. they assert the REMOVED silent fallback. They are NOT edited by this build; Terry hand-amends them. Suite before: 3069 passed / 1 skipped / 4 xfailed / 4 xpassed. Suite after: **3086 passed, 15 failed** (the 15 above), 1 skipped, 4 xfailed, 4 xpassed. vitest 178 → **181**. `tsc --noEmit`, `vite build`, flake8 fail-fast: clean.
