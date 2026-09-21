@@ -2128,8 +2128,18 @@ rulings, the third box state and the contracts it widens.
   UI, so the guard and the routing are the live safety.
 - **Open item FILED (not built):** a mass of E4 findings signals that a config's declared
   rate disagrees with its data — a candidate "declared-rate vs observed-rate" surfacer.
-- **15 existing tests await Terry's hand-amendment**, all one cause: they upload an extract
-  with no source stated and assert the REMOVED silent fallback. Not edited by this build.
+- **A SECOND defect of the same class (item 2), run-proven and fixed:** stating a precise
+  Xero kind and uploading the other returned 200 and reviewed the wrong kind silently
+  (`source=xero_f5` + a sales export -> `xero_sales_upload`). Now refused naming both kinds;
+  the umbrella word "xero" stays permissive because the UI cannot tell them apart.
+- **15 existing tests depended on elimination-routing** — every one uploaded an extract with
+  no source stated. That is the measure of how easy the accident was: not one caller in the
+  repo had to say what it was uploading. Amended mechanically under Terry's authorisation:
+  17 edits across 9 files, every one an ADDED PARAMETER; no assertion changed meaning. Suite
+  3069 -> **3103 passed, 0 failed**; vitest 178 -> 181. See the PR hand-amendment manifest.
+- **Failing-first was partial and is NOT retro-fitted:** D1/D2/D3 red first; D4/D6/D8 written
+  after implementation and recorded as regression guards. The independent evidence for D6 is
+  the Phase-R measurement (the same upload returned 200 before the change).
 - **Honest status:** correctness fix, hermetic + API-verified on synthetic data. NOT
   browser-verified; NOT real-client-validated (DEBT-3); NOT accuracy-validated — agreement
   with the frozen oracle is a consistency fact, not an IRAS one. T2.11 unmoved.
