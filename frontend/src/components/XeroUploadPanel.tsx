@@ -90,6 +90,10 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // (reviews/<rid>/documents/, D-36) and serves them to the viewer via the review-scoped
   // route (D-42). Server caps apply (D-39): 10 MiB/file, 50 MiB/upload, 50 files.
   const [documentFiles, setDocumentFiles] = useState<File[]>([]);
+  // Slice C: the Xero Contacts export — the SUPPLIER MASTER. An F5 export carries no
+  // supplier registration numbers, so without this the supplier-registration check
+  // (NO_GST_REG) reports `unavailable` and produces nothing. Staged like the ledger.
+  const [contactsFile, setContactsFile] = useState<File | null>(null);
   // C-8 (D-43): the review session, created LAZILY ON UPLOAD, ALWAYS — one session per
   // upload flow. Threaded to ReviewScreen -> DocumentViewer, which SELECTS the
   // review-scoped document route when present (surface selection, not fallback).
@@ -114,6 +118,10 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
   // the screen while the signed paper still contained them.
   const [ranLedger, setRanLedger] = useState<File | null>(null);
   const [ranDocuments, setRanDocuments] = useState<File[]>([]);
+  // Slice C (G-1): the contacts export AS RUN. The re-apply and the sign both read THIS,
+  // never `contactsFile` — re-staging a different Contacts file after a run must not
+  // change the inputs behind a decision already recorded against the result on screen.
+  const [ranContacts, setRanContacts] = useState<File | null>(null);
   // B3a-2 adjudication state — mirrors App's: the local map drives immediate button state;
   // persistence is the POST + re-upload round trip.
   const [decided, setDecided] = useState<Record<string, { action: string; note: string }>>({});
@@ -160,6 +168,11 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
     markStaged();
   }
 
+  function onContacts(event: ChangeEvent<HTMLInputElement>) {
+    setContactsFile(event.target.files?.[0] ?? null);
+    markStaged();
+  }
+
   function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -174,6 +187,11 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
 
   function clearDocuments() {
     setDocumentFiles([]);
+    markStaged();
+  }
+
+  function clearContacts() {
+    setContactsFile(null);
     markStaged();
   }
 
@@ -216,6 +234,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
         ledgerFile,
         rid,
         documentFiles.length > 0 ? documentFiles : undefined,
+        contactsFile,
       );
       setCoverage(resp);
       // G-1: capture what this run actually sent. The re-apply and the sign re-submit THESE,
@@ -223,6 +242,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
       // decision that was recorded against this result.
       setRanLedger(ledgerFile);
       setRanDocuments(documentFiles);
+      setRanContacts(contactsFile);
       setStagedDirty(false);
       // Default the selection to the first finding so its case-file card renders.
       setSelectedId(resp.queue && resp.queue.length ? resp.queue[0].finding_id : null);
@@ -348,6 +368,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
                       ranLedger,
                       reviewId ?? undefined,
                       ranDocuments.length > 0 ? ranDocuments : undefined,
+                      ranContacts,
                     )
                   : null;
               })
@@ -493,6 +514,27 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           )}
 
           <label className="xero-file-label">
+            Optional — Contacts export (supplier master, .csv)
+            {/* Deliberately NOT class "xero-file-input" (the documents input at the next
+                label explains why): every existing helper selects the primary input via
+                `input.xero-file-input:not(.xero-ledger-input)`, and a fourth input carrying
+                that class would match first and swallow their upload. */}
+            <input
+              className="xero-contacts-input"
+              type="file"
+              accept=".csv"
+              onChange={onContacts}
+            />
+          </label>
+          {contactsFile && (
+            <p className="xero-contacts-attached">
+              Contacts attached: <span className="mono">{contactsFile.name}</span> — the
+              supplier-registration check reads the <span className="mono">TaxNumber</span>{" "}
+              column. It checks only that a number is PRESENT; it does not validate it.
+            </p>
+          )}
+
+          <label className="xero-file-label">
             Optional — source-document PDFs (attach before uploading)
             {/* Deliberately NOT class "xero-file-input": existing helpers select the primary
                 input via `input.xero-file-input:not(.xero-ledger-input)`, and a third input
@@ -541,6 +583,23 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
                   <>
                     <span className="mono">{ledgerFile.name}</span>{" "}
                     <button type="button" onClick={clearLedger} aria-label="Remove the staged ledger">
+                      Remove
+                    </button>
+                  </>
+                ) : (
+                  <span className="staged-none">none</span>
+                )}
+              </li>
+              <li>
+                <span className="staged-label">Contacts (supplier master)</span>{" "}
+                {contactsFile ? (
+                  <>
+                    <span className="mono">{contactsFile.name}</span>{" "}
+                    <button
+                      type="button"
+                      onClick={clearContacts}
+                      aria-label="Remove the staged contacts export"
+                    >
                       Remove
                     </button>
                   </>
@@ -763,7 +822,11 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
           // RUN's ledger, not whatever is staged now. reviewId was already threaded here
           // (D-45) — that is precisely why the signed paper kept the document findings the
           // re-apply had dropped from the screen.
-          sign={(reviewer, firm) => postSignUpload(uploadedFile, ranLedger, reviewer, firm, reviewId ?? undefined)}
+          sign={(reviewer, firm) =>
+            postSignUpload(
+              uploadedFile, ranLedger, reviewer, firm, reviewId ?? undefined, ranContacts,
+            )
+          }
         />
       )}
     </div>

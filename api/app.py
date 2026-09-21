@@ -594,7 +594,7 @@ _SLICE_CLIENT_IDS = {
 
 def _attach_review_slice(
     review_id: str, resp: dict, file_bytes: bytes, period: Optional[dict],
-    ledger_bytes: Optional[bytes] = None,
+    ledger_bytes: Optional[bytes] = None, contacts_bytes: Optional[bytes] = None,
 ) -> None:
     """Attach one upload's serialized results to a review session (R2 semantics).
 
@@ -617,6 +617,10 @@ def _attach_review_slice(
     review_store.save_upload_bytes(review_id, sha256, file_bytes)
     if ledger_bytes:
         review_store.save_upload_bytes(review_id, sha256, ledger_bytes, suffix=".ledger.xlsx")
+    if contacts_bytes:
+        review_store.save_upload_bytes(
+            review_id, sha256, contacts_bytes, suffix=".contacts.csv"
+        )
     slice_record = {
         "source_kind": source_kind,
         "sha256": sha256,
@@ -629,6 +633,33 @@ def _attach_review_slice(
         if extra in resp:
             slice_record[extra] = resp[extra]
     review_store.append_slice(review_id, slice_record)
+
+
+async def _staged_contacts(contacts: Optional[UploadFile], tmp_dir: Path) -> Optional[Path]:
+    """Land an OPTIONAL Xero Contacts export (the supplier master) on the temp dir.
+
+    D-2026-09-20-slice-c-contacts-no-gst-reg (D3/D4). Suffix-gated like the ledger, and
+    consumed ONLY on the F5 path — every other branch ignores it (C6). A present-but-empty
+    part is "no contacts": a browser that always appends the field must not be able to flip
+    the review into a different mode. Returns None when nothing usable was supplied, in
+    which case every downstream surface is byte-identical to before (D2).
+
+    Client data never enters the repo: the bytes live on a private system-temp dir that the
+    handler deletes in its own `finally`, exactly like the primary and the ledger.
+    """
+    if contacts is None or not (contacts.filename or "").strip():
+        return None
+    if Path(contacts.filename).suffix.lower() != ".csv":
+        raise HTTPException(
+            status_code=422,
+            detail="The optional contacts export must be a .csv Xero Contacts export.",
+        )
+    body = await contacts.read()
+    if not body:
+        return None
+    dest = tmp_dir / "contacts.csv"
+    dest.write_bytes(body)
+    return dest
 
 
 def _validated_upload_review_id(review_id: Optional[str]) -> Optional[str]:
@@ -660,6 +691,7 @@ async def post_review_upload(
     file: UploadFile = File(...),
     ledger: Optional[UploadFile] = File(None),
     documents: Optional[List[UploadFile]] = File(None),
+    contacts: Optional[UploadFile] = File(None),
     review_id: Optional[str] = Form(None),
 ) -> dict:
     """View over an UPLOADED client GST export (source-selector Xero branch).
@@ -777,6 +809,10 @@ async def post_review_upload(
                 ledger_dest = tmp_dir / "ledger.xlsx"
                 ledger_dest.write_bytes(ledger_body)
 
+        # Optional Contacts export (Slice C) — the supplier master NO_GST_REG needs. Same
+        # posture as the ledger: bytes to temp here, PARSED only on the F5 path below.
+        contacts_dest: Optional[Path] = await _staged_contacts(contacts, tmp_dir)
+
         # --- PARSE BOUNDARY (Option A positional split) --------------------------------
         # ONLY reading/parsing the UNTRUSTED upload lives inside this try. A failure while
         # detecting the format or CONSTRUCTING a reader over the file (bad zip, missing
@@ -795,7 +831,10 @@ async def post_review_upload(
             # and hard-fail on the missing documents/business_partners/listing sheets.
             is_xero_sales = (not is_xero) and is_xero_sales_invoice_workbook(dest)
             if is_xero:
-                reader = XeroF5ChainReader(dest)
+                # Slice C: a supplied Contacts export makes NO_GST_REG runnable on this
+                # path for the first time. Absent it, this constructor call is byte-
+                # identical to before (D2) — contacts=None changes nothing.
+                reader = XeroF5ChainReader(dest, contacts=contacts_dest)
                 xero_period = parse_review_period(dest)
                 # T2.24 (fork b): assemble the ledger side-input ONLY on the F5 path, and
                 # ONLY when a ledger was uploaded — this PARSES the untrusted ledger and reads
@@ -857,6 +896,13 @@ async def post_review_upload(
                         ledger_bytes=(
                             ledger_dest.read_bytes()
                             if (is_xero and ledger_dest is not None) else None
+                        ),
+                        # Slice C / ruling 4: retain the supplier master too, or the
+                        # accumulated sign would re-run the primary WITHOUT it and emit a
+                        # paper missing findings the screen showed.
+                        contacts_bytes=(
+                            contacts_dest.read_bytes()
+                            if (is_xero and contacts_dest is not None) else None
                         ),
                     )
                 return resp
@@ -1019,8 +1065,18 @@ def post_review_session_sign(review_id: str, req: ReviewSessionSignRequest) -> d
         ledger_path = review_store.upload_bytes_path(
             review_id, primary_sha, suffix=".ledger.xlsx"
         )
+        # Slice C / ruling 4: the retained supplier master, re-materialised beside the
+        # retained primary. Absent (a session that attached no Contacts export, or one
+        # accumulated before retention) → contacts=None and the paper is exactly today's.
+        contacts_path = review_store.upload_bytes_path(
+            review_id, primary_sha, suffix=".contacts.csv"
+        )
+        contacts_dest: Optional[Path] = None
+        if contacts_path.is_file():
+            contacts_dest = tmp_dir / "contacts.csv"
+            contacts_dest.write_bytes(contacts_path.read_bytes())
         try:
-            reader = XeroF5ChainReader(dest)
+            reader = XeroF5ChainReader(dest, contacts=contacts_dest)
             xero_period = parse_review_period(dest)
             gst_ledger = None
             if ledger_path.is_file():
@@ -1703,6 +1759,7 @@ def _xero_sales_review_response(reader) -> dict:
 async def post_sign_upload(
     file: UploadFile = File(...),
     ledger: Optional[UploadFile] = File(None),
+    contacts: Optional[UploadFile] = File(None),
     reviewer_name: str = Form(...),
     firm_name: str = Form(""),
     review_id: Optional[str] = Form(None),
@@ -1759,6 +1816,11 @@ async def post_sign_upload(
                 ledger_dest = tmp_dir / "ledger.xlsx"
                 ledger_dest.write_bytes(ledger_body)
 
+        # Slice C / ruling 4 + D-45: the sign re-runs review() over the re-posted workbook,
+        # so it needs the SAME supplier master the screen was reviewed with — otherwise the
+        # signed paper silently drops every NO_GST_REG finding the reviewer just saw.
+        contacts_dest: Optional[Path] = await _staged_contacts(contacts, tmp_dir)
+
         # --- PARSE BOUNDARY (mirrors post_review_upload) -------------------------------
         # t-demo-prep-xero (D-2026-07-23-demo-prep-xero): sign-off now FORMAT-ROUTES,
         # mirroring post_review_upload — F5 keeps precedence, then the sales-invoice
@@ -1770,7 +1832,7 @@ async def post_sign_upload(
         try:
             if is_xero_f5_workbook(dest):
                 source_kind = "xero_f5_signed"
-                reader = XeroF5ChainReader(dest)
+                reader = XeroF5ChainReader(dest, contacts=contacts_dest)
                 xero_period = parse_review_period(dest)
                 if ledger_dest is not None:
                     gst_ledger = build_gst_ledger_input(ledger_dest, dest, xero_period)
@@ -1831,7 +1893,7 @@ async def post_sign_upload(
                     # sealed paper carries what the screen showed. The join lands on the
                     # reader BEFORE review() runs -> run_chain embeds the same COMPUTED
                     # coverage rows the review response emitted (one value, two surfaces).
-                    sign_reader = XeroF5ChainReader(dest)
+                    sign_reader = XeroF5ChainReader(dest, contacts=contacts_dest)
                     doc_ls, doc_prov, doc_join = _xero_document_context(
                         sign_reader, xero_period, rid
                     )
@@ -1882,7 +1944,7 @@ async def post_sign_upload(
                     doc_join_items: list = []
                     if source_kind == "xero_f5_signed":
                         _ls, _prov, _join = _xero_document_context(
-                            XeroF5ChainReader(dest), xero_period, rid
+                            XeroF5ChainReader(dest, contacts=contacts_dest), xero_period, rid
                         )
                         doc_join_items = list(_ls() if _ls else [])
                     stored_rows = serialize_ledger_recon_queue(

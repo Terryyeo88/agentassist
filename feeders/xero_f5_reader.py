@@ -67,6 +67,14 @@ from typing import Optional
 from feeders import extract_schema as schema
 from feeders.coverage_status import derive_coverage_statuses
 from feeders.extract_reader import ExtractCoverage
+from feeders.xero_contacts import (
+    AMBIGUOUS,
+    MISSING,
+    NAMELESS,
+    UNIQUE,
+    ContactsJoin,
+    load_contacts,
+)
 
 # The sheet the real Xero IRAS-F5 export carries the period transactions on.
 TRANSACTIONS_SHEET = "Transactions by box number"
@@ -173,6 +181,19 @@ _PURCHASE_INVOICE = ("purchase", "invoice")
 # Which canonical (surface, field) coverage keys this reader populates. The documents-surface
 # line + header fields it emits ARE covered; CardCode (no Xero card code), the BP master
 # (FederalTaxID) and the whole listing surface are ABSENT — the honest-degrade signal.
+def _safe_tax(value) -> float:
+    """Coerce a line's TaxTotal to a float; anything uncoercible reads as 0.00.
+
+    Mirrors ``sap_b1_server._safe_float``'s posture at the one place this reader needs it
+    (counting INPUT-TAX lines for the contacts-join denominator) so the denominator can
+    never differ from the set of documents the check actually walks.
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 _COVERED_FIELDS = frozenset(
     {
         (schema.DOCUMENTS_SHEET, "DocNum"),
@@ -201,8 +222,19 @@ class XeroF5ChainReader:
     per-call freshness.
     """
 
-    def __init__(self, source):
+    def __init__(self, source, contacts=None):
+        """``contacts`` — an OPTIONAL Xero Contacts export (the supplier master).
+
+        D-2026-09-20-slice-c-contacts-no-gst-reg. Absent (the default), this reader is
+        BYTE-IDENTICAL to before in every surface it exposes: no CardCode, no BP master,
+        NO_GST_REG still unavailable. Supplied, the purchase documents gain a CardCode for
+        every supplier that resolves to exactly one contact, and the BP surface answers
+        from that contact's TaxNumber.
+        """
         self._source = Path(source)
+        self._contacts = load_contacts(contacts) if contacts is not None else None
+        #: Per-state counts over the INPUT-TAX purchase lines (R3's denominator).
+        self._join_counts: dict[str, int] = {}
         self._docs_by_bucket: dict[tuple, list[dict]] = {
             _SALES_INVOICE: [],
             _PURCHASE_INVOICE: [],
@@ -232,7 +264,52 @@ class XeroF5ChainReader:
                     }
                 ],
             }
+            # Slice C: the contacts join is PURCHASE-SIDE ONLY — NO_GST_REG reads purchase
+            # invoices and purchase credit notes, so a sales document keeps CardCode "" and
+            # nothing on the sales side of the chain sees any change.
+            if self._contacts is not None and txn["bucket"] == _PURCHASE_INVOICE:
+                self._join_contact(doc)
             self._docs_by_bucket[txn["bucket"]].append(doc)
+
+    def _join_contact(self, doc: dict) -> None:
+        """Resolve ONE purchase document's counterparty against the Contacts export.
+
+        A UNIQUE match sets ``CardCode`` to the CONTACT's own spelling of the name (so two
+        spellings of one supplier dedupe to one finding), which is also the key the BP
+        surface resolves back through the SAME index — one source of truth. MISSING / AMBIGUOUS / NAMELESS leave ``CardCode`` empty, which is
+        exactly how ``detect_gst_errors`` SKIPS a document — not examined, never a finding
+        (R2). Every state is counted, but only over INPUT-TAX lines: a purchase carrying no
+        input tax was never in scope for this check, so it belongs in no denominator.
+        """
+        state, _tax_number = self._contacts.match(doc.get("CardName"))
+        if state == UNIQUE:
+            card_code = self._contacts.canonical_name(doc.get("CardName"))
+            if card_code:
+                doc["CardCode"] = card_code
+        has_input_tax = any(
+            _safe_tax(line.get("TaxTotal")) > 0.01 for line in doc.get("DocumentLines", [])
+        )
+        if has_input_tax:
+            self._join_counts[state] = self._join_counts.get(state, 0) + 1
+
+    @property
+    def contacts_join(self) -> "ContactsJoin | None":
+        """The join summary, or None when no Contacts export was supplied.
+
+        None is the signal that the check could not run at all; a ContactsJoin is the
+        signal that it ran, over ``examined`` of ``total`` input-tax purchase lines.
+        """
+        if self._contacts is None:
+            return None
+        # Keyed by the IMPORTED constants, never by bare literals: the counts are what
+        # the coverage degrade reports, so a rename in xero_contacts.py must break loudly
+        # here rather than silently zero them and report a full examination.
+        return ContactsJoin(
+            examined=self._join_counts.get(UNIQUE, 0),
+            missing=self._join_counts.get(MISSING, 0),
+            ambiguous=self._join_counts.get(AMBIGUOUS, 0),
+            nameless=self._join_counts.get(NAMELESS, 0),
+        )
 
     # -- ChainReader surfaces (structural) -----------------------------------
 
@@ -254,7 +331,27 @@ class XeroF5ChainReader:
         return []
 
     def get_business_partner(self, card_code: str) -> dict:
-        """S3 — a Xero F5 export carries NO supplier master; never fabricate one."""
+        """S3 — the supplier master, IF a Contacts export was supplied.
+
+        Slice C: a Xero F5 export alone carries no supplier master, and this still refuses
+        to fabricate one. With a Contacts export the answer comes from that export and
+        nowhere else: ``FederalTaxID`` is the contact's ``TaxNumber`` VERBATIM (canonical
+        field name, Xero value — no translation, no validation, R1). A CardCode that did
+        not resolve to exactly one contact was never written onto a document, so reaching
+        here with one is a genuine KeyError. The lookup goes through the SAME index the
+        join used, so the answer cannot drift from the CardCode the documents carry, and a
+        contact with no transaction in the period is still a legitimate supplier-master
+        record rather than a KeyError.
+        """
+        if self._contacts is not None:
+            state, tax_number = self._contacts.match(card_code)
+            if state == UNIQUE:
+                canonical = self._contacts.canonical_name(card_code)
+                return {
+                    "CardCode": canonical,
+                    "CardName": canonical,
+                    "FederalTaxID": tax_number or "",
+                }
         raise KeyError(
             f"CardCode {card_code!r}: a Xero F5 export carries no business-partner master "
             "(supply a supplier-master sheet at onboarding)"
@@ -287,6 +384,12 @@ class XeroF5ChainReader:
                         value = line.get(field)
                         if value is not None and str(value).strip() != "":
                             seen.add((schema.DOCUMENTS_SHEET, field))
+        # Slice C: the supplied Contacts export IS the business-partner surface, and the
+        # SAME observed-population predicate applies to it — a TaxNumber column that is
+        # present but 0%-populated is NOT populated, so the check reads unavailable rather
+        # than flagging every supplier off an empty column.
+        if self._contacts is not None and self._contacts.has_tax_number_population():
+            seen.add((schema.BUSINESS_PARTNERS_SHEET, "FederalTaxID"))
         return frozenset(seen)
 
     def coverage(self) -> ExtractCoverage:
@@ -300,13 +403,35 @@ class XeroF5ChainReader:
         now OBSERVED from the loaded documents (previously ``dict(fields)`` — asserted
         by fiat), so a present-but-all-empty column reads NOT populated and
         ``is_covered`` degrades honestly, exactly as the extract reader has always
-        behaved. FederalTaxID stays outside the covered set: NO_GST_REG remains
-        unavailable on this reader and this change makes nothing newly runnable.
+        behaved.
+
+        D-2026-09-20-slice-c-contacts-no-gst-reg SUPERSEDES the sentence that stood here
+        ("FederalTaxID stays outside the covered set: NO_GST_REG remains unavailable on
+        this reader and this change makes nothing newly runnable"). That was true while
+        this reader had no supplier-master surface at all. It now has one WHEN AND ONLY
+        WHEN a Contacts export was supplied: ``_covered_field_keys()`` adds
+        (business_partners, FederalTaxID) for THIS INSTANCE, and the population predicate
+        above still governs — a 0%-populated TaxNumber column is not covered. With no
+        Contacts export the covered set is the module constant, unchanged, and NO_GST_REG
+        is still unavailable on this reader.
         """
-        fields = {key: (key in _COVERED_FIELDS) for key in schema.COVERAGE_FIELDS}
+        fields = {key: (key in self._covered_field_keys()) for key in schema.COVERAGE_FIELDS}
         observed = self._observed_populated_keys()
         populated = {key: (fields[key] and key in observed) for key in schema.COVERAGE_FIELDS}
         return ExtractCoverage(fields=fields, populated=populated)
+
+    def _covered_field_keys(self) -> frozenset:
+        """Which (surface, field) keys THIS READER INSTANCE carried a column for.
+
+        Ruling 3 (Slice C): the business-partner surface is declared PER INSTANCE, and
+        ONLY when a Contacts export was supplied. The module-level ``_COVERED_FIELDS``
+        constant is deliberately NOT widened — widening it would make every reader,
+        including one constructed over an F5 export alone, claim a supplier master it does
+        not have, and D2 (no contacts → byte-identical) would be false.
+        """
+        if self._contacts is None:
+            return _COVERED_FIELDS
+        return _COVERED_FIELDS | {(schema.BUSINESS_PARTNERS_SHEET, "FederalTaxID")}
 
     def populatable_sides(self) -> frozenset:
         """Which F5 SIDES this FORMAT can populate — a capability fact, never a content fact.
@@ -338,6 +463,9 @@ class XeroF5ChainReader:
             document_pdfs_present=(
                 self.document_join if self.document_join is not None else False
             ),
+            # Slice C / ruling 3: the join summary travels as DATA (the document_join
+            # precedent, D-40). None — no Contacts export — is byte-identical to before.
+            contacts_join=self.contacts_join,
         )
 
 

@@ -229,6 +229,22 @@ NOT_EXAMINED_ITEMS: list[str] = [
 ]
 
 
+# ── Coverage-driven Section 6 addition (Slice C) ──────────────────────────────
+# APPENDED by build_not_examined_section — deliberately NOT a member of
+# NOT_EXAMINED_ITEMS, mirroring the listing pass's own could-not-run line
+# (_LISTING_UNAVAILABLE_ITEM). A static member would appear on every paper and have to be
+# suppressed everywhere; this one is rendered ONLY when the run's OWN coverage says
+# NO_GST_REG was unavailable (D-2026-09-20-slice-c-contacts-no-gst-reg, C10), so a reader
+# with no coverage seam (live SAP, frozen replay) is untouched and the offline-replay
+# oracle needs no re-freeze.
+
+SUPPLIER_REG_UNAVAILABLE_ITEM: str = (
+    "Supplier GST-registration status (no supplier master accompanied this export, so "
+    "input tax claimed from a supplier with no GST registration number on record was not "
+    "checked; supply the supplier master — in a Xero export, the Contacts file — to enable)"
+)
+
+
 # ── Disclaimer ────────────────────────────────────────────────────────────────
 # Rendered verbatim in the report footer. Any change to this text should be
 # reviewed against the approved legal language — do not paraphrase or shorten.

@@ -66,6 +66,25 @@ _NO_GST_REG_UNAVAILABLE = (
 )
 _SEQ_GAP_DEGRADED = "company-wide document population absent — SEQ_GAP limited to within-period."
 
+
+def _no_gst_reg_degraded(join) -> str:
+    """NO_GST_REG ran, but not over every input-tax purchase line — say so, with COUNTS.
+
+    D-2026-09-20-slice-c-contacts-no-gst-reg, ruling R3. The three not-examined reasons
+    are stated SEPARATELY because they mean different things to a reviewer: a supplier
+    MISSING from the Contacts export is a supplier-master gap they can close by exporting
+    again; an AMBIGUOUS name is two contacts they need to merge or rename; a NAMELESS
+    transaction has no supplier on the transaction at all and no Contacts export can ever
+    fix it. Every number is COMPUTED from the join (feeders.xero_contacts.ContactsJoin) —
+    the UI must never parse counts back out of this prose (the D-40 discipline).
+    """
+    return (
+        f"Contacts export supplied — supplier registration checked on {join.examined} of "
+        f"{join.total} input-tax purchase lines; not examined: {join.missing} not found "
+        f"in the Contacts export, {join.ambiguous} ambiguous (two or more contacts of the "
+        f"same name), {join.nameless} with no supplier on the transaction."
+    )
+
 # T2.12-2B-ext-1: the line-level E-checks (E1–E4) and the documents-surface line fields each
 # is LOAD-BEARING on (PR #66 check→field map §B). These fields are always-present in a complete
 # export, so their coverage was previously IMPLICIT-full; ext-1 makes it EXPLICIT through the
@@ -123,6 +142,7 @@ def derive_coverage_statuses(
     *,
     company_wide_population_present: bool,
     document_pdfs_present: "bool | tuple[int, int]" = False,
+    contacts_join=None,
 ) -> list:
     """Map an ``ExtractCoverage`` (value-population-aware) onto the in-scope checks.
 
@@ -139,6 +159,16 @@ def derive_coverage_statuses(
                   "absent unless declared present"): the extract feeder is a listing-only
                   export with no PDF surface, so its reader passes ``False`` and the four
                   document checks are reported ``unavailable``.
+        contacts_join: OPTIONAL supplier-master join summary (Slice C, ruling R3) — duck-
+                  typed on ``examined`` / ``missing`` / ``ambiguous`` / ``nameless`` /
+                  ``total`` / ``fully_examined`` (``feeders.xero_contacts.ContactsJoin``),
+                  so this module imports nothing new. It refines NO_GST_REG *within* the
+                  covered branch only: absent (the default) the behaviour is EXACTLY
+                  today's, so every existing caller stays byte-identical. Supplied, a
+                  complete examination reads ``full`` and an incomplete one ``degraded``
+                  with the counts. It can never make an UNAVAILABLE check look available:
+                  a reader with no populated FederalTaxID surface fails the ``is_covered``
+                  test above this, whatever the join says.
 
     Returns:
         list[CoverageStatus] — the three locked 2B cases (DUP_CLAIM, NO_GST_REG, SEQ_GAP)
@@ -154,8 +184,14 @@ def derive_coverage_statuses(
         statuses.append(CoverageStatus("DUP_CLAIM", DEGRADED, _DUP_CLAIM_DEGRADED))
 
     # FederalTaxID absent/empty → NO_GST_REG cannot run → unavailable (NOT a degraded run).
+    # Covered → the check RAN; a supplied join then says whether it ran over EVERYTHING.
     if coverage.is_covered(schema.BUSINESS_PARTNERS_SHEET, "FederalTaxID"):
-        statuses.append(CoverageStatus("NO_GST_REG", FULL))
+        if contacts_join is None or contacts_join.fully_examined:
+            statuses.append(CoverageStatus("NO_GST_REG", FULL))
+        else:
+            statuses.append(
+                CoverageStatus("NO_GST_REG", DEGRADED, _no_gst_reg_degraded(contacts_join))
+            )
     else:
         statuses.append(CoverageStatus("NO_GST_REG", UNAVAILABLE, _NO_GST_REG_UNAVAILABLE))
 
