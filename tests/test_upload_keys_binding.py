@@ -79,15 +79,19 @@ def _synthetic_extract_bytes(tmp_path: Path) -> bytes:
     return out.read_bytes()
 
 
-def _post(client: TestClient, content: bytes, filename: str):
-    return client.post("/review/upload", files={"file": (filename, content)})
+def _post(client: TestClient, content: bytes, filename: str, source: str | None = None):
+    # AMENDED (Slice D): optional source; the extract callers state it, Xero callers do not.
+    return client.post(
+        "/review/upload", files={"file": (filename, content)},
+        data={"source": source} if source else None,
+    )
 
 
 def test_coverage_only_branch_binds_to_upload_coverage_keys(
     client, hermetic_engine, tmp_path, monkeypatch
 ):
     monkeypatch.setenv(_EXTRACT_FLAG, "off")  # engine OFF -> coverage-only body
-    resp = _post(client, _synthetic_extract_bytes(tmp_path), "export.xlsx")
+    resp = _post(client, _synthetic_extract_bytes(tmp_path), "export.xlsx", source="extract")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["source_kind"] == "extract_upload"
@@ -101,7 +105,7 @@ def test_extract_review_branch_binds_to_extract_review_keys(
     client, hermetic_engine, tmp_path, monkeypatch
 ):
     monkeypatch.delenv(_EXTRACT_FLAG, raising=False)  # default = ON
-    resp = _post(client, _synthetic_extract_bytes(tmp_path), "export.xlsx")
+    resp = _post(client, _synthetic_extract_bytes(tmp_path), "export.xlsx", source="extract")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["source_kind"] == "extract_review"

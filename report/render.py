@@ -330,17 +330,35 @@ def _f5_summary_pairs(boxes: dict) -> list[tuple[str, float]]:
 # could not support, and never claims a bound or a direction.
 _UNAVAILABLE_MARKER = "Not available from this source"
 
+# Marker for a box withheld because the RUN could not read part of its data (R-2,
+# D-2026-09-21-unmapped-codes). Distinct from _UNAVAILABLE_MARKER, which is a statement
+# about the SOURCE's capability: this one says the source could have populated the box but
+# this run cannot vouch for the figure. The sealed compile-output keeps the raw computed
+# value either way — the paper GLOSSES the seal, never contradicts it.
+_INCOMPLETE_MARKER = "No figure — this return could not be completed"
+
 
 def _box_value_flowables(a) -> list:
     """SGD-value cell content for one F5 box row, by capability status.
 
-    "available" → the figure (or an em-dash when the boxes dict carried no key —
-    an absent key must never be fabricated as 0.00, R7); "unavailable" → the
-    marker, no figure; "derived_incomplete" → the figure PLUS a sub-line naming
-    the unavailable input term(s), claiming no bound or direction (R4). Pure
+    "incomplete" → NO figure plus the stated reason (R-2: unrecognised tax codes
+    excluded lines, so no box can be vouched for); "available" → the figure (or an
+    em-dash when the boxes dict carried no key — an absent key must never be
+    fabricated as 0.00, R7); "unavailable" → the marker, no figure;
+    "derived_incomplete" → the figure PLUS a sub-line naming the unavailable input
+    term(s), claiming no bound or direction (R4). Pure
     presentation over already-final values — no arithmetic, no recompute
     (BOX-ISOLATION).
     """
+    # R-2 (D-2026-09-21-unmapped-codes): a run that could not read part of its own data
+    # states so and shows NO figure. Checked FIRST — it outranks every other status,
+    # including a box this source is capable of populating. A partial figure is more
+    # dangerous than a blank one: a reviewer can act on a number.
+    if a.status == "incomplete":
+        return [
+            _p(_INCOMPLETE_MARKER, _CELL_REC),
+            _p(a.exclusion_reason, _CELL_REC),
+        ]
     if a.status == "unavailable":
         return [_p(_UNAVAILABLE_MARKER, _CELL_REC)]
     if a.box_value is None:

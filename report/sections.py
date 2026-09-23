@@ -205,6 +205,12 @@ class F5BoxAttribution:
     vat_groups: list[str]   # filtered to VatGroups present in vatgroup_inventory
     status: str = "available"
     unavailable_inputs: list[str] = field(default_factory=list)
+    #: D-2026-09-21-unmapped-codes (R-2). Non-empty ONLY for status "incomplete": the
+    #: stated reason a figure is withheld, naming the unrecognised code(s) and how many
+    #: lines were excluded. A separate field from ``unavailable_inputs`` because the two
+    #: causes are different facts: "this SOURCE could never populate the box" (capability)
+    #: versus "this RUN could not read part of the data" (content).
+    exclusion_reason: str = ""
 
 
 @dataclass
@@ -770,6 +776,12 @@ def build_f5_box_section(compile_output: dict[str, Any]) -> F5BoxSection:
     boxes: dict[str, float] = compile_output["calculate"]["boxes"]
     inventory: dict[str, Any] = compile_output["classify"]["vatgroup_inventory"]
     capability: dict[str, Any] = (compile_output.get("box_capability") or {}).get("boxes") or {}
+    # R-2: an exclusion OUTRANKS a capability marker. If the run could not read part of the
+    # data, no figure on the return can be vouched for — including one this source is
+    # perfectly capable of populating. Absent (the normal case) this changes nothing.
+    completeness: dict[str, Any] = compile_output.get("box_completeness") or {}
+    blanked = set(completeness.get("blanked_boxes") or ())
+    exclusion_reason = str(completeness.get("reason") or "")
 
     attribution: list[F5BoxAttribution] = []
     for box_name in _BOX_VATGROUPS:
@@ -777,12 +789,14 @@ def build_f5_box_section(compile_output: dict[str, Any]) -> F5BoxSection:
         # Keep only codes seen in the period; avoids showing unused codes in the report
         filtered = [vg for vg in raw_vgs if vg in inventory]
         cap_row = capability.get(box_name) or {}
+        is_blanked = box_name in blanked
         attribution.append(F5BoxAttribution(
             box_name=box_name,
             box_value=boxes.get(box_name),
             vat_groups=filtered,
-            status=str(cap_row.get("status") or "available"),
+            status="incomplete" if is_blanked else str(cap_row.get("status") or "available"),
             unavailable_inputs=list(cap_row.get("unavailable_inputs") or []),
+            exclusion_reason=exclusion_reason if is_blanked else "",
         ))
 
     return F5BoxSection(boxes=boxes, attribution=attribution)

@@ -235,6 +235,10 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
         rid,
         documentFiles.length > 0 ? documentFiles : undefined,
         contactsFile,
+        // R-3: this panel IS the Xero upload surface, so it says so. A file that is not a
+        // Xero export is now refused by name instead of being reviewed as a general
+        // extract under someone else's configuration.
+        "xero",
       );
       setCoverage(resp);
       // G-1: capture what this run actually sent. The re-apply and the sign re-submit THESE,
@@ -369,6 +373,7 @@ export function XeroUploadPanel({ onChangeSource }: { onChangeSource: () => void
                       reviewId ?? undefined,
                       ranDocuments.length > 0 ? ranDocuments : undefined,
                       ranContacts,
+                      "xero",
                     )
                   : null;
               })

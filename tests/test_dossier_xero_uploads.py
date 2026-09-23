@@ -123,10 +123,17 @@ def _synth_extract_bytes(tmp_path: Path) -> bytes:
     return out.read_bytes()
 
 
-def _post_upload(client: TestClient, files: dict) -> dict:
-    """POST /review/upload with a fresh audit subdir (per-upload; see module docstring)."""
+def _post_upload(client: TestClient, files: dict, source: str | None = None) -> dict:
+    """POST /review/upload with a fresh audit subdir (per-upload; see module docstring).
+
+    AMENDED (Slice D, D-2026-09-21-unmapped-codes): optional `source`. The extract branch
+    is no longer reachable by elimination, so an extract upload must say so. Xero callers
+    pass nothing and are unchanged.
+    """
     _seal._AUDIT_ROOT = _seal._AUDIT_ROOT.parent / f"audit-{next(_UPLOAD_SEQ)}"
-    resp = client.post("/review/upload", files=files)
+    resp = client.post(
+        "/review/upload", files=files, data={"source": source} if source else None
+    )
     assert resp.status_code == 200, resp.text
     return resp.json()
 
@@ -204,7 +211,9 @@ def test_t2_extract_upload_dossiers_deferred_rows_keep_defaults(client, hermetic
     branch's behaviour is unchanged by t-dossier-xero.
     """
     monkeypatch.delenv("AGENTASSIST_EXTRACT_ENGINE", raising=False)  # default = ON
-    body = _post_upload(client, {"file": ("export.xlsx", _synth_extract_bytes(hermetic))})
+    body = _post_upload(
+        client, {"file": ("export.xlsx", _synth_extract_bytes(hermetic))}, source="extract"
+    )
 
     assert body["source_kind"] == "extract_review"
     assert body["validation_status"] == "unvalidated"

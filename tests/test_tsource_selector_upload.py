@@ -75,7 +75,11 @@ def _xlsx_bytes(tmp_path) -> bytes:
 def test_upload_returns_coverage_only_shape(client: TestClient, tmp_path: Path, monkeypatch):
     """200 + EXACTLY the coverage-only key set, with a well-formed coverage_status list."""
     monkeypatch.setenv("AGENTASSIST_EXTRACT_ENGINE", "0")
-    resp = client.post("/review/upload", files={"file": ("export.xlsx", _xlsx_bytes(tmp_path))})
+    resp = client.post(
+        "/review/upload",
+        files={"file": ("export.xlsx", _xlsx_bytes(tmp_path))},
+        data={"source": "extract"},   # AMENDED (Slice D): extract must be stated
+    )
     assert resp.status_code == 200
     body = resp.json()
 
@@ -122,7 +126,11 @@ def test_upload_coverage_only_when_engine_disabled(client: TestClient, tmp_path:
     monkeypatch.setattr("engine.review.review", boom)
     monkeypatch.setattr("orchestrator.chain.run_chain", boom)
 
-    resp = client.post("/review/upload", files={"file": ("export.xlsx", _xlsx_bytes(tmp_path))})
+    resp = client.post(
+        "/review/upload",
+        files={"file": ("export.xlsx", _xlsx_bytes(tmp_path))},
+        data={"source": "extract"},   # AMENDED (Slice D): extract must be stated
+    )
     assert resp.status_code == 200
 
 
