@@ -167,7 +167,19 @@ REG2627_SPEC = SkillSpec(
     prompt_version=_PROMPT_VERSION,
     kb_slice_name="reg2627",
     suspected_categories=_SUSPECTED_CATEGORIES,
-    vat_group="SI",
+    # D-2026-09-23-xero-purchase-lines (ruling B1). The check's subject is STANDARD-RATED
+    # PURCHASE LINES: "SI" is the raw SAP Service-Layer code, "TX" the canonical AgentAssist
+    # code the Xero F5 reader emits. Selecting both is what makes this skill runnable on the
+    # Xero path at all — with "SI" alone every Xero line was filtered out and the pass
+    # returned a clean ok/0, i.e. the failure looked exactly like success.
+    #
+    # This is a BRIDGE, not the final design. The SAP reasoning feeder still emits RAW codes
+    # while the chain emits canonical ones — a tolerated asymmetry in the frozen fixtures.
+    # Once those fixtures are re-captured canonically this should reduce to "TX" alone
+    # (filed open item). Under a frozenset spec the validator keeps each candidate's OWN
+    # per-line code instead of stamping the spec's, which is more honest: a TX line must not
+    # be reported as SI.
+    vat_group=frozenset({"SI", "TX"}),
     batch_size=_BATCH_SIZE,
     max_tokens=_MAX_TOKENS,
     disclaimer=_DISCLAIMER,

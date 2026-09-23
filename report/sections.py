@@ -264,7 +264,11 @@ class CrossFindingEntry:
         findings:     All EnrichedFindings for this document (unsorted; renderer
                       may display all or just summary fields).
     """
-    doc_num: int
+    #: #34 (D-2026-09-23-xero-purchase-lines, E4): widened from `int`, which was a lie
+    #: about BOTH branches — the reasoning branch now carries Xero string references
+    #: ("BILL-3007") and the document branch already passed a possibly-str value through
+    #: untouched. Mirrors AICandidateRow.doc_num, which was widened for the same reason.
+    doc_num: "int | str"
     error_codes: list[str]    # sorted
     findings: list[EnrichedFinding]
 
@@ -1508,6 +1512,29 @@ def build_signature_section(client_config: Any) -> SignatureSection:
     )
 
 
+def _coerce_doc_num(value) -> "int | str":
+    """Tolerant doc_num for RENDER rows — keep numerics int, pass everything else verbatim.
+
+    Open item #34. SAP candidates carry int doc_nums; Xero-sourced candidates carry strings
+    ("BILL-3007"). A bare int() crashed the first Xero-candidate render, and it crashed the
+    same way twice because the two candidate builders below each had their own idea of the
+    type — one tolerant, one not.
+
+    HOISTED from inside build_ai_candidates_section (D-2026-09-23-xero-purchase-lines, E4)
+    so BOTH builders share one definition. Deliberately not a fourth private copy of the
+    coercion: report/ may not import documents/ (leaf-import purity), so the honest move was
+    to promote the copy this module already had rather than add another.
+
+    None -> 0 preserves the pre-existing behaviour of the tolerant site exactly.
+    """
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def build_ai_candidates_section(
     judgment_artefact: dict | None,
     *,
@@ -1557,17 +1584,6 @@ def build_ai_candidates_section(
         )
 
     raw_candidates: list = judgment_artefact.get("candidates") or []
-
-    def _coerce_doc_num(value) -> int | str:
-        # Tolerant doc_num (t-demo-prep-xero): SAP candidates carry ints; Xero-sourced
-        # candidates carry string doc_nums ("INV-9001") verbatim. int() here crashed the
-        # first Xero-candidate render — keep numerics ints, pass strings through.
-        if value is None:
-            return 0
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return str(value)
 
     # Defensive str()/int() conversions throughout: AI-generated JSON may have
     # numeric fields as strings or None, so coerce rather than trust the types.
@@ -1635,7 +1651,10 @@ def build_unified_candidates_section(
         if status == "ok":
             for c in (judgment_artefact.get("candidates") or []):
                 rows.append(ReviewCandidateRow(
-                    doc_num=int(c.get("doc_num") or 0),
+                    # #34: was int(...), which raised ValueError on "BILL-3007" straight
+                    # out of build_report. Slice E is what made this reachable — it is the
+                    # first path that produces reg2627 candidates with string doc_nums.
+                    doc_num=_coerce_doc_num(c.get("doc_num")),
                     basis="description analysis",
                     finding=str(c.get("suspected_category") or ""),
                     message=str(c.get("phrasing") or ""),

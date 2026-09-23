@@ -1567,9 +1567,16 @@ def _xero_f5_review_response(
     doc_line_source, doc_provider, doc_join = _xero_document_context(reader, period, review_id)
     if doc_join is not None:
         reader.document_join = doc_join
+    # Slice E: the Reg 26/27 pass finally receives the purchase lines it exists to read.
+    # A SEPARATE source (not `line_source`, which carries the document-context rows above).
+    from feeders.xero_f5_purchase_lines import xero_f5_purchase_lines
+
     inputs = ReviewInputs(
         line_source=doc_line_source or (lambda: []), provider=doc_provider,
-        reader=reader, gst_ledger=gst_ledger
+        reader=reader, gst_ledger=gst_ledger,
+        purchase_line_source=lambda: xero_f5_purchase_lines(
+            reader, period["start"], period["end"]
+        ),
     )
     # M2 (t-xero-signoff): a plain upload is a PURE review — no unsigned PDF, no unsigned
     # bundle lands on disk. Persistence happens only at sign time (POST /sign/upload).
@@ -1968,10 +1975,17 @@ async def post_sign_upload(
                     )
                     if doc_join is not None:
                         sign_reader.document_join = doc_join
+                    from feeders.xero_f5_purchase_lines import xero_f5_purchase_lines
+
                     return ReviewInputs(
                         line_source=doc_ls or (lambda: []), provider=doc_prov,
                         reader=sign_reader, gst_ledger=gst_ledger,
                         adjudications=adjudications,
+                        # Slice E: the signed paper's reasoning artefact must come from the
+                        # SAME purchase lines the screen was reviewed with.
+                        purchase_line_source=lambda: xero_f5_purchase_lines(
+                            sign_reader, xero_period["start"], xero_period["end"]
+                        ),
                     )
                 # Sales sign runs the SAME inputs as the sales review branch — including
                 # sales_line_source, so the exempt pass runs and its artefact seals into
