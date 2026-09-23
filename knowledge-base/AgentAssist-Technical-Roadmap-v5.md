@@ -2086,13 +2086,15 @@ staged frontend input. `orchestrator/`, `engine/`, `reasoning/` and `mcp-servers
   the join counts are consulted, so the observed-population doctrine outranks the join.
 - **Open item #45 restated — UNCHANGED.** No tenant component in the fingerprint.
 - **Honest status:** built + hermetically tested + API-verified over HTTP on synthetic
-  real-format data. NOT browser-verified pending manual acceptance; NOT real-client-validated
-  (DEBT-3); NOT accuracy-validated — the slice makes a check RUNNABLE, not correct.
+  real-format data + **BROWSER-VERIFIED — Terry's manual acceptance PASSED 2026-09-23**.
+  Still NOT real-client-validated (DEBT-3); still NOT accuracy-validated — the slice makes a
+  check RUNNABLE, not correct, and browser acceptance does not change that.
   `validation_status` unvalidated; `show_ai_candidates` False; T2.11 unmoved.
 
 ### `D-2026-09-21-unmapped-codes` — Slice D: unmapped tax codes never silently reduce a box; #49 and G-5 closed *(id PROPOSED — Terry ratifies under the two-writers protocol)*
 
-Branch `t-slice-d-unmapped-codes`, base `82a7bf9`, PR pending. **Full record in
+Branch `t-slice-d-unmapped-codes`, base `82a7bf9`, **MERGED via PR #182** (2026-09-23); the
+D-id stays PROPOSED until Terry's manual acceptance completes. **Full record in
 `AGENTASSIST_TECHNICAL_STATE.md` §Slice D** — the measured before/after box table, the four
 rulings, the third box state and the contracts it widens.
 
@@ -2128,6 +2130,14 @@ rulings, the third box state and the contracts it widens.
   UI, so the guard and the routing are the live safety.
 - **Open item FILED (not built):** a mass of E4 findings signals that a config's declared
   rate disagrees with its data — a candidate "declared-rate vs observed-rate" surfacer.
+- **Open item FILED (not built), number TBA by Terry — THE APPEND-ONLY TEST GUARD IS
+  BYPASSABLE BY CONSTRUCTION.** The PreToolUse hook blocks Edit/Write/MultiEdit/NotebookEdit
+  on existing files under `tests/` but does NOT intercept Bash; a shell write is not blocked,
+  not warned, and leaves no trace. Demonstrated in this build (the 17 amendments, authorised).
+  CI catches a test REMOVED out-of-band but not one WEAKENED — a loosened assertion still
+  passes, so green CI is consistent with the guard having been defeated. **A gap in
+  three-times enforcement (Invariant 7):** stated in the prompt, half-enforced in code, and
+  with NO test of the enforcement itself.
 - **A SECOND defect of the same class (item 2), run-proven and fixed:** stating a precise
   Xero kind and uploading the other returned 200 and reviewed the wrong kind silently
   (`source=xero_f5` + a sales export -> `xero_sales_upload`). Now refused naming both kinds;
