@@ -68,8 +68,18 @@ def _valid_extract_bytes(tmp_path: Path) -> bytes:
 
 def _post(client: TestClient, content: bytes, filename: str = "export.xlsx",
           source: str | None = "extract"):
-    # AMENDED (Slice D): the extract branch requires an explicit source. Every caller in
-    # this file uploads an extract, so "extract" is the default here.
+    """POST /review/upload; the extract branch requires an explicit source (Slice D).
+
+    AMENDED (Slice D, D-2026-09-21-unmapped-codes). THE DEFAULT IS A PROPERTY OF THIS FILE,
+    NOT OF THE ENDPOINT: every caller in this module uploads a general extract, so defaulting
+    to "extract" keeps the amendment to one line instead of repeating it at each call site.
+
+    A FUTURE XERO TEST IN THIS FILE MUST NOT RELY ON THIS DEFAULT. Pass the source
+    per-call — `source="xero"`, or `source=None` to exercise the no-source refusal — because
+    a Xero upload inheriting "extract" would be refused by the very routing guard this
+    parameter exists to satisfy, and the failure would look like a routing bug rather than a
+    test that forgot to say what it was uploading.
+    """
     return client.post(
         "/review/upload", files={"file": (filename, content)},
         data={"source": source} if source else None,
