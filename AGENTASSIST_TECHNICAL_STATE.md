@@ -6437,3 +6437,78 @@ A correctness fix, **hermetically tested plus API-verified on synthetic data** (
 **Recorded as a gap in THREE-TIMES ENFORCEMENT (Invariant 7).** The rule appears in the **prompt** (`CLAUDE.md` Boundaries) and in **code** (the hook), but the code leg has a hole, and there is **no test of the enforcement itself** — nothing asserts that an attempt to modify an existing test file is refused. So a rule stated three times is in practice enforced once and a half. Candidate closures, none built here: extend the hook to inspect Bash commands for writes into `tests/`; add a CI step that diffs `tests/` against the merge base and fails on any modification to a pre-existing file that the PR body does not declare as a hand-amendment; and — the missing third leg — a test that exercises the hook and asserts the refusal.
 
 **Tests.** +32 pytest across two NEW files (`test_unmapped_code_guard.py`, `test_source_routing_and_paper.py`) and +3 vitest (`SourceRoutingMismatch.test.tsx`). D1/D2/D3 were written first and shown failing (13 red). **D4/D6/D8 were written AFTER their implementation and were green on arrival — they are REGRESSION GUARDS, not failing-first evidence, and no evidence has been retro-fitted to suggest otherwise.** The independent evidence that D6 would have been red is the Phase-R measurement recorded above: that same extract upload returned **200** before the routing change. The one cross-kind test added under item 2 WAS written first and shown red (200 + `xero_sales_upload`, the defect itself). **15 existing tests initially failed with one shared cause** — they uploaded an extract with no source stated and received the new 422, i.e. they depended on the REMOVED elimination-routing. Terry authorised the mechanical amendment: **17 edits across 9 files, every one an ADDED PARAMETER** (six helpers gained an optional `source=`, eleven call sites state `source="extract"`). **No assertion changed meaning** — that was the stop condition, and it was never met. The manifest is in the PR description. Suite before: 3069 passed / 1 skipped / 4 xfailed / 4 xpassed. Suite after: **3103 passed, 0 failed**, 1 skipped, 4 xfailed, 4 xpassed (+34: 32 Slice-D tests plus the 2 cross-kind tests added under item 2). vitest 178 → **181**. `tsc --noEmit`, `vite build`, flake8 fail-fast: clean.
+
+---
+
+## Slice E — the Reg 26/27 reasoning pass runs on the Xero F5 purchase side (`D-2026-09-23-xero-purchase-lines`)
+
+Updated 2026-09-23 (branch `t-slice-e-xero-purchase-lines`, base `954f906`, PR pending, id **PROPOSED** — Terry ratifies under the two-writers protocol). **Open item #34 CLOSED.**
+
+### The gap: dark, not broken
+
+The reasoning layer's one shipped skill — Reg 26/27 disallowed input tax — had never run on the primary go-to-market source. Not broken: **DARK**. Every Xero upload handed the pass a line source that yielded nothing, so it short-circuited to a clean `ok` with zero candidates and made no model call. Nothing on the paper distinguished *"examined and found nothing"* from *"never looked"*, which is the worse of the two failure modes: a capability reporting itself healthy while receiving no data.
+
+### R1 — row granularity, the gating question, answered from the fixture
+
+The committed demo F5 export is **ONE ROW PER LINE**, not one row per invoice. Proof: reference `#14` occupies three rows with distinct amounts (−70.00, −6.30, +76.30) and a repeated description. Descriptions are per-row, **verbatim, never merged and never truncated** — zero end in an ellipsis, the longest is 42 characters. The brief's STOP condition (one row per invoice with descriptions merged or truncated, which would have made a separate Bills export the better input) is therefore **refuted**.
+
+**One honest caveat, and the test that covers it.** That multi-row proof comes from the `Transactions not included` trailer, which the reader deliberately skips — every Box 5 bill in the committed corpus happens to be single-line (22 rows / 22 distinct references). So per-line granularity is proven from the export format's behaviour, not from a Box-5 example. `#14` never reaches the adapter at all. E-T10 therefore **constructs** the missing case: a Box 5 section carrying one reference across two rows, asserting the adapter yields TWO lines with their own descriptions. If a real multi-line bill ever appears and the reader or adapter collapses it, the pass would silently see one line where there were several — dropping real purchase lines from the review with no signal. That test is the tripwire.
+
+### The design — mirrored, not invented
+
+| ruling | what was built |
+| --- | --- |
+| **E1** | `feeders/xero_f5_reader.py` retains the `Description` column and carries it onto the chain line as `line_description` — the SAME key name the Xero sales reader (Prompt D) and the reasoning contract use. Description-emit only. |
+| **E2** | `feeders/xero_f5_purchase_lines.py` — the sales adapter's exact 9 keys, `doc_type="purchase_invoice"`, filtered to canonical `TX`. `doc_num` carried VERBATIM ("BILL-3007"), never `int()`. Pure stdlib leaf. |
+| **B2 / E3** | a SEPARATE optional `ReviewInputs.purchase_line_source`, default `None`, dispatched as `inputs.purchase_line_source or inputs.line_source`. Wired on the F5 review and F5 sign paths. |
+| **B1** | `REG2627_SPEC.vat_group` widened to `frozenset({"SI", "TX"})`. |
+| **B3** | a third status — `not_examined`, reason `"no model configured"`. |
+| **E4** | open item **#34** closed, both sites. |
+
+**Why B2 refused the smaller diff.** Overloading `line_source` would have been two characters of change and the wrong call: on the Xero F5 branch that field carries the T-E(2)/D-40 **document-context** rows (one aggregate per document, no `vat_group`). Replacing it would have silently re-keyed the document cross-reference surface and its coverage count — a shipped, browser-verified surface. A separate field keeps `None` meaning "exactly as before" for every existing caller, including the SAP CLI.
+
+**B1 is a BRIDGE, not the final design.** `"SI"` is the raw SAP Service-Layer code; `"TX"` is the canonical AgentAssist code the Xero reader emits. The SAP reasoning feeder still emits raw codes while the chain emits canonical ones — a tolerated asymmetry in the frozen fixtures. With `"SI"` alone, every Xero line was filtered out and the pass returned `ok`/0: **the failure looked exactly like success.** Once the SAP reasoning fixtures are re-captured canonically the spec should reduce to `TX` alone (open item filed). Under a frozenset spec the validator keeps each candidate's own per-line code instead of stamping the spec's — more honest, since a TX line must not be reported as SI.
+
+**B3 in one sentence:** once there ARE lines to examine, `ok`/0 would be a lie and `errored` would blame a failure that never happened, so a third state says the only true thing. The branch sits AFTER the no-lines short-circuit deliberately: with nothing to examine, today's clean `ok`/0 remains honest and every SAP/extract/sales path stays byte-identical. With an `llm_call` present the pass runs and the run reads as examined.
+
+### E5 — the measured cost of a run
+
+**21 TX purchase lines against `_BATCH_SIZE = 20` is TWO batches, therefore TWO model calls per run** on the committed demo corpus. This was not assumed: the first version of the test asserted one candidate, failed with `2 == 1`, and the batching is now pinned rather than smoothed over. **It scales linearly** — a real client export with hundreds of Box-5 purchase rows costs proportionally more calls per run (ceil(lines / 20)), and the pass has no cap beyond batching. Cost per review is therefore a known, bounded number rather than a surprise.
+
+### Open item #34, closed here because this slice is what made it reachable
+
+`report/sections.py` carried a hard `int(c.get("doc_num") or 0)` inside `build_unified_candidates_section`, on the code path that renders reg2627 candidates when `show_ai_candidates` is True. `int("BILL-3007")` raises `ValueError` straight out of `build_report`. It needed three conditions at once: the flag true, a reg2627 artefact `ok` WITH candidates, and a non-numeric doc_num. **Slice E creates the second** — before it, the Xero line source was empty and the crash could not fire — so E4 had to land in the same PR, not after.
+
+Fixed at both sites, and the annotation that lied about them: `ReviewCandidateRow.doc_num` widened from `int` to `int | str`. **No fourth copy of the coercion helper was created** — `report/sections.py` already held the tolerant one nested inside `build_ai_candidates_section`, so it was HOISTED to module scope and shared. That removes a private copy rather than adding one, stays inside one module, and crosses no layer boundary (`report/` may not import `documents/`).
+
+### What did not change
+
+The upload response digest is **byte-identical** to the pre-slice measurement (`sha256:3ae353f1…7104`), and so is the with-documents digest (`b3b70d53…49cb`) — the latter is what proves B2's separate field kept the document-context surface intact. F5 boxes, gate results and coverage rows unchanged; the **offline-replay oracle is byte-identical and needed NO re-freeze**. The SAP reg2627 artefact is unchanged: same candidates, same provenance, same bundle key, because the SAP path passes no `purchase_line_source` and takes the identical code path it always did. `show_ai_candidates` remains **False**, so nothing AI-derived reaches the PDF or the API response — this slice makes the pass RUN; it does not make its output visible.
+
+### Terry's hand-amendments, and the transition
+
+Six existing assertions across four files had to change meaning; all were amended by Terry and committed on this branch (`930e064`, `c59290d`), never by the agent.
+
+**All three of the first batch were RED BEFORE the widening and GREEN after it** (`3 failed, 26 passed` → `29 passed`). There is no test that passed pre-build and broke later — the red-first record is intact rather than reconstructed.
+
+### PRIORITY OPEN ITEM — the hallucination defence must be restored before any T2.11 run
+
+The two amended stamping tests existed to defend against a model hallucinating a `vat_group`: the pre-T2.29 str path **ignored** the model's echo and forced the spec's code. Under the frozenset spec the echo is trusted. The minimal amendment stands for this slice, but the defence is genuinely gone, and the fix is a product change: **stamp the candidate's `vat_group` from the MATCHED LINE (join on `doc_num` + `line_index`), not from the model's echo** — which restores the defence while keeping per-line honesty.
+
+**This MUST close before any T2.11 validation run.** `vat_group` travels into the sealed artefact and into the render row, so a specialist scoring the output would be scoring a **model-authored code field** without knowing it. Deliberately NOT built in this slice.
+
+### Other open items filed, not built
+
+- **The phrasing invariant REPAIRS rather than rejects.** A candidate not opening "Consider reviewing whether" is silently prefixed, never dropped. The brief assumed rejection; the characterised behaviour is repair, and E-T6 was rewritten to pin what the code does. Whether repair is right is open: a model that omitted the framing may have misread the task, and repairing hides that.
+- **The reg2627 prompt hard-codes a falsehood over Xero data.** It states *"All lines carry VatGroup=SI"*; over Xero `TX` lines that is untrue, and it is sent to the model. The prompt sits inside a byte-identity-pinned surface, so changing it is a re-freeze and its own slice. Recorded plainly: the model is being told something false about the data it is reading.
+- **B1's bridge** — reduce the spec to `TX` alone once the SAP reasoning fixtures are re-captured canonically.
+
+### A process note, in the agent's own words
+
+The targeted survey I ran before implementing B3 asked which locked tests pinned the reasoning **status** and which pinned the `ok`/`errored` paths, and I reported "no further hand-amendment needed". That survey was correctly scoped to the question I had asked and **too narrowly scoped to the change I was making**: the three failures that appeared were pins on *stamping* and on a *frozen field set*, neither of which my greps looked for. The full suite caught what the targeted search could not. **The lesson is not that a grep missed something — it is that a targeted survey answers only the question it was given, and the suite is the thing that answers the question you did not think to ask.** That is the argument for running the whole suite before believing a scoped result, and it is why the build contract requires it.
+
+### Honest status
+
+The reasoning layer now **RUNS** on the Xero F5 purchase side. Hermetically tested on STUBS — **no test makes a model call and no key exists in CI**. Output remains **gated** (`show_ai_candidates` False). **NOT accuracy-validated**: making a pass runnable is not evidence that its judgements are correct. **NOT real-client-validated** — no real Xero export has ever been read (DEBT-3). `validation_status` unvalidated; **T2.11 unmoved**, and T2.11 remains the only gate that moves the accuracy story.
+
+**The entertainment negative control is now TAKEN rather than silent-by-absence.** BILL-3006 ("Client dinner & entertainment - 12 pax") and BILL-3007 ("Private passenger car (S-plate) servicing") are BOTH canonical TX lines, so both reach the pass. Before this slice neither did, and a pass that flags nothing because it sees nothing cannot be said to have passed a negative control.

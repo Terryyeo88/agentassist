@@ -261,6 +261,10 @@ class XeroF5ChainReader:
                         "VatGroup": tax_rate_to_vat_group(display),
                         "LineTotal": txn["net"],
                         "TaxTotal": txn["tax"],
+                        # Same KEY NAME the reasoning contract and the Xero sales reader
+                        # use (xero_sales_reader.py). Inert for the F5 boxes:
+                        # calculate_f5_return reads only the three keys above.
+                        "line_description": txn.get("description", ""),
                     }
                 ],
             }
@@ -547,6 +551,15 @@ def _load_transactions(source: Path) -> list[dict]:
                 "date": first,
                 "contact": _cell(cells, col[_COL_CONTACT]),
                 "tax_rate": _cell(cells, col[_COL_TAX_RATE]),
+                # D-2026-09-23-xero-purchase-lines (E1). The Description column was read
+                # only by the T2.24 not-included path; the value-box loader dropped it.
+                # It is the ONLY human-readable signal about what a line was FOR, which is
+                # exactly what the Reg 26/27 reasoning pass reads. DESCRIPTION-EMIT ONLY:
+                # no box, gate, coverage row or response digest reads this key — the same
+                # argument the Xero SALES reader already made (Prompt D). `col.get` is the
+                # tolerant form (mirrors parse_not_included): an export without the column
+                # yields "" rather than raising.
+                "description": _cell(cells, col.get(_COL_DESCRIPTION)),
                 "currency": _cell(cells, col[_COL_SOURCE_CURRENCY]),
                 "gross": schema.to_float(_cell(cells, col[_COL_GROSS]) or None),
                 "net": schema.to_float(_cell(cells, col[_COL_NET]) or None),

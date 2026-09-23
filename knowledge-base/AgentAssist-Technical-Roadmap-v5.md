@@ -2153,3 +2153,42 @@ rulings, the third box state and the contracts it widens.
 - **Honest status:** correctness fix, hermetic + API-verified on synthetic data. NOT
   browser-verified; NOT real-client-validated (DEBT-3); NOT accuracy-validated — agreement
   with the frozen oracle is a consistency fact, not an IRAS one. T2.11 unmoved.
+
+### `D-2026-09-23-xero-purchase-lines` — Slice E: the Reg 26/27 pass runs on the Xero F5 purchase side; #34 closed *(id PROPOSED — Terry ratifies under the two-writers protocol)*
+
+Branch `t-slice-e-xero-purchase-lines`, base `954f906`, PR pending. **Full record in
+`AGENTASSIST_TECHNICAL_STATE.md` §Slice E.**
+
+- **The gap was DARKNESS, not breakage.** The one shipped reasoning skill had never run on
+  the primary go-to-market source: every Xero upload handed it a line source yielding
+  nothing, so it returned a clean `ok`/0 and made no model call. Nothing distinguished
+  "examined and found nothing" from "never looked".
+- **R1 answered from the fixture:** the export is ONE ROW PER LINE (`#14` occupies three
+  rows), descriptions per-row, verbatim, never merged or truncated. No redesign needed.
+  Caveat on record: proven from the skipped trailer, since every Box 5 bill in the corpus is
+  single-line — E-T10 constructs the missing multi-row case as the tripwire.
+- **Design mirrors sales:** reader keeps `line_description`; a new stdlib-leaf adapter emits
+  the sales adapter's exact 9 keys, TX-filtered, `doc_num` verbatim; a SEPARATE optional
+  `purchase_line_source` (B2) rather than overloading `line_source`, which carries the
+  T-E(2)/D-40 document rows on that branch.
+- **B1 is a BRIDGE.** `frozenset({"SI","TX"})` — with "SI" alone every Xero line was filtered
+  out and the pass returned ok/0: the failure looked exactly like success. Reduce to TX alone
+  once the SAP reasoning fixtures are re-captured canonically (open item).
+- **B3:** a third status `not_examined` / "no model configured", placed after the no-lines
+  short-circuit so zero lines still reads `ok`/0 and every other path is byte-identical.
+- **#34 CLOSED here** because E3 creates the second of its three conditions. Both sites plus
+  the lying annotation; the tolerant helper was HOISTED, not copied a fourth time.
+- **E5 cost, measured:** 21 lines / `_BATCH_SIZE` 20 = **2 batches = 2 model calls per run**,
+  scaling as ceil(lines/20) — hundreds of Box-5 rows cost proportionally more.
+- **PRIORITY OPEN ITEM — the hallucination defence is gone and MUST return before T2.11.**
+  The frozenset path trusts the model's echoed `vat_group`; it should be stamped from the
+  MATCHED LINE (join on doc_num + line_index). `vat_group` reaches the sealed artefact and
+  the render row, so a specialist would otherwise score a model-authored code field.
+- **Other open items filed, not built:** the phrasing invariant REPAIRS rather than rejects;
+  the reg2627 prompt hard-codes "All lines carry VatGroup=SI", untrue over Xero TX lines and
+  sent to the model, inside a byte-identity-pinned surface.
+- **Process note:** the agent's targeted pre-build survey was scoped to status and field-set
+  pins and missed three stamping/contract assertions; the FULL SUITE caught them. A targeted
+  survey answers only the question it was given.
+- **Honest status:** RUNNABLE is not VALIDATED. Gated (`show_ai_candidates` False), no model
+  calls in tests, not accuracy-validated, not real-client-validated (DEBT-3), T2.11 unmoved.

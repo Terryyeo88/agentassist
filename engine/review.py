@@ -143,6 +143,16 @@ class ReviewInputs:
     reader: "sap_b1_server.ChainReader | None" = None
     gst_ledger: dict | None = None
     sales_line_source: "Callable[[], list[dict]] | None" = None
+    #: D-2026-09-23-xero-purchase-lines (ruling B2). A SEPARATE, optional purchase line
+    #: source for the Reg 26/27 pass, mirroring sales_line_source rather than overloading
+    #: `line_source`. Overloading would have been the smaller diff and the worse one:
+    #: `line_source` also feeds run_documents_pass below, which on the Xero F5 branch
+    #: carries the T-E(2)/D-40 document-context rows (one aggregate per document, no
+    #: vat_group). Replacing it would silently re-key the document cross-reference surface
+    #: and its coverage count — a shipped, browser-verified surface. Default None means the
+    #: reg2627 dispatch falls back to `line_source` exactly as before, so every existing
+    #: caller (SAP CLI included) is byte-identical.
+    purchase_line_source: "Callable[[], list[dict]] | None" = None
     # t-decision-render (Terry R1 Branch B, STRICTLY BOUNDED): the reviewer-adjudication
     # view, built in api/ (api.viewmodel.build_adjudication_view) and threaded VERBATIM
     # into build_report — a pure data pass-through carrying ZERO logic, structurally
@@ -275,7 +285,10 @@ def review(
     # --- Phase 2: Reg 26/27 reasoning pass (never raises; non-blocking) ---
 
     # sap_b1_server is already configured by run_chain above.
-    reasoning_artefact = run_reg2627_pass(period, line_source=inputs.line_source)
+    # B2: prefer the dedicated purchase source when one was supplied; otherwise the
+    # historical `line_source` (the SAP CLI's fetch_si_purchase_lines). None -> unchanged.
+    _reg2627_lines = inputs.purchase_line_source or inputs.line_source
+    reasoning_artefact = run_reg2627_pass(period, line_source=_reg2627_lines)
     if reasoning_artefact.get("status") == "errored":
         log.warning(
             "reg2627 pass errored (non-blocking): %s",

@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -243,6 +244,11 @@ def run_reasoning_pass(
     Returns the complete reasoning-candidates artefact dict — always, even on
     error (status="errored").  The caller must never discard it on failure.
     """
+    # D-2026-09-23-xero-purchase-lines (ruling B3). Remember whether a model was actually
+    # INJECTED: binding the spec default below hides the difference, and the default raises
+    # for a missing key, which the error path would then report as "errored" — blaming a
+    # failure that never happened.
+    _model_injected = llm_call is not None
     _llm = llm_call if llm_call is not None else spec.default_llm_call
     generated_at = datetime.now(timezone.utc).isoformat()
 
@@ -283,6 +289,39 @@ def run_reasoning_pass(
         log.error("%s: KB load failed: %s", spec.skill_id, exc)
         return _errored(f"KB load failed: {exc}")
 
+    def _not_examined(reason: str, slice_hash: str = "sha256:" + "0" * 64) -> dict:
+        """The check COULD have run but no model was configured (ruling B3).
+
+        A third state, deliberately distinct from both neighbours: `ok` would claim the
+        lines were examined and found clean, which is a lie once there are lines; `errored`
+        would claim something broke, which is equally untrue. `not_examined` says the only
+        true thing — there was work to do and nothing looked at it.
+        """
+        return {
+            "artefact_type": spec.artefact_type,
+            "schema_version": "1.0",
+            "check": spec.check,
+            "period": {
+                "start": str(period.get("start", "")),
+                "end": str(period.get("end", "")),
+            },
+            "generated_at": generated_at,
+            "status": "not_examined",
+            "error": reason,
+            "provenance": {
+                "in_run_path": True,
+                "model_id": model_id,
+                "prompt_version": spec.prompt_version,
+                "kb_slice_hash": slice_hash,
+                "validation_status": "unvalidated",
+            },
+            "input_summary": {spec.lines_examined_label: 0, "documents_examined": 0},
+            "candidates": [],
+            "candidate_count": 0,
+            "token_usage": {"input_tokens": 0, "output_tokens": 0},
+            "disclaimer": spec.disclaimer,
+        }
+
     # Fetch lines via the injectable source.
     try:
         all_lines = line_source()
@@ -322,6 +361,14 @@ def run_reasoning_pass(
             "token_usage": {"input_tokens": 0, "output_tokens": 0},
             "disclaimer": spec.disclaimer,
         }
+
+    # B3: there ARE lines to examine. If no model was injected and the environment carries
+    # no key, say so explicitly instead of letting the default raise into "errored". Placed
+    # AFTER the no-lines short-circuit above on purpose: with nothing to examine, today's
+    # clean ok/0 remains honest and every existing path stays byte-identical.
+    if not _model_injected and not os.environ.get("ANTHROPIC_API_KEY"):
+        log.info("%s: %d line(s) to examine but no model configured", spec.skill_id, len(kept_lines))
+        return _not_examined("no model configured", slice_hash)
 
     system_prompt = spec.build_system_prompt(kb_text)
 

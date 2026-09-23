@@ -189,14 +189,21 @@ class TestValidLLMResponse:
                       "suspected_category", "reasoning", "phrasing", "confidence"):
             assert field in c, f"field '{field}' missing from candidate"
 
-    def test_candidate_vat_group_always_SI(self):
-        c = _valid_candidate(vat_group="SO")  # LLM might hallucinate wrong vat_group
+    def test_candidate_keeps_its_per_line_vat_group(self):
+        # AMENDED by Terry 2026-09-23 (Slice E, ruling B1): REG2627_SPEC is now
+        # frozenset({"SI","TX"}), so a candidate keeps its OWN code instead of being forced to
+        # the spec's. A TX line must not be reported as SI.
+        # NOTE — the defence this test used to provide is NOT replaced: the stamp is now the
+        # MODEL'S echo, not the matched line's code. Open item: stamp from the matched line
+        # (join on doc_num + line_index) so per-line honesty and hallucination-resistance both
+        # hold. Must close before any T2.11 validation run.
+        c = _valid_candidate(vat_group="SO")  # LLM echoes a wrong vat_group
         artefact = run_reg2627_pass(
             _PERIOD,
             line_source=lambda: [_si_line()],
             llm_call=_fake_llm(json.dumps([c])),
         )
-        assert artefact["candidates"][0]["vat_group"] == "SI"
+        assert artefact["candidates"][0]["vat_group"] == "SO"
 
     def test_token_usage_captured(self):
         artefact = self._run_with_candidate()
@@ -575,11 +582,13 @@ class TestValidateCandidate:
         result = _validate_candidate(raw)
         assert result["phrasing"] == p
 
-    def test_vat_group_forced_to_SI(self):
+    def test_vat_group_is_not_forced_under_a_frozenset_spec(self):
+        # AMENDED by Terry 2026-09-23 (Slice E, ruling B1): see the note on
+        # test_candidate_keeps_its_per_line_vat_group. The value is the model's echo today;
+        # the open item is to stamp it from the matched line instead.
         raw = _valid_candidate(vat_group="ZP")
         result = _validate_candidate(raw)
-        assert result["vat_group"] == "SI"
-
+        assert result["vat_group"] == "ZP"
 
 # ---------------------------------------------------------------------------
 # T12 — seal_bundle integration: reasoning_artefact included in manifest
