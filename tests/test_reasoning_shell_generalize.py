@@ -146,12 +146,20 @@ def _strip_ts(artefact: dict) -> dict:
 # ---------------------------------------------------------------------------
 # SkillSpec + REG2627_SPEC shape
 # ---------------------------------------------------------------------------
+        # AMENDED by Terry 2026-09-23 (Slice E): the spec now selects standard-rated purchase
+        # lines in BOTH vocabularies — raw SAP "SI" and canonical "TX". A BRIDGE, not the final
+        # design: the SAP reasoning feeder still emits raw codes while the chain emits canonical
+        # ones. Once those fixtures are re-captured canonically, this reduces to TX alone.
 
 class TestReg2627Spec:
     def test_reg2627_spec_fields(self):
         assert REG2627_SPEC.skill_id == "reg2627"
         assert REG2627_SPEC.kb_slice_name == "reg2627"
-        assert REG2627_SPEC.vat_group == "SI"
+        # AMENDED by Terry 2026-09-23 (Slice E): the spec now selects standard-rated purchase
+        # lines in BOTH vocabularies — raw SAP "SI" and canonical "TX". A BRIDGE, not the final
+        # design: the SAP reasoning feeder still emits raw codes while the chain emits canonical
+        # ones. Once those fixtures are re-captured canonically, this reduces to TX alone.
+        assert REG2627_SPEC.vat_group == frozenset({"SI", "TX"})
         assert REG2627_SPEC.batch_size == 20
         assert REG2627_SPEC.check == "reg-26-27-disallowed-input-tax"
         assert REG2627_SPEC.artefact_type == "judgment-candidates"
@@ -279,11 +287,13 @@ class TestValidateCandidateGeneric:
             validate_candidate(STUB_SPEC, self._raw(suspected_category="medical_expenses"))
 
     def test_reg2627_wrapper_still_single_arg(self):
-        # The locked test calls reasoning.reg2627._validate_candidate(raw).
+        # AMENDED by Terry 2026-09-23 (Slice E): the single-arg wrapper contract is unchanged;
+        # only the stamp is. Under the frozenset spec the candidate keeps its own per-line code,
+        # so this pins the CONTRACT (one arg, category preserved), not the old forced "SI".
         from reasoning.reg2627 import _validate_candidate
-        raw = self._raw(suspected_category="medical_expenses", vat_group="whatever")
+        raw = self._raw(suspected_category="medical_expenses", vat_group="TX")
         out = _validate_candidate(raw)
-        assert out["vat_group"] == "SI"
+        assert out["vat_group"] == "TX"
         assert out["suspected_category"] == "medical_expenses"
 
 

@@ -5,7 +5,8 @@ One reasoning skill can now select a SET of canonical tax codes (e.g.
 {"ES33","ESN33"}) instead of a single one.  This authors NO tax semantics, NO
 skill, NO KB slice — it is a pure typing/branching generalization.
 
-The hard safety claim: reg2627 (a str "SI" spec) is BYTE-IDENTICAL.  The str
+AMENDED 2026-09-23 (Slice E): reg2627 is no longer a str spec — it is
+frozenset({"SI","TX"}), so its candidates now keep their own per-line code.  The str
 path keeps forcing spec.vat_group onto every candidate (the pre-T2.29 behaviour,
 locked by test_reasoning_shell_generalize.py); only the frozenset path stamps the
 candidate's own per-line code so a {"ES33","ESN33"} spec does not flatten every
@@ -113,11 +114,19 @@ class TestVatGroupFieldType:
 # ---------------------------------------------------------------------------
 
 class TestReg2627StrPathByteIdentical:
-    def test_str_spec_forces_spec_vat_group_regardless_of_raw(self):
-        # The pre-T2.29 behaviour, preserved: for a str spec the candidate's
-        # vat_group is stamped from the spec even if the raw LLM echo differs.
+    def test_frozenset_spec_keeps_the_per_line_code(self):
+        # AMENDED by Terry 2026-09-23 (Slice E): REG2627_SPEC is a frozenset spec now, so a
+        # candidate keeps its OWN per-line code instead of being stamped with the spec's.
+        # That is more honest: a TX line must not be reported as SI.
         out = validate_candidate(REG2627_SPEC, _raw_candidate("ES33", cat="medical_expenses"))
-        assert out["vat_group"] == "SI"
+        assert out["vat_group"] == "ES33"
+
+    def test_str_spec_forces_spec_vat_group_regardless_of_raw(self):
+        # AMENDED by Terry 2026-09-23 (Slice E): kept alive with a TEST-ONLY str spec. After the
+        # widening no SHIPPED spec uses the str path, so this is its only remaining cover.
+        spec = _exempt_spec("ES33")
+        out = validate_candidate(spec, _raw_candidate("ZR", cat="exempt_supply"))
+        assert out["vat_group"] == "ES33"
 
     def test_str_spec_run_provenance_unchanged(self):
         def _fake(model, system, messages, max_tokens):
