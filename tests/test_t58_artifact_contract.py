@@ -45,7 +45,10 @@ FROZEN_REVIEW_RESULT = {
 # This is the deliberate re-pin the test's own docstring sanctions. engine/ imports
 # no decision-layer code (tests/test_leaf_import_purity.py); the field carries data,
 # not behaviour.
-FROZEN_REVIEW_INPUTS = {"line_source", "provider", "declared_f5", "analytical_review", "reader", "gst_ledger", "sales_line_source", "adjudications"}
+# D-2026-09-23-xero-purchase-lines (ruling B2): "purchase_line_source" — a None-defaulted,
+# optional line source for the Reg 26/27 pass, mirroring sales_line_source. Deliberately NOT
+# an overload of line_source, which also feeds the document pass on the Xero F5 branch.
+FROZEN_REVIEW_INPUTS = {"line_source", "provider", "declared_f5", "analytical_review", "reader", "gst_ledger", "sales_line_source", "purchase_line_source", "adjudications"}
 FROZEN_GATE_HALT = {"message", "checked"}
 FROZEN_DOSSIER = {
     "finding_id", "check_id", "finding_type", "evidence",
